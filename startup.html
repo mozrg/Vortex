@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vortex Place Launcher</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #0b0c11; color: #f4f2fa; font-family: "Segoe UI", sans-serif; }
+      body { display: grid; place-items: center; border: 1px solid rgba(190, 169, 255, .2); -webkit-app-region: drag; }
+      main { position: relative; display: flex; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; padding: 34px 44px 28px; overflow: hidden; background: radial-gradient(ellipse at 50% -8%, rgba(136, 101, 230, .24), transparent 55%), linear-gradient(145deg, #14121c, #0c0d13 68%); }
+      main::before, main::after { position: absolute; width: 360px; height: 170px; border: 1px solid rgba(183, 158, 255, .08); border-radius: 50%; content: ""; transform: rotate(-23deg); pointer-events: none; }
+      main::before { right: -210px; bottom: -66px; }
+      main::after { right: -190px; bottom: -49px; width: 310px; height: 140px; }
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .brand img { width: 48px; height: 40px; object-fit: contain; filter: drop-shadow(0 5px 16px rgba(128, 91, 234, .24)); }
+      .brand-copy { display: grid; gap: 4px; }
+      .brand-copy strong { font-size: 17px; letter-spacing: .18em; }
+      .brand-copy small { color: #898395; font-size: 8px; font-weight: 700; letter-spacing: .2em; }
+      h1 { margin: 29px 0 7px; font-size: 17px; font-weight: 650; letter-spacing: -.02em; }
+      .subtitle { margin: 0; color: #8c8997; font-size: 11px; }
+      .status-list { display: grid; width: 100%; gap: 13px; margin-top: 24px; }
+      .status-row { display: flex; align-items: center; gap: 9px; color: #c6c1d0; font-size: 10px; }
+      .status-dot { width: 6px; height: 6px; flex: 0 0 auto; border: 1px solid #8e7bba; border-radius: 50%; background: transparent; }
+      .status-row.current .status-dot { border-color: #b7a2ff; background: #a589fa; box-shadow: 0 0 10px rgba(155, 124, 255, .8); }
+      .status-row.planned { color: #777382; }
+      .soon { margin-left: auto; padding: 3px 6px; border: 1px solid rgba(155, 124, 255, .2); border-radius: 5px; color: #b5a2eb; font-size: 7px; font-weight: 700; letter-spacing: .1em; }
+      .progress { width: 100%; height: 3px; overflow: hidden; margin-top: 25px; border-radius: 5px; background: rgba(255,255,255,.08); }
+      .progress i { display: block; width: 33%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #7251ce, #c4afff); box-shadow: 0 0 13px rgba(155, 124, 255, .75); animation: load 1.6s ease-in-out infinite; }
+      @keyframes load { 0% { transform: translateX(-110%); } 100% { transform: translateX(430%); } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand"><img src="assets/vortex-logo.svg" alt="" /><span class="brand-copy"><strong>VORTEX</strong><small>PLACE LAUNCHER</small></span></div>
+      <h1 data-copy="title">Запускаем Vortex</h1>
+      <p class="subtitle" data-copy="subtitle">Подготавливаем твой игровой каталог</p>
+      <div class="status-list">
+        <div class="status-row current"><i class="status-dot"></i><span data-copy="startup">Запуск приложения</span></div>
+        <div class="status-row planned"><i class="status-dot"></i><span data-copy="updates">Проверка обновлений</span><small class="soon" data-copy="soon">СКОРО</small></div>
+      </div>
+      <div class="progress" aria-hidden="true"><i></i></div>
+    </main>
+    <script>
+      const copy = {
+        ru: { title: 'Открываем каталог', subtitle: 'Подготавливаем твои игровые места', startup: 'Запуск приложения', updates: 'Проверка обновлений', soon: 'СКОРО' },
+        en: { title: 'Opening your library', subtitle: 'Preparing your places', startup: 'Starting the app', updates: 'Update check', soon: 'SOON' }
+      };
+      const language = navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en';
+      document.documentElement.lang = language;
+      document.querySelectorAll('[data-copy]').forEach((node) => { node.textContent = copy[language][node.dataset.copy]; });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="150" height="57" viewBox="0 0 150 57" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="150" y2="57" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#171322" />
+      <stop offset="1" stop-color="#0d0d13" />
+    </linearGradient>
+  </defs>
+  <path fill="url(#bg)" d="M0 0h150v57H0z" />
+  <path d="M0 56.5h150" stroke="#9b7cff" stroke-opacity=".55" />
+  <svg x="7" y="10" width="43" height="37" viewBox="0 0 709 572">{{APP_LOGO}}</svg>
+  <text x="56" y="26" fill="#f1edff" font-family="Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="1.8">VORTEX</text>
+  <text x="57" y="39" fill="#91899f" font-family="Arial,sans-serif" font-size="6.5" font-weight="700" letter-spacing="1.55">PLACE LAUNCHER</text>
+</svg>

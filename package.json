@@ -1,0 +1,50 @@
+{
+  "name": "vortex-roblox-launcher",
+  "version": "0.3.0",
+  "private": true,
+  "description": "A customizable desktop launcher for Roblox experiences.",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "prepare:assets": "node scripts/prepare-assets.mjs",
+    "build:win": "npm run prepare:assets && electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.0.12",
+    "pngjs": "^7.0.0"
+  },
+  "build": {
+    "appId": "com.vortex.launcher",
+    "productName": "Vortex Launcher",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "app.js",
+      "index.html",
+      "startup.html",
+      "styles.css",
+      "electron/**/*",
+      "assets/vortex-app-icon.svg",
+      "assets/vortex-logo.svg",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/vortex-app-icon.ico",
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "assets/vortex-app-icon.ico",
+      "uninstallerIcon": "assets/vortex-app-icon.ico",
+      "installerHeader": "assets/installer-header.bmp",
+      "installerSidebar": "assets/installer-sidebar.bmp"
+    }
+  }
+}

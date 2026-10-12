@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="164" height="314" viewBox="0 0 164 314" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="12" y1="0" x2="158" y2="314" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#171322" />
+      <stop offset=".55" stop-color="#111117" />
+      <stop offset="1" stop-color="#0b0c11" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="matrix(0 138 -127 0 83 55)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7655d9" stop-opacity=".42" />
+      <stop offset="1" stop-color="#7655d9" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <path fill="url(#bg)" d="M0 0h164v314H0z" />
+  <path fill="url(#glow)" d="M0 0h164v220H0z" />
+  <circle cx="82" cy="75" r="58" stroke="#b8a3ff" stroke-opacity=".16" />
+  <circle cx="82" cy="75" r="48" stroke="#b8a3ff" stroke-opacity=".13" />
+  <circle cx="82" cy="75" r="37" stroke="#b8a3ff" stroke-opacity=".1" />
+  <svg x="27" y="40" width="110" height="89" viewBox="0 0 709 572">{{APP_LOGO}}</svg>
+  <path d="M24 137h116" stroke="#fff" stroke-opacity=".1" />
+  <text x="82" y="166" fill="#f1edff" font-family="Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="2.8" text-anchor="middle">VORTEX</text>
+  <text x="82" y="184" fill="#a49bb7" font-family="Arial,sans-serif" font-size="7.5" font-weight="700" letter-spacing="2.1" text-anchor="middle">PLACE LAUNCHER</text>
+  <path d="M37 234h90" stroke="#9b7cff" stroke-opacity=".42" />
+  <circle cx="32" cy="234" r="2" fill="#bdaaff" />
+  <circle cx="132" cy="234" r="2" fill="#bdaaff" />
+  <text x="82" y="258" fill="#d4caff" font-family="Arial,sans-serif" font-size="8" font-weight="700" letter-spacing="1.6" text-anchor="middle">DISCOVER NEW WORLDS</text>
+  <text x="82" y="276" fill="#797483" font-family="Arial,sans-serif" font-size="7" letter-spacing="1.1" text-anchor="middle">SEARCH · SAVE · PLAY</text>
+  <path d="M54 298h56" stroke="#fff" stroke-opacity=".12" stroke-linecap="round" />
+</svg>

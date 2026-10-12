@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b0c10" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://tr.rbxcdn.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'" />
+    <title>Vortex — Roblox Place Launcher</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+    <div class="window-titlebar" role="toolbar" aria-label="Панель окна" data-i18n-aria="window.toolbar">
+      <div class="window-drag-region" data-window-drag data-i18n-aria="window.drag" aria-label="Перетащите, чтобы переместить окно">
+        <span class="window-app-caption">PLACE LAUNCHER</span>
+        <span class="window-title-divider"></span>
+        <span class="window-context" data-i18n="window.context">ТВОЁ ПРОСТРАНСТВО ДЛЯ НОВЫХ МИРОВ</span>
+      </div>
+      <div class="window-controls">
+        <button class="window-control" type="button" data-window-control="minimize" data-i18n-aria="window.minimize" aria-label="Свернуть окно"><span data-icon="windowMinimize"></span></button>
+        <button class="window-control" type="button" data-window-control="maximize" data-i18n-aria="window.maximize" aria-label="Развернуть окно"><span data-icon="windowMaximize"></span></button>
+        <button class="window-control window-close" type="button" data-window-control="close" data-i18n-aria="window.close" aria-label="Закрыть окно"><span data-icon="close"></span></button>
+      </div>
+    </div>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#home" data-nav="home" data-i18n-aria="brand.home" aria-label="Vortex — главная">
+          <img class="brand-logo" src="assets/vortex-logo.svg" alt="" aria-hidden="true" />
+          <span class="brand-copy"><strong>VORTEX</strong></span>
+        </a>
+
+        <div class="side-label" data-i18n="sidebar.menu">МЕНЮ</div>
+        <nav class="primary-nav" aria-label="Основная навигация" data-i18n-aria="sidebar.primaryNav">
+          <button class="nav-item active" data-nav="home"><span class="nav-icon" data-icon="home"></span><span data-i18n="nav.home">Главная</span></button>
+          <button class="nav-item" data-nav="catalog"><span class="nav-icon" data-icon="compass"></span><span data-i18n="nav.catalog">Каталог игр</span><span class="nav-count" id="catalog-count">—</span></button>
+          <button class="nav-item" data-nav="favorites"><span class="nav-icon" data-icon="heart"></span><span data-i18n="nav.favorites">Избранное</span><span class="nav-count" id="favorite-count">0</span></button>
+          <button class="nav-item" data-nav="recent"><span class="nav-icon" data-icon="clock"></span><span data-i18n="nav.recent">Недавние</span></button>
+        </nav>
+
+        <div class="side-label side-label-spaced" data-i18n="sidebar.space">ТВОЁ ПРОСТРАНСТВО</div>
+        <nav class="primary-nav" aria-label="Твоё пространство" data-i18n-aria="sidebar.spaceNav">
+          <button class="nav-item" data-nav="reviews"><span class="nav-icon" data-icon="message"></span><span data-i18n="nav.reviews">Отзывы</span><span class="soon-pill" data-i18n="common.soon">СКОРО</span></button>
+          <button class="nav-item" data-nav="plans"><span class="nav-icon" data-icon="flag"></span><span data-i18n="nav.plans">В планах</span></button>
+          <button class="nav-item" data-nav="settings"><span class="nav-icon" data-icon="sliders"></span><span data-i18n="nav.settings">Настройки</span></button>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <div class="sidebar-tip">
+            <div class="tip-orbit"><span data-icon="sparkle"></span></div>
+            <p data-i18n="sidebar.tip">Новый мир<br />уже где-то рядом</p>
+            <button class="text-button" data-nav="catalog"><span data-i18n="sidebar.explore">Исследовать</span><span data-icon="arrowUpRight"></span></button>
+          </div>
+          <div class="profile-row">
+            <div class="avatar">V</div>
+            <div class="profile-copy"><strong data-i18n="profile.name">Мой лаунчер</strong><small data-i18n="profile.local">Локальный профиль</small></div>
+            <button class="icon-button profile-settings" data-nav="settings" data-i18n-aria="nav.settings" aria-label="Настройки"><span data-icon="dots"></span></button>
+          </div>
+          <div class="sidebar-foot"><span class="status-dot"></span> VORTEX PREVIEW <span class="version">0.1</span></div>
+        </div>
+      </aside>
+
+      <main class="main-area">
+        <header class="topbar">
+          <div class="breadcrumb"><span>VORTEX</span><i>/</i><strong id="breadcrumb-current">Главная</strong></div>
+          <div class="topbar-actions">
+            <label class="search-field" for="global-search">
+              <span data-icon="search"></span>
+              <input id="global-search" type="search" autocomplete="off" data-i18n-placeholder="search.placeholder" placeholder="Найти игру по названию..." />
+              <kbd>Ctrl K</kbd>
+            </label>
+            <button class="icon-button notification-button" data-i18n-aria="notifications" aria-label="Уведомления" data-action="notifications"><span data-icon="bell"></span><i></i></button>
+            <button class="avatar avatar-small" data-nav="settings" data-i18n-aria="profile.settings" aria-label="Профиль и настройки">V</button>
+          </div>
+        </header>
+
+        <div class="page-content" id="page-content"></div>
+      </main>
+    </div>
+    <div class="toast-region" id="toast-region" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

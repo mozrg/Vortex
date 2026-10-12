@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
   },
   openGame: (placeId) => ipcRenderer.invoke('game:open', placeId),
   getUpdateState: () => ipcRenderer.invoke('updates:get-state'),
-  openDownloadedUpdate: () => ipcRenderer.invoke('updates:open-installer'),
+  retryUpdateCheck: () => ipcRenderer.invoke('updates:retry'),
   onUpdateState: (callback) => {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on('updates:state', listener);

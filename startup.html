@@ -3,64 +3,94 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vortex Place Launcher</title>
+    <meta name="theme-color" content="#0b0c11" />
+    <title>Vortex Launcher</title>
     <style>
       * { box-sizing: border-box; }
-      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #0b0c11; color: #f4f2fa; font-family: "Segoe UI", sans-serif; }
-      body { display: grid; place-items: center; border: 1px solid rgba(190, 169, 255, .2); -webkit-app-region: drag; }
-      main { position: relative; display: flex; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; padding: 34px 44px 28px; overflow: hidden; background: radial-gradient(ellipse at 50% -8%, rgba(136, 101, 230, .24), transparent 55%), linear-gradient(145deg, #14121c, #0c0d13 68%); }
-      main::before, main::after { position: absolute; width: 360px; height: 170px; border: 1px solid rgba(183, 158, 255, .08); border-radius: 50%; content: ""; transform: rotate(-23deg); pointer-events: none; }
-      main::before { right: -210px; bottom: -66px; }
-      main::after { right: -190px; bottom: -49px; width: 310px; height: 140px; }
-      .brand { display: flex; align-items: center; gap: 12px; }
-      .brand img { width: 48px; height: 40px; object-fit: contain; filter: drop-shadow(0 5px 16px rgba(128, 91, 234, .24)); }
+      :root { color-scheme: dark; font-family: "Segoe UI", sans-serif; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #0b0c11; color: #f4f2fa; }
+      body { border: 1px solid rgba(190, 169, 255, .22); -webkit-app-region: drag; }
+      main { position: relative; display: flex; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; padding: 25px 36px 22px; overflow: hidden; background: radial-gradient(ellipse at 50% 0%, rgba(136, 101, 230, .24), transparent 53%), linear-gradient(145deg, #14121c, #0c0d13 68%); }
+      main::before, main::after { position: absolute; width: 300px; height: 130px; border: 1px solid rgba(183, 158, 255, .08); border-radius: 50%; content: ""; transform: rotate(-23deg); pointer-events: none; }
+      main::before { right: -185px; bottom: -55px; }
+      main::after { right: -165px; bottom: -38px; width: 260px; height: 105px; }
+      .brand { display: flex; align-items: center; gap: 11px; }
+      .brand img { width: 43px; height: 36px; object-fit: contain; filter: drop-shadow(0 5px 16px rgba(128, 91, 234, .3)); }
       .brand-copy { display: grid; gap: 4px; }
-      .brand-copy strong { font-size: 17px; letter-spacing: .18em; }
+      .brand-copy strong { font-size: 15px; letter-spacing: .19em; }
       .brand-copy small { color: #898395; font-size: 8px; font-weight: 700; letter-spacing: .2em; }
-      h1 { margin: 29px 0 7px; font-size: 17px; font-weight: 650; letter-spacing: -.02em; }
-      .subtitle { margin: 0; color: #8c8997; font-size: 11px; }
-      .status-list { display: grid; width: 100%; gap: 13px; margin-top: 24px; }
-      .status-row { display: flex; align-items: center; gap: 9px; color: #c6c1d0; font-size: 10px; }
-      .status-dot { width: 6px; height: 6px; flex: 0 0 auto; border: 1px solid #8e7bba; border-radius: 50%; background: transparent; }
-      .status-row.current .status-dot { border-color: #b7a2ff; background: #a589fa; box-shadow: 0 0 10px rgba(155, 124, 255, .8); }
-      .progress { width: 100%; height: 3px; overflow: hidden; margin-top: 25px; border-radius: 5px; background: rgba(255,255,255,.08); }
-      .progress i { display: block; width: 33%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #7251ce, #c4afff); box-shadow: 0 0 13px rgba(155, 124, 255, .75); animation: load 1.6s ease-in-out infinite; }
-      .progress.downloading i { animation: none; transform: none; transition: width .25s ease; }
+      h1 { margin: 22px 0 6px; font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
+      .subtitle { margin: 0; color: #8c8997; font-size: 10px; }
+      .status-card { display: flex; width: 100%; align-items: center; gap: 11px; margin-top: 20px; padding: 12px 13px; border: 1px solid rgba(190, 169, 255, .15); border-radius: 11px; background: linear-gradient(110deg, rgba(155, 124, 255, .09), rgba(255,255,255,.025)); }
+      .status-icon { position: relative; display: grid; width: 31px; height: 31px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(183, 158, 255, .22); border-radius: 9px; background: rgba(155, 124, 255, .1); }
+      .status-icon::before, .status-icon::after { position: absolute; width: 12px; height: 12px; border: 1px solid #b7a2ff; border-radius: 4px; content: ""; transform: rotate(45deg); animation: orbit 2.4s ease-in-out infinite alternate; }
+      .status-icon::after { width: 6px; height: 6px; border-color: #e0d6ff; animation-delay: .35s; }
+      .status-copy { display: grid; min-width: 0; gap: 4px; }
+      .status-copy strong { color: #e7e1f4; font-size: 10px; font-weight: 650; }
+      .status-copy small { overflow: hidden; color: #938da0; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+      .status-card.failed { border-color: rgba(224,112,95,.35); }
+      .status-card.failed .status-icon { border-color: rgba(224,112,95,.35); background: rgba(224,112,95,.1); }
+      .status-card.failed .status-copy small { color: #e0a496; }
+      .progress { width: 100%; height: 3px; overflow: hidden; margin-top: 16px; border-radius: 5px; background: rgba(255,255,255,.08); }
+      .progress i { display: block; width: 32%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #7251ce, #c4afff); box-shadow: 0 0 13px rgba(155, 124, 255, .75); animation: load 1.6s ease-in-out infinite; }
+      .progress.downloading i { animation: none; transition: width .25s ease; }
+      .version { margin-top: 10px; color: #666271; font-size: 8px; letter-spacing: .06em; }
       @keyframes load { 0% { transform: translateX(-110%); } 100% { transform: translateX(430%); } }
+      @keyframes orbit { from { opacity: .55; transform: rotate(45deg) scale(.82); } to { opacity: 1; transform: rotate(135deg) scale(1.06); } }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
     </style>
   </head>
   <body>
     <main>
       <div class="brand"><img src="assets/vortex-logo.svg" alt="" /><span class="brand-copy"><strong>VORTEX</strong><small>PLACE LAUNCHER</small></span></div>
       <h1 data-copy="title">Запускаем Vortex</h1>
-      <p class="subtitle" data-copy="subtitle">Подготавливаем твой игровой каталог</p>
-      <div class="status-list">
-        <div class="status-row current"><i class="status-dot"></i><span data-copy="startup">Запуск приложения</span></div>
-        <div class="status-row" id="updates-row"><i class="status-dot"></i><span id="updates-copy" data-copy="updates">Проверка обновлений</span></div>
-      </div>
+      <p class="subtitle" data-copy="subtitle">Подготавливаем каталог и проверяем обновления</p>
+      <section class="status-card" id="status-card" aria-live="polite">
+        <span class="status-icon" aria-hidden="true"></span>
+        <span class="status-copy"><strong data-copy="startup">Подготовка лаунчера</strong><small id="updates-copy">Проверяем обновления…</small></span>
+      </section>
       <div class="progress" aria-hidden="true"><i></i></div>
+      <small class="version" id="version-copy">VORTEX · PLACE LAUNCHER</small>
     </main>
     <script>
       const copy = {
-        ru: { title: 'Открываем каталог', subtitle: 'Подготавливаем твои игровые места', startup: 'Запуск приложения', checking: 'Проверяем обновления на GitHub', current: 'Установлена актуальная версия', unavailable: 'Пока нет опубликованных обновлений', downloading: 'Скачиваем обновление', downloaded: 'Обновление скачано', error: 'Проверка не удалась — запускаем приложение', development: 'Проверка обновлений доступна в установленной версии' },
-        en: { title: 'Opening your library', subtitle: 'Preparing your places', startup: 'Starting the app', checking: 'Checking GitHub for updates', current: 'The latest version is installed', unavailable: 'No published updates yet', downloading: 'Downloading the update', downloaded: 'The update is downloaded', error: 'Could not check — opening the app', development: 'Update checks run in the installed app' }
+        ru: { title: 'Открываем каталог', subtitle: 'Подготавливаем каталог и проверяем обновления', startup: 'Подготовка лаунчера', checking: 'Проверяем доступные версии', current: 'Установлена актуальная версия', unavailable: 'Пока нет опубликованных обновлений', downloading: 'Загружаем обновление', downloaded: 'Обновление загружено и проверено', applying: 'Устанавливаем обновление — лаунчер перезапустится', error: 'Не удалось обновиться — запускаем текущую версию', development: 'Проверка обновлений доступна в установленной версии', version: 'Текущая версия {version}', waiting: 'Загрузка идёт, это может занять минуту' },
+        en: { title: 'Opening your library', subtitle: 'Preparing your library and checking for updates', startup: 'Preparing the launcher', checking: 'Checking for available versions', current: 'You have the latest version', unavailable: 'No published updates yet', downloading: 'Downloading the update', downloaded: 'Update downloaded and verified', applying: 'Installing update — the launcher will restart', error: 'Update failed — opening the current version', development: 'Update checks run in the installed app', version: 'Current version {version}', waiting: 'Downloading, this can take a minute' }
       };
       const language = navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en';
       document.documentElement.lang = language;
       document.querySelectorAll('[data-copy]').forEach((node) => { node.textContent = copy[language][node.dataset.copy]; });
-      const updateRow = document.getElementById('updates-row');
+      const statusCard = document.getElementById('status-card');
       const updateCopy = document.getElementById('updates-copy');
+      const versionCopy = document.getElementById('version-copy');
       const progress = document.querySelector('.progress');
-      function showUpdateState(state) {
-        const key = state.status === 'current' || state.status === 'unavailable' || state.status === 'downloading' || state.status === 'downloaded' || state.status === 'error' || state.status === 'development' ? state.status : 'checking';
-        updateCopy.textContent = `${copy[language][key]}${state.status === 'downloading' && Number.isFinite(state.progress) ? ` · ${state.progress}%` : ''}`;
-        updateRow.classList.toggle('current', ['checking', 'downloading'].includes(state.status));
-        progress.classList.toggle('downloading', state.status === 'downloading');
-        if (state.status === 'downloading' || state.status === 'downloaded') {
-          progress.querySelector('i').style.width = `${state.status === 'downloaded' ? 100 : Math.max(1, Math.min(100, Number(state.progress) || 0))}%`;
+      let waitingHintShown = false;
+      let currentState = { status: 'checking' };
+      const BUSY = ['checking', 'downloading', 'applying'];
+      function render() {
+        const status = currentState.status || 'checking';
+        const key = ['current', 'unavailable', 'downloading', 'downloaded', 'applying', 'error', 'development'].includes(status) ? status : 'checking';
+        const percent = Math.max(0, Math.min(100, Number(currentState.progress) || 0));
+        const suffix = key === 'downloading' && Number.isFinite(currentState.progress) ? ` · ${percent}%` : '';
+        updateCopy.textContent = waitingHintShown && key === 'checking' ? `${copy[language].waiting}${suffix}` : `${copy[language][key]}${suffix}`;
+        statusCard.classList.toggle('failed', status === 'error');
+        progress.classList.toggle('downloading', key === 'downloading' || key === 'applying');
+        if (key === 'downloading' || key === 'applying') {
+          progress.querySelector('i').style.width = `${key === 'applying' ? 100 : Math.max(1, percent)}%`;
         }
+        if (currentState.currentVersion) versionCopy.textContent = copy[language].version.replace('{version}', currentState.currentVersion);
+      }
+      function showUpdateState(state) {
+        if (state) currentState = state;
+        if (currentState.status === 'downloading' || currentState.status === 'applying') waitingHintShown = false;
+        render();
       }
       window.vortexStartup?.onUpdateState?.(showUpdateState);
+      setTimeout(() => {
+        if (currentState.status !== 'checking') return;
+        waitingHintShown = true;
+        render();
+      }, 10000);
       window.vortexStartup?.getUpdateState?.().then(showUpdateState).catch(() => {});
     </script>
   </body>

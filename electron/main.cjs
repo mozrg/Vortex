@@ -5,19 +5,33 @@ const fsp = require('node:fs/promises');
 const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { createHash, randomUUID } = require('node:crypto');
-
+const { spawn } = require('node:child_process');
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) app.quit();
+else app.on('second-instance', () => {
+  const window = BrowserWindow.getAllWindows().find((item) => !item.isDestroyed());
+  if (!window) return;
+  if (window.isMinimized()) window.restore();
+  window.focus();
+});
 const CACHE_TTL = 5 * 60 * 1000;
 const MIN_SPLASH_VISIBLE_MS = 1300;
 const GITHUB_REPOSITORY = 'mozrg/Vortex';
-const MAX_INSTALLER_BYTES = 350 * 1024 * 1024;
+const MAX_INSTALLER_BYTES = 200 * 1024 * 1024;
+// A download that delivers nothing for this long is treated as stalled: the partial
+// file is kept and the transfer resumes from the last received byte.
+const DOWNLOAD_STALL_TIMEOUT_MS = 30000;
+const DOWNLOAD_ATTEMPTS = 4;
 const responseCache = new Map();
 let startupWindow = null;
-let updateFilePath = null;
-let updateState = { status: 'checking', progress: 0, currentVersion: app.getVersion(), latestVersion: null, releaseUrl: null };
+let updateCheckRunning = false;
+// Last state seen while the splash was still visible, replayed to the main window.
+let pendingUpdateStateForMainWindow = null;
+let updateState = { status: 'checking', progress: 0, currentVersion: app.getVersion(), latestVersion: null, releaseUrl: null, errorMessage: null };
 
 function publicUpdateState() {
-  const { status, progress, currentVersion, latestVersion, releaseUrl } = updateState;
-  return { status, progress, currentVersion, latestVersion, releaseUrl };
+  const { status, progress, currentVersion, latestVersion, releaseUrl, errorMessage } = updateState;
+  return { status, progress, currentVersion, latestVersion, releaseUrl, errorMessage };
 }
 
 function broadcastUpdateState() {
@@ -25,12 +39,41 @@ function broadcastUpdateState() {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) window.webContents.send('updates:state', state);
   }
-  if (startupWindow && !startupWindow.isDestroyed()) startupWindow.webContents.send('updates:state', state);
+  if (startupWindow && !startupWindow.isDestroyed()) {
+    startupWindow.webContents.send('updates:state', state);
+    // Remember the progress so the main window can show it after the handoff.
+    pendingUpdateStateForMainWindow = state;
+  }
+}
+
+// Set by createWindow(): lets the startup window reveal the main window once updates settle.
+let onUpdateStateChanged = null;
+let revealMainWindow = () => {};
+let startupTransitionStarted = false;
+// While these statuses are active the launcher keeps the compact startup window in front
+// instead of opening the interface behind a running download or an installer handoff.
+const UPDATE_BUSY_STATUSES = new Set(['checking', 'downloading', 'applying']);
+
+function shouldWaitForUpdate() {
+  return UPDATE_BUSY_STATUSES.has(updateState.status);
 }
 
 function setUpdateState(changes) {
   updateState = { ...updateState, ...changes, currentVersion: app.getVersion() };
   broadcastUpdateState();
+  onUpdateStateChanged?.();
+}
+
+// Every update step is appended to userData/updates/apply.log so a failed
+// swap can be diagnosed afterwards instead of vanishing silently.
+async function appendUpdateLog(message) {
+  try {
+    const logDirectory = path.join(app.getPath('userData'), 'updates');
+    await fsp.mkdir(logDirectory, { recursive: true });
+    await fsp.appendFile(path.join(logDirectory, 'apply.log'), `${new Date().toISOString()} ${message}\n`, 'utf8');
+  } catch {
+    // Logging must never break the update flow.
+  }
 }
 
 function numericVersion(value) {
@@ -57,9 +100,15 @@ function validReleaseAssetUrl(value) {
   }
 }
 
-async function fetchReleaseAsset(url, timeout = 15000) {
+async function fetchReleaseAsset(url, timeout = 15000, signal = null, extraHeaders = null) {
   if (!validReleaseAssetUrl(url)) throw new Error('The release asset URL is not trusted.');
-  const response = await fetch(url, { signal: AbortSignal.timeout(timeout), redirect: 'follow' });
+  const timeoutSignal = AbortSignal.timeout(timeout);
+  const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+  const response = await fetch(url, {
+    signal: combined,
+    redirect: 'follow',
+    headers: { 'User-Agent': 'Vortex-Place-Launcher', ...(extraHeaders || {}) }
+  });
   const finalUrl = new URL(response.url);
   if (finalUrl.protocol !== 'https:' || !['github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'].includes(finalUrl.hostname)) {
     throw new Error('The download was redirected to an untrusted host.');
@@ -74,112 +123,271 @@ async function hashFile(filePath) {
   return hash.digest('hex');
 }
 
-async function downloadUpdate(release, version, installer, checksumAsset) {
-  const checksumResponse = await fetchReleaseAsset(checksumAsset.browser_download_url);
-  const checksumText = await checksumResponse.text();
-  if (checksumText.length > 2048) throw new Error('The installer checksum file is too large.');
-  const expectedHash = checksumText.trim().split(/\s+/)[0].toLowerCase();
-  if (!/^[a-f\d]{64}$/.test(expectedHash)) throw new Error('The installer checksum is invalid.');
-
-  const updateDirectory = path.join(app.getPath('userData'), 'updates');
-  await fsp.mkdir(updateDirectory, { recursive: true });
-  const fileName = `Vortex Launcher Setup ${version}.exe`;
-  const finalPath = path.join(updateDirectory, fileName);
-  try {
-    if ((await fsp.stat(finalPath)).size === installer.size && (await hashFile(finalPath)) === expectedHash) {
-      updateFilePath = finalPath;
-      setUpdateState({ status: 'downloaded', progress: 100, latestVersion: version, releaseUrl: release.html_url });
-      return;
+async function cleanupLegacyUpdateFiles(keepInstallerName = '') {
+  const updatesDirectory = path.join(app.getPath('userData'), 'updates');
+  for (const name of await fsp.readdir(updatesDirectory).catch(() => [])) {
+    if (name === 'apply.log' || name === keepInstallerName) continue;
+    if (/\.zip(?:\.|$)|\.partial$/i.test(name) || /^Vortex\.Launcher\.Setup\./i.test(name)) {
+      await fsp.rm(path.join(updatesDirectory, name), { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }).catch(() => {});
     }
-  } catch {
-    // No verified cached installer exists; download a fresh copy below.
+  }
+  const oldStaging = path.join(app.getPath('userData'), 'update-staging');
+  await fsp.rm(oldStaging, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 }).catch((error) => {
+    void appendUpdateLog(`update: old ZIP staging cleanup skipped: ${error.message}`);
+  });
+}
+
+function waitFor(delay) {
+  return new Promise((resolve) => setTimeout(resolve, delay));
+}
+
+// Streams the installer into a partial file, resuming from what is already on disk.
+// Returns false when the server ignored the Range header, so the caller restarts clean.
+async function streamInstallerToFile(url, installer, partialPath, sizeOnDisk, expectedHash) {
+  const headers = sizeOnDisk > 0 ? { Range: `bytes=${sizeOnDisk}-` } : null;
+  const abort = new AbortController();
+  let idleTimer = setTimeout(() => abort.abort(new Error('stalled')), DOWNLOAD_STALL_TIMEOUT_MS);
+  const response = await fetchReleaseAsset(url, 10 * 60 * 1000, abort.signal, headers);
+  const resumed = Boolean(headers) && response.status === 206;
+  if (headers && !resumed && response.status !== 200) {
+    clearTimeout(idleTimer);
+    throw new Error(`GitHub asset request failed (${response.status}).`);
+  }
+  if (!response.body) {
+    clearTimeout(idleTimer);
+    throw new Error('GitHub did not return an installer file.');
   }
 
-  const response = await fetchReleaseAsset(installer.browser_download_url, 10 * 60 * 1000);
-  const tempPath = path.join(updateDirectory, `${fileName}.${randomUUID()}.partial`);
-  let downloaded = 0;
-  let lastProgressUpdate = 0;
+  const startAt = resumed ? sizeOnDisk : 0;
   const hash = createHash('sha256');
+  if (resumed) {
+    const existing = fs.createReadStream(partialPath);
+    for await (const chunk of existing) hash.update(chunk);
+  } else {
+    await fsp.rm(partialPath, { force: true }).catch(() => {});
+  }
+
+  let received = startAt;
+  let lastProgressUpdate = 0;
   const progressTransform = new Transform({
     transform(chunk, _encoding, callback) {
-      downloaded += chunk.length;
-      if (downloaded > installer.size || downloaded > MAX_INSTALLER_BYTES) {
+      received += chunk.length;
+      if (received > installer.size || received > MAX_INSTALLER_BYTES) {
         callback(new Error('The installer download exceeded its published size.'));
         return;
       }
       hash.update(chunk);
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => abort.abort(new Error('stalled')), DOWNLOAD_STALL_TIMEOUT_MS);
       const now = Date.now();
       if (now - lastProgressUpdate >= 350) {
         lastProgressUpdate = now;
-        setUpdateState({ status: 'downloading', progress: Math.min(99, Math.floor((downloaded / installer.size) * 100)), latestVersion: version, releaseUrl: release.html_url });
+        setUpdateState({
+          status: 'downloading',
+          progress: Math.min(99, Math.floor((received / installer.size) * 100)),
+          latestVersion: installer.version ?? updateState.latestVersion,
+          releaseUrl: updateState.releaseUrl
+        });
       }
       callback(null, chunk);
     }
   });
 
   try {
-    if (!response.body) throw new Error('GitHub did not return an installer file.');
-    setUpdateState({ status: 'downloading', progress: 0, latestVersion: version, releaseUrl: release.html_url });
-    await pipeline(Readable.fromWeb(response.body), progressTransform, fs.createWriteStream(tempPath, { flags: 'wx' }));
-    const downloadedHash = hash.digest('hex');
-    if (downloaded !== installer.size || downloadedHash !== expectedHash) throw new Error('The installer did not pass its size and checksum verification.');
-    await fsp.rm(finalPath, { force: true });
-    await fsp.rename(tempPath, finalPath);
-    updateFilePath = finalPath;
-    setUpdateState({ status: 'downloaded', progress: 100, latestVersion: version, releaseUrl: release.html_url });
-  } catch (error) {
-    await fsp.rm(tempPath, { force: true }).catch(() => {});
-    throw error;
+    await pipeline(
+      Readable.fromWeb(response.body),
+      progressTransform,
+      fs.createWriteStream(partialPath, resumed ? { flags: 'a' } : { flags: 'w' })
+    );
+    const digest = hash.digest('hex');
+    if (received !== installer.size || digest !== expectedHash) {
+      throw new Error(`The installer failed verification (${received} of ${installer.size} bytes).`);
+    }
+    return true;
+  } finally {
+    clearTimeout(idleTimer);
   }
 }
 
+async function downloadUpdate(release, version, installer, checksumAsset) {
+  await appendUpdateLog(`download: requesting checksum for ${installer.name}`);
+  const checksumResponse = await fetchReleaseAsset(checksumAsset.browser_download_url);
+  const checksumText = await checksumResponse.text();
+  if (checksumText.length > 2048) throw new Error('The installer checksum file is too large.');
+  const expectedHash = checksumText.trim().split(/\s+/)[0].toLowerCase();
+  if (!/^[a-f\d]{64}$/.test(expectedHash)) throw new Error('The installer checksum is invalid.');
+  await appendUpdateLog(`download: checksum received for ${installer.name} (${installer.size} bytes)`);
+
+  const updateDirectory = path.join(app.getPath('userData'), 'updates');
+  await fsp.mkdir(updateDirectory, { recursive: true });
+  const fileName = installer.name;
+  await cleanupLegacyUpdateFiles(fileName);
+  const finalPath = path.join(updateDirectory, fileName);
+  try {
+    if ((await fsp.stat(finalPath)).size === installer.size && (await hashFile(finalPath)) === expectedHash) {
+      await appendUpdateLog('download: a verified installer is already cached, applying it');
+      await installUpdate(finalPath, version, release);
+      return;
+    }
+  } catch {
+    // No verified cached installer exists; download a fresh copy below.
+  }
+
+  const partialPath = path.join(updateDirectory, `${fileName}.partial`);
+  const asset = { ...installer, version };
+  let lastError = null;
+  for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
+    const sizeOnDisk = await fsp.stat(partialPath).then((info) => info.size).catch(() => 0);
+    const resuming = sizeOnDisk > 0 && sizeOnDisk < installer.size;
+    await appendUpdateLog(`download: attempt ${attempt}/${DOWNLOAD_ATTEMPTS} for ${fileName}${resuming ? `, resuming at ${sizeOnDisk} bytes` : ''}`);
+    try {
+      setUpdateState({
+        status: 'downloading',
+        progress: resuming ? Math.min(99, Math.floor((sizeOnDisk / installer.size) * 100)) : 0,
+        latestVersion: version,
+        releaseUrl: release.html_url,
+        errorMessage: null
+      });
+      await streamInstallerToFile(installer.browser_download_url, asset, partialPath, resuming ? sizeOnDisk : 0, expectedHash);
+      await fsp.rm(finalPath, { force: true, maxRetries: 5, retryDelay: 300 });
+      await fsp.rename(partialPath, finalPath);
+      await appendUpdateLog(`download: ${fileName} verified after ${attempt} attempt(s)`);
+      await installUpdate(finalPath, version, release);
+      return;
+    } catch (error) {
+      lastError = error;
+      await appendUpdateLog(`download: attempt ${attempt} failed (${error.message})`);
+      if (attempt < DOWNLOAD_ATTEMPTS) await waitFor(2000 * attempt);
+    }
+  }
+  await fsp.rm(partialPath, { force: true, maxRetries: 3, retryDelay: 250 }).catch(() => {});
+  throw new Error(`Не удалось скачать обновление после ${DOWNLOAD_ATTEMPTS} попыток: ${lastError?.message ?? 'неизвестная ошибка'}`);
+}
+
+async function installUpdate(installerPath, version, release) {
+  const exePath = app.getPath('exe');
+  const logPath = path.join(app.getPath('userData'), 'updates', 'apply.log');
+  const script = path.join(app.getPath('temp'), `vortex-installer-${randomUUID()}.ps1`);
+  const q = (value) => `'${String(value).replace(/'/g, "''")}'`;
+  const body = [
+    "$ErrorActionPreference = 'Continue'",
+    `$log = ${q(logPath)}`,
+    "function Note($message) { Add-Content -LiteralPath $log -Value ((Get-Date -Format s) + ' ' + $message) -ErrorAction SilentlyContinue }",
+    "Note 'update: waiting for Vortex to close before running the signed NSIS installer'",
+    `Wait-Process -Id ${process.pid} -Timeout 90 -ErrorAction SilentlyContinue`,
+    `if (Get-Process -Id ${process.pid} -ErrorAction SilentlyContinue) { Note 'update: closing the old launcher'; Stop-Process -Id ${process.pid} -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2 }`,
+    `Note ('update: starting verified setup ${version}')`,
+    `$setup = Start-Process -FilePath ${q(installerPath)} -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden`,
+    "Note ('update: setup exit code ' + $setup.ExitCode)",
+    `if ($setup.ExitCode -eq 0) { Note 'update: setup succeeded, starting updated launcher'; Start-Process -FilePath ${q(exePath)} -ErrorAction Stop } else { Note 'update: setup failed; preserving verified installer for retry and reopening the existing launcher'; Start-Process -FilePath ${q(exePath)} -ErrorAction SilentlyContinue }`,
+    `Remove-Item -LiteralPath ${q(script)} -Force -ErrorAction SilentlyContinue`
+  ].join('\r\n');
+  await fsp.writeFile(script, `\ufeff${body}`, 'utf8');
+  await appendUpdateLog(`update: verified setup cached at ${installerPath}`);
+  await appendUpdateLog('update: preparing hidden installer handoff');
+  setUpdateState({ status: 'applying', progress: 100, latestVersion: version, releaseUrl: release.html_url, errorMessage: null });
+  // The helper must outlive this process, so it is started through `cmd /c start`:
+  // a detached powershell.exe is not executed reliably on Windows, while a process
+  // created by `start` keeps running after the launcher exits.
+  const helper = spawn('cmd.exe', [
+    '/c', 'start', '/b', '',
+    'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script
+  ], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true
+  });
+  await new Promise((resolve, reject) => {
+    helper.once('spawn', resolve);
+    helper.once('error', reject);
+  });
+  helper.unref();
+  await appendUpdateLog(`update: installer helper dispatched (cmd pid ${helper.pid})`);
+  setTimeout(() => app.exit(0), 400);
+}
+
 async function checkForUpdates() {
+  if (updateCheckRunning) return;
   if (!app.isPackaged) {
     setUpdateState({ status: 'development', progress: 0 });
     return;
   }
 
-  setUpdateState({ status: 'checking', progress: 0, latestVersion: null, releaseUrl: null });
+  updateCheckRunning = true;
+  setUpdateState({ status: 'checking', progress: 0, latestVersion: null, releaseUrl: null, errorMessage: null });
+  // Each step is logged before and after the network call: if a check ever stalls again,
+  // apply.log shows exactly which request never came back.
+  const startedAt = Date.now();
+  await appendUpdateLog(`check: querying ${GITHUB_REPOSITORY} releases`);
   try {
-    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest`, {
+    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPOSITORY}/releases?per_page=20`, {
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Vortex-Place-Launcher' },
-      signal: AbortSignal.timeout(6000)
+      signal: AbortSignal.timeout(8000)
     });
+    await appendUpdateLog(`check: release list answered with ${response.status} after ${Date.now() - startedAt} ms`);
     if (response.status === 404) {
-      setUpdateState({ status: 'unavailable', progress: 0 });
+      setUpdateState({ status: 'unavailable', progress: 0, latestVersion: null, releaseUrl: null, errorMessage: null });
       return;
     }
     if (!response.ok) throw new Error(`GitHub returned ${response.status}.`);
-    const release = await response.json();
-    const version = String(release.tag_name ?? '').replace(/^v/i, '');
-    if (!numericVersion(version)) throw new Error('The release version is invalid.');
+    const releases = await response.json();
+    const candidate = findNewestInstallerRelease(Array.isArray(releases) ? releases : []);
+    if (!candidate) {
+      // Releases exist but none has a complete installer + SHA-256 pair yet
+      // (e.g. an empty draft-like release). Nothing to install, so this is not an error.
+      await appendUpdateLog('check: no published release carries a complete installer yet');
+      setUpdateState({ status: 'unavailable', progress: 0, latestVersion: null, releaseUrl: null, errorMessage: null });
+      return;
+    }
+    const { release, version, installer, checksumAsset } = candidate;
+    await appendUpdateLog(`check: newest published version is ${version}, installed is ${app.getVersion()}`);
     if (!isNewerVersion(version, app.getVersion())) {
       setUpdateState({ status: 'current', progress: 0, latestVersion: version, releaseUrl: release.html_url });
       return;
     }
-
-    const expectedName = `Vortex Launcher Setup ${version}.exe`;
-    const assets = Array.isArray(release.assets) ? release.assets : [];
-    const installer = assets.find((asset) => asset.name === expectedName && Number(asset.size) > 0 && Number(asset.size) <= MAX_INSTALLER_BYTES);
-    const checksumAsset = assets.find((asset) => asset.name === `${expectedName}.sha256` && Number(asset.size) <= 2048);
-    if (!release.html_url?.startsWith(`https://github.com/${GITHUB_REPOSITORY}/releases/`) || !installer?.browser_download_url || !checksumAsset?.browser_download_url) {
-      throw new Error('This release is missing its installer or SHA-256 file.');
-    }
     await downloadUpdate(release, version, installer, checksumAsset);
   } catch (error) {
     console.warn('Vortex update check failed:', error.message);
-    setUpdateState({ status: 'error', progress: 0 });
+    await appendUpdateLog(`check failed after ${Date.now() - startedAt} ms: ${error.message}`);
+    setUpdateState({ status: 'error', progress: 0, errorMessage: String(error.message || 'Update failed').slice(0, 240) });
+  } finally {
+    updateCheckRunning = false;
   }
 }
 
+// Picks the highest-versioned published release that carries a complete
+// installer + .sha256 pair. Empty releases (no files uploaded yet) are skipped.
+function findNewestInstallerRelease(releases) {
+  const candidates = [];
+  for (const release of releases) {
+    if (!release || release.draft || release.prerelease) continue;
+    const version = String(release.tag_name ?? '').replace(/^v/i, '');
+    if (!numericVersion(version)) continue;
+    if (!release.html_url?.startsWith(`https://github.com/${GITHUB_REPOSITORY}/releases/`)) continue;
+    const assets = Array.isArray(release.assets) ? release.assets : [];
+    const installer = assets.find((asset) => asset.name === `Vortex.Launcher.Setup.${version}.exe` && Number(asset.size) > 0 && Number(asset.size) <= MAX_INSTALLER_BYTES && asset.browser_download_url);
+    const checksumAsset = assets.find((asset) => asset.name === `Vortex.Launcher.Setup.${version}.exe.sha256` && Number(asset.size) > 0 && Number(asset.size) <= 2048 && asset.browser_download_url);
+    if (installer && checksumAsset) candidates.push({ release, version, installer, checksumAsset });
+  }
+  candidates.sort((a, b) => (isNewerVersion(a.version, b.version) ? -1 : isNewerVersion(b.version, a.version) ? 1 : 0));
+  return candidates[0] ?? null;
+}
+
 function createWindow() {
+  let mainWindow = null;
+  // loadFile() resolving only means navigation completed; the first renderer
+  // frame may still be blank. Wait until Chromium has painted the splash.
+  let splashShownAt = null;
+  let splashFailed = false;
+  let mainReady = false;
+
   const splash = new BrowserWindow({
-    width: 520,
-    height: 360,
-    minWidth: 520,
-    minHeight: 360,
-    maxWidth: 520,
-    maxHeight: 360,
+    width: 440,
+    height: 300,
+    minWidth: 440,
+    minHeight: 300,
+    maxWidth: 440,
+    maxHeight: 300,
     frame: false,
     resizable: false,
     show: false,
@@ -194,24 +402,27 @@ function createWindow() {
     }
   });
   startupWindow = splash;
-  splash.webContents.once('did-finish-load', () => splash.webContents.send('updates:state', publicUpdateState()));
-  splash.once('closed', () => { if (startupWindow === splash) startupWindow = null; });
-  // loadFile() resolving only means navigation completed; the first renderer
-  // frame may still be blank. Wait until Chromium has painted the splash.
-  let splashShownAt = null;
-  let splashFailed = false;
-  let mainReady = false;
-  let startupTransitionStarted = false;
-  const revealMainWindow = () => {
+
+  revealMainWindow = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
     if (!mainReady || startupTransitionStarted || (splashShownAt === null && !splashFailed)) return;
+    // Keep the startup window open while an update is checked, downloaded or handed off.
+    if (shouldWaitForUpdate()) return;
     startupTransitionStarted = true;
     const visibleFor = splashShownAt === null ? MIN_SPLASH_VISIBLE_MS : Date.now() - splashShownAt;
     const remaining = Math.max(0, MIN_SPLASH_VISIBLE_MS - visibleFor);
     setTimeout(() => {
-      if (!window.isDestroyed()) window.show();
+      if (!mainWindow.isDestroyed()) mainWindow.show();
       if (!splash.isDestroyed()) splash.destroy();
     }, remaining);
   };
+
+  splash.webContents.once('did-finish-load', () => splash.webContents.send('updates:state', publicUpdateState()));
+  splash.once('closed', () => {
+    if (startupWindow === splash) startupWindow = null;
+    // Alt+F4 on the splash must never leave the user with a hidden main window.
+    if (!startupTransitionStarted && mainReady && mainWindow && !mainWindow.isDestroyed()) mainWindow.show();
+  });
 
   splash.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error(`Splash failed to load (${errorCode}): ${errorDescription}`);
@@ -252,17 +463,21 @@ function createWindow() {
       sandbox: true
     }
   });
+  mainWindow = window;
 
   const sendWindowState = () => window.webContents.send('window:state', { isMaximized: window.isMaximized() });
   window.on('maximize', sendWindowState);
   window.on('unmaximize', sendWindowState);
   window.webContents.once('did-finish-load', sendWindowState);
-  window.webContents.once('did-finish-load', () => window.webContents.send('updates:state', publicUpdateState()));
+  window.webContents.once('did-finish-load', () => {
+    window.webContents.send('updates:state', pendingUpdateStateForMainWindow ?? publicUpdateState());
+  });
   window.once('ready-to-show', () => {
     mainReady = true;
     revealMainWindow();
   });
   window.loadFile(path.join(__dirname, '..', 'index.html'));
+  onUpdateStateChanged = revealMainWindow;
 }
 
 function windowFromEvent(event) {
@@ -286,14 +501,8 @@ ipcMain.handle('window:close', (event) => {
 });
 
 ipcMain.handle('updates:get-state', () => publicUpdateState());
+ipcMain.handle('updates:retry', () => checkForUpdates());
 
-ipcMain.handle('updates:open-installer', async () => {
-  if (updateState.status !== 'downloaded' || !updateFilePath) throw new Error('No verified update installer is ready.');
-  await fsp.access(updateFilePath, fs.constants.R_OK);
-  const error = await shell.openPath(updateFilePath);
-  if (error) throw new Error(error);
-  return true;
-});
 
 async function fetchJson(url, timeout = 12000) {
   const response = await fetch(url, {
@@ -517,6 +726,7 @@ ipcMain.handle('games:clear-cache', async () => {
 });
 
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return;
   Menu.setApplicationMenu(null);
   createWindow();
   void checkForUpdates();

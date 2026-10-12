@@ -46,10 +46,15 @@ const icons = {
   windowMinimize: '<path d="M5 12h14"/>',
   windowMaximize: '<rect x="5" y="5" width="14" height="14" rx="1.5"/>',
   windowRestore: '<rect x="8" y="5" width="11" height="11" rx="1.5"/><path d="M16 16v3H5V8h3"/>',
-  chevronDown: '<path d="m6 9 6 6 6-6"/>'
+  chevronDown: '<path d="m6 9 6 6 6-6"/>',
+  navUp: '<path d="M12 19V5m-7 7 7-7 7 7"/>',
+  navDown: '<path d="M12 5v14m7-7-7 7-7-7"/>'
 };
 
-const games = [
+// Built-in starter list removed: the home page and catalog now show only the
+// games the user adds in Settings (plus live Roblox results).
+const games = [];
+const LEGACY_STARTER_GAMES_DISABLED = [
   { id: '2753915549', title: 'Blox Fruits', genre: 'Приключения', genreKey: 'adventure', art: 'blox', iconKey: 'sword', tag: 'ПРИКЛЮЧЕНИЕ', tagKey: 'adventure', description: 'Путешествуй по морям и открывай способности.', descriptionKey: 'bloxDescription', search: 'блокс фруктс экшен приключение anime anime' },
   { id: '6516141723', title: 'DOORS', genre: 'Хоррор', genreKey: 'horror', art: 'doors', iconKey: 'door', tag: 'ХОРРОР', tagKey: 'horror', description: 'Проверь нервы: за каждой дверью кто-то есть.', descriptionKey: 'doorsDescription', search: 'дурс двери страшная игра хоррор ужасы' },
   { id: '4924922222', title: 'Brookhaven RP', genre: 'Ролевая', genreKey: 'roleplay', art: 'brookhaven', iconKey: 'home', tag: 'РОЛЕВАЯ ИГРА', tagKey: 'roleplay', description: 'Выбери дом, машину и свою историю.', descriptionKey: 'brookhavenDescription', search: 'брукхейвен ролевая город roleplay' },
@@ -73,12 +78,43 @@ const palettes = [
   { key: 'slate', color: '#8190a7' }
 ];
 
+// Sidebar navigation. The order and visibility are user configurable
+// in Settings → Interface.
+const NAV_ITEMS = [
+  { key: 'home', icon: 'home', group: 'menu' },
+  { key: 'catalog', icon: 'compass', group: 'menu' },
+  { key: 'favorites', icon: 'heart', group: 'menu' },
+  { key: 'recent', icon: 'clock', group: 'menu' },
+  { key: 'plans', icon: 'flag', group: 'space' },
+  { key: 'settings', icon: 'sliders', group: 'space' }
+];
+const NAV_KEYS = NAV_ITEMS.map((item) => item.key);
+
+function navOrder() {
+  const stored = Array.isArray(preferences.sidebarOrder) ? preferences.sidebarOrder.filter((key) => NAV_KEYS.includes(key)) : [];
+  return [...new Set([...stored, ...NAV_KEYS])];
+}
+
+function navItemMarkup(item) {
+  return `<button class="nav-item" data-nav="${item.key}"><span class="nav-icon" data-icon="${item.icon}"></span><span>${t(`nav.${item.key}`)}</span></button>`;
+}
+
+function renderSidebarNav() {
+  const order = navOrder();
+  const items = order.map((key) => NAV_ITEMS.find((item) => item.key === key)).filter(Boolean);
+  const group = (name) => items.filter((item) => item.group === name).map(navItemMarkup).join('');
+  return { menu: group('menu'), space: group('space') };
+}
+
 const preferenceDefaults = {
   accent: '#9b7cff', accentMode: 'solid', accentSecondary: '#c274ec', gradientAngle: 135,
   theme: 'dark', themeBackground: '', themeSurface: '',
   density: 'comfortable', corners: 'soft', showDescriptions: true, showStats: true,
-  homeGreeting: '', homeFeaturedGame: '2753915549', homeGameCount: 4, homeHeroStyle: 'orbit',
+  homeGreeting: '', customGames: [], homeFeaturedGame: '', homeGameCount: 4, homeHeroStyle: 'orbit',
   homeShowHero: true, homeShowRecommendations: true,
+  homeLayout: 'balanced', homeSkin: 'aurora', homeMinimal: false,
+  sidebarOrder: [], uiSidebarTip: true, uiProfileCard: true, uiTopbarSearch: true,
+  uiBreadcrumb: true, uiNotifications: true, uiSidebarFoot: true, uiUpdateBanner: true,
   pageTransition: 'fade', cardAnimation: 'rise', glow: 72, ambient: true, motion: true,
   contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home'
 };
@@ -86,7 +122,7 @@ const preferenceDefaults = {
 const translations = {
   ru: {
     'brand.home': 'Vortex — главная', 'window.toolbar': 'Панель окна', 'window.drag': 'Перетащите, чтобы переместить окно', 'window.minimize': 'Свернуть окно', 'window.maximize': 'Развернуть окно', 'window.restore': 'Восстановить размер окна', 'window.close': 'Закрыть окно', 'window.context': 'ТВОЁ ПРОСТРАНСТВО ДЛЯ НОВЫХ МИРОВ', 'sidebar.menu': 'МЕНЮ', 'sidebar.primaryNav': 'Основная навигация', 'sidebar.space': 'ТВОЁ ПРОСТРАНСТВО', 'sidebar.spaceNav': 'Твоё пространство',
-    'nav.home': 'Главная', 'nav.catalog': 'Поиск игр', 'nav.favorites': 'Избранное', 'nav.recent': 'Недавние', 'nav.reviews': 'Отзывы', 'nav.plans': 'В планах', 'nav.settings': 'Настройки',
+    'nav.home': 'Главная', 'nav.catalog': 'Поиск игр', 'nav.favorites': 'Избранное', 'nav.recent': 'Недавние', 'nav.reviews': 'Отзывы', 'nav.plans': 'В планах', 'nav.settings': 'Настройки', 'settings.tab.version': 'Версия',
     'common.soon': 'СКОРО', 'sidebar.tip': 'Новый мир уже где-то рядом', 'sidebar.explore': 'Исследовать', 'profile.name': 'Мой лаунчер', 'profile.local': 'Локальный профиль', 'profile.settings': 'Профиль и настройки', 'notifications': 'Уведомления',
     'search.placeholder': 'Найти игру по названию или Place ID...', 'page.home.eyebrow': 'ПРОСТО НАЙТИ СВОЙ МИР', 'page.home.title': 'Привет, игрок', 'page.home.description': 'Меньше долгих поисков — больше игр, которые хочется запустить.',
     'hero.kicker': 'ВЫБОР ПЛЕЙСОВ', 'hero.title': 'Твой следующий игровой мир уже здесь', 'hero.body': 'Собрали разные плейсы Roblox в одном месте. Выбирай настроение, добавляй любимое и запускай в один клик.', 'hero.play': 'Запустить {title}', 'hero.meta': 'популярные плейсы', 'hero.orbit': 'МИРЫ УЖЕ ЖДУТ',
@@ -102,21 +138,23 @@ const translations = {
     'page.recent.eyebrow': 'БЫСТРЫЙ ДОСТУП', 'page.recent.title': 'Недавние', 'page.recent.description': 'Игры, которые ты запускал, будут собраны здесь.', 'empty.recent.title': 'История пока пуста', 'empty.recent.body': 'Запусти игру — она появится в недавних.',
     'page.reviews.eyebrow': 'ИДЕЯ НА БУДУЩЕЕ', 'page.reviews.title': 'Отзывы и оценки', 'page.reviews.description': 'Помоги другим быстрее находить хорошие игры.', 'reviews.title': 'Отзывы появятся в следующих версиях', 'reviews.body': 'Планируем добавить оценки игроков, короткие отзывы и подборки вроде «для игры с друзьями» или «подойдёт новичкам».', 'reviews.soon': 'Скоро',
     'page.plans.eyebrow': 'ДАЛЬШЕ — БОЛЬШЕ', 'page.plans.title': 'В планах', 'page.plans.description': 'Идеи, которые помогут быстрее находить игры и собирать друзей.', 'plans.friends': 'Играть с друзьями', 'plans.friendsBody': 'Приглашения, список друзей и быстрый переход в ту же игру.', 'plans.recommendations': 'Умные рекомендации', 'plans.recommendationsBody': 'Подбирать новые миры по жанрам и сохранённым играм.', 'plans.collections': 'Коллекции и списки', 'plans.collectionsBody': 'Свои подборки: «на вечер», «кооператив» или «попробовать».', 'plans.reviews': 'Отзывы и оценки', 'plans.reviewsBody': 'Оценки игроков, короткие отзывы и подборки сообщества.', 'plans.status': 'В ПЛАНАХ',
-    'page.settings.eyebrow': 'ТВОЁ ПРИЛОЖЕНИЕ — ТВОИ ПРАВИЛА', 'page.settings.title': 'Настройки', 'page.settings.description': 'Настрой внешний вид и поведение лаунчера.', 'settings.tab.home': 'Главная', 'settings.tab.accent': 'Внешний вид', 'settings.tab.cards': 'Карточки', 'settings.tab.effects': 'Эффекты', 'settings.tab.general': 'Общие',
+    'page.settings.eyebrow': 'ТВОЁ ПРИЛОЖЕНИЕ — ТВОИ ПРАВИЛА', 'page.settings.title': 'Настройки', 'page.settings.description': 'Настрой внешний вид и поведение лаунчера.', 'settings.tab.home': 'Главная', 'settings.tab.accent': 'Внешний вид', 'settings.tab.cards': 'Карточки', 'settings.tab.effects': 'Эффекты', 'settings.tab.interface': 'Интерфейс', 'settings.tab.general': 'Общие',
     'settings.accent.title': 'Цвет акцента', 'settings.accent.body': 'Выбери цвет — он обновится во всём лаунчере.', 'settings.customColor': 'Свой цвет', 'settings.theme.title': 'Тема приложения', 'settings.theme.body': 'Выбери оформление интерфейса.', 'settings.dark': 'Тёмная', 'settings.light': 'Светлая', 'settings.oled': 'Чёрная', 'settings.preview.title': 'Так будет выглядеть лаунчер', 'settings.preview.body': 'Акцент меняется во всех карточках и кнопках',
-    'settings.home.title': 'Главная страница', 'settings.home.body': 'Выбери, что показывать и какую игру вынести вперёд.', 'settings.home.greeting': 'Твоё приветствие', 'settings.home.greetingHint': 'Оставь пустым, чтобы вернуть «Привет, игрок».', 'settings.home.featured': 'Игра на обложке', 'settings.home.sections': 'Блоки главной', 'settings.home.hero': 'Большая обложка', 'settings.home.recommendations': 'Подборка игр', 'settings.home.gameCount': 'Размер подборки', 'settings.home.heroStyle': 'Стиль обложки', 'settings.home.orbit': 'Орбита', 'settings.home.aurora': 'Сияние', 'settings.home.minimal': 'Минимализм',
+    'home.empty.title': 'Добавь свою игру', 'home.empty.body': 'Вставь ссылку на игру Roblox или её Place ID в настройках главной страницы.', 'home.empty.action': 'Открыть настройки',
+    'settings.home.customTitle': 'Мои игры', 'settings.home.customBody': 'Вставь ссылку roblox.com/games/… или Place ID.', 'settings.home.customHint': 'Название игры или ссылка', 'settings.home.searchHint': 'Название игры, ссылка или Place ID', 'settings.home.searchEmpty': 'Ничего не нашлось — попробуй другое название.', 'settings.home.searchLoading': 'Ищем игры в Roblox…', 'settings.home.add': 'Добавить', 'settings.home.remove': 'Удалить', 'settings.home.customEmpty': 'Пока нет своих игр. Добавь первую выше.', 'settings.home.customInvalid': 'Вставь ссылку вида roblox.com/games/123… или Place ID из цифр.', 'settings.home.customDesktopOnly': 'Добавление игр доступно в установленном приложении.', 'settings.home.customLoading': 'Ищем игру в Roblox…', 'settings.home.customNotFound': 'Игра с таким ID не найдена.', 'settings.home.customError': 'Не удалось связаться с Roblox. Попробуй позже.', 'settings.home.customAdded': 'Игра «{game}» добавлена',
+    'settings.home.title': 'Главная страница', 'settings.home.body': 'Выбери, что показывать и какую игру вынести вперёд.', 'settings.home.greeting': 'Твоё приветствие', 'settings.home.greetingHint': 'Оставь пустым, чтобы вернуть «Привет, игрок».', 'settings.home.featured': 'Игра на обложке', 'settings.home.sections': 'Блоки главной', 'settings.home.sectionsBody': 'Что показывать на главной и как она выглядит.', 'settings.home.hero': 'Большая обложка', 'settings.home.heroHint': 'Баннер с игрой дня и кнопкой запуска.', 'settings.home.recommendations': 'Подборка игр', 'settings.home.recommendationsHint': 'Сетка карточек с играми из библиотеки.', 'settings.home.gameCount': 'Размер подборки', 'settings.home.heroStyle': 'Стиль обложки', 'settings.home.heroStyleBody': 'Как выглядит баннер с игрой.', 'settings.home.orbit': 'Орбита', 'settings.home.aurora': 'Сияние', 'settings.home.minimal': 'Минимализм', 'settings.home.layout': 'Макет главной', 'settings.home.layoutBody': 'Насколько крупным будет баннер.', 'settings.home.layoutBalanced': 'Обычный', 'settings.home.layoutSpotlight': 'Обложка', 'settings.home.layoutLibrary': 'Библиотека', 'settings.home.minimalBody': 'Скрыть заголовок и подписи, оставить игры.', 'settings.home.skin': 'Фон главной', 'settings.home.skinBody': 'Дополнительный узор под содержимым.', 'settings.home.skinAurora': 'Сияние', 'settings.home.skinGrid': 'Сетка', 'settings.home.skinPlain': 'Ровный', 'settings.home.hint': 'Размер и вид карточек настраиваются во вкладке «Карточки», цвет — во «Внешний вид».', 'home.picks.emptyTitle': 'Подборка пока пуста', 'home.picks.emptyBody': 'Открой поиск игр Roblox — понравившиеся появятся здесь и в избранном.',
     'settings.accentMode': 'Заливка акцента', 'settings.solid': 'Сплошная', 'settings.gradient': 'Градиент', 'settings.gradientEnd': 'Второй цвет', 'settings.gradientAngle': 'Направление градиента', 'settings.colorHue': 'Оттенок', 'settings.colorSaturation': 'Насыщенность', 'settings.colorLightness': 'Светлота', 'settings.colorCode': 'HEX-код', 'settings.themeBackground': 'Цвет фона', 'settings.themeSurface': 'Цвет панелей', 'settings.themeColorHint': 'Можно ввести свой HEX-код; настройки применятся сразу.', 'settings.themeReset': 'Цвета темы по умолчанию',
     'settings.density.title': 'Плотность карточек', 'settings.density.body': 'Выбери размер карточек и количество игр в ряду.', 'settings.spacious': 'Крупные', 'settings.comfortable': 'Обычные', 'settings.compact': 'Компактные', 'settings.corners.title': 'Углы карточек', 'settings.corners.body': 'Выбери более мягкий или строгий вид.', 'settings.soft': 'Мягкие', 'settings.sharp': 'Строгие', 'settings.descriptions': 'Описания игр', 'settings.descriptionsBody': 'Показывать короткий текст на карточках.', 'settings.playerStats': 'Статистика игроков', 'settings.playerStatsBody': 'Показывать текущий онлайн и оценку.', 'settings.anyScreen': 'Предпросмотр размера карточек', 'settings.appliesToCatalog': 'Настройка сразу применяется к каталогу',
     'settings.effects.title': 'Атмосфера интерфейса', 'settings.effects.body': 'Свечение и анимации можно настроить отдельно.', 'settings.glow.title': 'Подсветка акцента', 'settings.glow.body': 'Сила цветного свечения в фоне и элементах.', 'settings.ambient.title': 'Свечение фона', 'settings.ambient.body': 'Мягкие цветовые ореолы на заднем плане.', 'settings.motion.title': 'Анимации', 'settings.motion.body': 'Плавные переходы и реакции элементов.', 'settings.transitionStyle': 'Переход между страницами', 'settings.transition.fade': 'Плавный', 'settings.transition.slide': 'Сдвиг', 'settings.transition.zoom': 'Масштаб', 'settings.transition.none': 'Без перехода', 'settings.cardAnimation': 'Появление карточек', 'settings.cards.rise': 'Подъём', 'settings.cards.fade': 'Затухание', 'settings.cards.pop': 'Увеличение', 'settings.cards.none': 'Без анимации', 'settings.contrast.title': 'Повышенный контраст', 'settings.contrast.body': 'Более заметные границы и подписи.', 'settings.savedLocally': 'Настройки сохраняются на этом компьютере.',
-    'settings.language.title': 'Язык интерфейса', 'settings.language.body': 'Язык можно поменять в любой момент.', 'settings.language.ru': 'Русский', 'settings.language.en': 'English', 'settings.history.title': 'История запусков', 'settings.history.body': 'Сохранять недавно открытые игры на этом устройстве.', 'settings.cache.title': 'Кэш каталога', 'settings.cache.body': 'Поиск, разделы Discover и обложки хранятся пять минут.', 'settings.cacheClear': 'Очистить кэш каталога', 'settings.reset.title': 'Сбросить настройки внешнего вида', 'settings.reset.body': 'Вернуть исходный цвет, тему и эффекты.', 'settings.resetButton': 'Сбросить внешний вид', 'settings.languageUpdated': 'Язык интерфейса обновлён.', 'settings.cacheCleared': 'Кэш каталога очищен.', 'settings.resetDone': 'Настройки внешнего вида сброшены.',
+    'settings.ui.title': 'Интерфейс лаунчера', 'settings.ui.body': 'Собери окно под себя: порядок разделов и видимые элементы.', 'settings.ui.navTitle': 'Порядок разделов', 'settings.ui.navBody': 'Перемещай пункты бокового меню — список сразу обновится.', 'settings.ui.moveUp': 'Переместить выше', 'settings.ui.moveDown': 'Переместить ниже', 'settings.ui.group.menu': 'Основное меню', 'settings.ui.group.space': 'Твоё пространство', 'settings.ui.partsTitle': 'Элементы окна', 'settings.ui.partsBody': 'Выключи то, что не нужно — освободится место.', 'settings.ui.sidebar': 'Боковая панель', 'settings.ui.topbar': 'Верхняя панель', 'settings.ui.other': 'Прочее', 'settings.ui.tip': 'Подсказка внизу панели', 'settings.ui.tipBody': 'Карточка «Новый мир уже где-то рядом».', 'settings.ui.profile': 'Карточка профиля', 'settings.ui.profileBody': 'Аватар и название профиля внизу панели.', 'settings.ui.foot': 'Подпись версии', 'settings.ui.footBody': 'Строка VORTEX PREVIEW в самом низу.', 'settings.ui.search': 'Поиск сверху', 'settings.ui.searchBody': 'Поле поиска игр в верхней панели.', 'settings.ui.breadcrumb': 'Хлебные крошки', 'settings.ui.breadcrumbBody': 'Путь вида VORTEX / Главная.', 'settings.ui.notifications': 'Кнопка уведомлений', 'settings.ui.notificationsBody': 'Колокольчик в верхней панели.', 'settings.ui.updateBanner': 'Плашка обновления', 'settings.ui.updateBannerBody': 'Сообщение о загрузке обновления над страницей.', 'settings.ui.reset': 'Вернуть интерфейс по умолчанию', 'settings.ui.resetDone': 'Интерфейс сброшен.', 'settings.language.title': 'Язык интерфейса', 'settings.language.body': 'Язык можно поменять в любой момент.', 'settings.language.ru': 'Русский', 'settings.language.en': 'English', 'settings.history.title': 'История запусков', 'settings.history.body': 'Сохранять недавно открытые игры на этом устройстве.', 'settings.cache.title': 'Кэш каталога', 'settings.cache.body': 'Поиск, разделы Discover и обложки хранятся пять минут.', 'settings.cacheClear': 'Очистить кэш каталога', 'settings.reset.title': 'Сбросить настройки внешнего вида', 'settings.reset.body': 'Вернуть исходный цвет, тему и эффекты.', 'settings.resetButton': 'Сбросить внешний вид', 'settings.languageUpdated': 'Язык интерфейса обновлён.', 'settings.cacheCleared': 'Кэш каталога очищен.', 'settings.resetDone': 'Настройки внешнего вида сброшены.',
     'palette.amethyst': 'Аметист', 'palette.azure': 'Лазурь', 'palette.mint': 'Мята', 'palette.rose': 'Роза', 'palette.amber': 'Янтарь', 'palette.crimson': 'Рубин', 'palette.aqua': 'Аква', 'palette.lime': 'Лайм', 'palette.orchid': 'Орхидея', 'palette.slate': 'Сланец', 'palette.Amethyst': 'Amethyst', 'palette.Azure': 'Azure', 'palette.Mint': 'Mint', 'palette.Rose': 'Rose', 'palette.Amber': 'Amber',
     'catalog.loading': 'Загружаем каталог Roblox…', 'catalog.loadingNote': 'Подбираем актуальные игры из Roblox Discover', 'catalog.errorTitle': 'Не удалось загрузить Roblox Discover.', 'catalog.errorBody': 'Показываем игры, которые уже сохранены на устройстве.', 'catalog.loadMore': 'Показать ещё игры',
     'catalog.sort.top-trending': 'В тренде', 'catalog.sort.up-and-coming': 'Набирают популярность', 'catalog.sort.top-playing-now': 'Сейчас играют', 'catalog.sort.fun-with-friends': 'Для игры с друзьями', 'catalog.sort.top-revisited': 'Возвращаются в игру',
-    'toast.favoriteAdded': 'Игра добавлена в избранное', 'toast.favoriteRemoved': 'Игра убрана из избранного', 'toast.opening': 'Открываю {game} в Roblox', 'toast.launchError': 'Не удалось открыть Roblox Player.', 'toast.notifications': 'Уведомления появятся в будущих версиях.', 'updates.title': 'Доступно обновление Vortex {version}', 'updates.downloading': 'Загружаем автоматически: {percent}%', 'updates.ready': 'Установщик проверен и готов. Открой его, чтобы обновить лаунчер.', 'updates.open': 'Открыть установщик', 'updates.openError': 'Не удалось открыть установщик.', 'app.title': 'Vortex — Roblox Place Launcher'
+    'toast.favoriteAdded': 'Игра добавлена в избранное', 'toast.favoriteRemoved': 'Игра убрана из избранного', 'toast.opening': 'Открываю {game} в Roblox', 'toast.launchError': 'Не удалось открыть Roblox Player.', 'toast.notifications': 'Уведомления появятся в будущих версиях.', 'updates.title': 'Доступно обновление Vortex {version}', 'updates.downloading': 'Загружаем автоматически: {percent}%', 'updates.ready': 'Обновление скачано и проверено. Устанавливаем его через Setup и перезапускаем лаунчер.', 'updates.applying': 'Запускаем Setup в фоновом режиме. Лаунчер перезапустится автоматически.', 'updates.current': 'Установлена последняя версия.', 'updates.error': 'Не удалось установить обновление: {error}', 'updates.retry': 'Проверить снова', 'updates.settingsTitle': 'Обновление приложения', 'updates.settingsBody': 'Статус загрузки и установки новой версии.', 'updates.checking': 'Проверяем доступные версии…', 'updates.unavailable': 'Пока нет опубликованного обновления.', 'updates.development': 'Автообновление доступно в установленной версии.', 'app.title': 'Vortex — Roblox Place Launcher'
   },
   en: {
     'brand.home': 'Vortex — Home', 'window.toolbar': 'Window controls', 'window.drag': 'Drag to move the window', 'window.minimize': 'Minimize window', 'window.maximize': 'Maximize window', 'window.restore': 'Restore window size', 'window.close': 'Close window', 'window.context': 'YOUR SPACE FOR NEW WORLDS', 'sidebar.menu': 'MENU', 'sidebar.primaryNav': 'Primary navigation', 'sidebar.space': 'YOUR SPACE', 'sidebar.spaceNav': 'Your space',
-    'nav.home': 'Home', 'nav.catalog': 'Find games', 'nav.favorites': 'Favorites', 'nav.recent': 'Recent', 'nav.reviews': 'Reviews', 'nav.plans': 'In the works', 'nav.settings': 'Settings',
+    'nav.home': 'Home', 'nav.catalog': 'Find games', 'nav.favorites': 'Favorites', 'nav.recent': 'Recent', 'nav.reviews': 'Reviews', 'nav.plans': 'In the works', 'nav.settings': 'Settings', 'settings.tab.version': 'Version',
     'common.soon': 'SOON', 'sidebar.tip': 'A new world is closer than it seems', 'sidebar.explore': 'Explore', 'profile.name': 'My launcher', 'profile.local': 'Local profile', 'profile.settings': 'Profile and settings', 'notifications': 'Notifications',
     'search.placeholder': 'Search by game name or Place ID...', 'page.home.eyebrow': 'FIND YOUR NEXT WORLD', 'page.home.title': 'Hey, player', 'page.home.description': 'Less searching, more games you can jump into.',
     'hero.kicker': 'PLACE PICKS', 'hero.title': 'Your next game world is right here', 'hero.body': 'Explore Roblox experiences in one place. Pick a mood, save favorites, and launch with one click.', 'hero.play': 'Play {title}', 'hero.meta': 'popular places', 'hero.orbit': 'WORLDS AWAIT',
@@ -132,17 +170,19 @@ const translations = {
     'page.recent.eyebrow': 'QUICK ACCESS', 'page.recent.title': 'Recent', 'page.recent.description': 'Games you launch will show up here.', 'empty.recent.title': 'Your history is empty', 'empty.recent.body': 'Launch a game and it will appear here.',
     'page.reviews.eyebrow': 'COMING IN A FUTURE RELEASE', 'page.reviews.title': 'Reviews and ratings', 'page.reviews.description': 'Help other players find great games faster.', 'reviews.title': 'Reviews are coming soon', 'reviews.body': 'We plan to add player ratings, short reviews, and lists like “play with friends” or “good for beginners”.', 'reviews.soon': 'Coming soon',
     'page.plans.eyebrow': 'WHAT’S NEXT', 'page.plans.title': 'In the works', 'page.plans.description': 'Ideas to make discovering games and meeting up easier.', 'plans.friends': 'Play with friends', 'plans.friendsBody': 'Invites, a friends list, and a quick way to join the same game.', 'plans.recommendations': 'Smart recommendations', 'plans.recommendationsBody': 'Find new worlds based on genres and your saved games.', 'plans.collections': 'Collections and lists', 'plans.collectionsBody': 'Create lists like “for tonight”, “co-op”, or “try later”.', 'plans.reviews': 'Reviews and ratings', 'plans.reviewsBody': 'Player ratings, short reviews, and community lists.', 'plans.status': 'PLANNED',
-    'page.settings.eyebrow': 'MAKE IT YOURS', 'page.settings.title': 'Settings', 'page.settings.description': 'Customize how the launcher looks and works.', 'settings.tab.home': 'Home', 'settings.tab.accent': 'Appearance', 'settings.tab.cards': 'Cards', 'settings.tab.effects': 'Effects', 'settings.tab.general': 'General',
+    'page.settings.eyebrow': 'MAKE IT YOURS', 'page.settings.title': 'Settings', 'page.settings.description': 'Customize how the launcher looks and works.', 'settings.tab.home': 'Home', 'settings.tab.accent': 'Appearance', 'settings.tab.cards': 'Cards', 'settings.tab.effects': 'Effects', 'settings.tab.interface': 'Interface', 'settings.tab.general': 'General',
     'settings.accent.title': 'Accent color', 'settings.accent.body': 'Choose a color to update the whole launcher.', 'settings.customColor': 'Custom color', 'settings.theme.title': 'App theme', 'settings.theme.body': 'Choose an interface style.', 'settings.dark': 'Dark', 'settings.light': 'Light', 'settings.oled': 'OLED', 'settings.preview.title': 'Launcher preview', 'settings.preview.body': 'Your accent appears across cards and buttons',
-    'settings.home.title': 'Home page', 'settings.home.body': 'Choose what appears here and which game gets the spotlight.', 'settings.home.greeting': 'Your greeting', 'settings.home.greetingHint': 'Leave blank to use “Hey, player”.', 'settings.home.featured': 'Featured game', 'settings.home.sections': 'Home sections', 'settings.home.hero': 'Featured banner', 'settings.home.recommendations': 'Game picks', 'settings.home.gameCount': 'Number of games', 'settings.home.heroStyle': 'Banner style', 'settings.home.orbit': 'Orbit', 'settings.home.aurora': 'Aurora', 'settings.home.minimal': 'Minimal',
+    'home.empty.title': 'Add your game', 'home.empty.body': 'Paste a Roblox game link or Place ID in the home page settings.', 'home.empty.action': 'Open settings',
+    'settings.home.customTitle': 'My games', 'settings.home.customBody': 'Search by name, or paste a roblox.com/games/… link or a Place ID.', 'settings.home.customHint': 'Game name or link', 'settings.home.searchHint': 'Game name, link or Place ID', 'settings.home.searchEmpty': 'Nothing found — try another name.', 'settings.home.searchLoading': 'Searching Roblox…', 'settings.home.add': 'Add', 'settings.home.remove': 'Remove', 'settings.home.customEmpty': 'No games yet. Add your first one above.', 'settings.home.customInvalid': 'Paste a link like roblox.com/games/123… or a numeric Place ID.', 'settings.home.customDesktopOnly': 'Adding games works in the installed app.', 'settings.home.customLoading': 'Looking up the game on Roblox…', 'settings.home.customNotFound': 'No game found with this ID.', 'settings.home.customError': 'Could not reach Roblox. Try again later.', 'settings.home.customAdded': 'Added “{game}”',
+    'settings.home.title': 'Home page', 'settings.home.body': 'Choose what appears here and which game gets the spotlight.', 'settings.home.greeting': 'Your greeting', 'settings.home.greetingHint': 'Leave blank to use “Hey, player”.', 'settings.home.featured': 'Featured game', 'settings.home.sections': 'Home blocks', 'settings.home.sectionsBody': 'What the home page shows and how it looks.', 'settings.home.hero': 'Featured banner', 'settings.home.heroHint': 'Large banner with the spotlight game and a play button.', 'settings.home.recommendations': 'Game picks', 'settings.home.recommendationsHint': 'Grid of cards from your library.', 'settings.home.gameCount': 'Number of games', 'settings.home.heroStyle': 'Banner style', 'settings.home.heroStyleBody': 'How the spotlight banner looks.', 'settings.home.orbit': 'Orbit', 'settings.home.aurora': 'Aurora', 'settings.home.minimal': 'Minimal', 'settings.home.layout': 'Home layout', 'settings.home.layoutBody': 'How large the banner is.', 'settings.home.layoutBalanced': 'Balanced', 'settings.home.layoutSpotlight': 'Spotlight', 'settings.home.layoutLibrary': 'Library', 'settings.home.minimalBody': 'Hide the heading and captions to focus on games.', 'settings.home.skin': 'Home background', 'settings.home.skinBody': 'Extra pattern behind the content.', 'settings.home.skinAurora': 'Aurora', 'settings.home.skinGrid': 'Grid', 'settings.home.skinPlain': 'Flat', 'settings.home.hint': 'Card size and look live in the Cards tab, colours in the Appearance tab.', 'home.picks.emptyTitle': 'Nothing picked yet', 'home.picks.emptyBody': 'Open Roblox search — the games you like will show up here and in your favorites.',
     'settings.accentMode': 'Accent fill', 'settings.solid': 'Solid', 'settings.gradient': 'Gradient', 'settings.gradientEnd': 'Second color', 'settings.gradientAngle': 'Gradient angle', 'settings.colorHue': 'Hue', 'settings.colorSaturation': 'Saturation', 'settings.colorLightness': 'Lightness', 'settings.colorCode': 'HEX code', 'settings.themeBackground': 'Background color', 'settings.themeSurface': 'Panel color', 'settings.themeColorHint': 'Enter a custom HEX code; changes apply immediately.', 'settings.themeReset': 'Restore theme colors',
     'settings.density.title': 'Card size and density', 'settings.density.body': 'Choose card size and how many games fit in a row.', 'settings.spacious': 'Large', 'settings.comfortable': 'Regular', 'settings.compact': 'Compact', 'settings.corners.title': 'Card corners', 'settings.corners.body': 'Choose a softer or sharper look.', 'settings.soft': 'Rounded', 'settings.sharp': 'Sharp', 'settings.descriptions': 'Game descriptions', 'settings.descriptionsBody': 'Show a short description on each card.', 'settings.playerStats': 'Player stats', 'settings.playerStatsBody': 'Show the current player count and rating.', 'settings.anyScreen': 'Card size preview', 'settings.appliesToCatalog': 'Changes apply to the catalog right away',
     'settings.effects.title': 'Interface atmosphere', 'settings.effects.body': 'Adjust glow and motion independently.', 'settings.glow.title': 'Accent glow', 'settings.glow.body': 'Set the strength of colored highlights.', 'settings.ambient.title': 'Background glow', 'settings.ambient.body': 'Soft colored light in the background.', 'settings.motion.title': 'Animations', 'settings.motion.body': 'Smooth transitions and interactive effects.', 'settings.transitionStyle': 'Page transition', 'settings.transition.fade': 'Fade', 'settings.transition.slide': 'Slide', 'settings.transition.zoom': 'Zoom', 'settings.transition.none': 'None', 'settings.cardAnimation': 'Card entrance', 'settings.cards.rise': 'Rise', 'settings.cards.fade': 'Fade', 'settings.cards.pop': 'Pop', 'settings.cards.none': 'None', 'settings.contrast.title': 'High contrast', 'settings.contrast.body': 'Make borders and labels easier to see.', 'settings.savedLocally': 'Settings are saved on this device.',
-    'settings.language.title': 'Interface language', 'settings.language.body': 'You can change the language at any time.', 'settings.language.ru': 'Русский', 'settings.language.en': 'English', 'settings.history.title': 'Launch history', 'settings.history.body': 'Save recently opened games on this device.', 'settings.cache.title': 'Catalog cache', 'settings.cache.body': 'Search results, Discover sections, and covers stay cached for five minutes.', 'settings.cacheClear': 'Clear catalog cache', 'settings.reset.title': 'Reset appearance', 'settings.reset.body': 'Restore the default color, theme, and effects.', 'settings.resetButton': 'Reset appearance', 'settings.languageUpdated': 'Interface language updated.', 'settings.cacheCleared': 'Catalog cache cleared.', 'settings.resetDone': 'Appearance settings reset.',
+    'settings.ui.title': 'Launcher interface', 'settings.ui.body': 'Build the window your way: section order and visible parts.', 'settings.ui.navTitle': 'Section order', 'settings.ui.navBody': 'Move the sidebar entries — the list updates right away.', 'settings.ui.moveUp': 'Move up', 'settings.ui.moveDown': 'Move down', 'settings.ui.group.menu': 'Main menu', 'settings.ui.group.space': 'Your space', 'settings.ui.partsTitle': 'Window parts', 'settings.ui.partsBody': 'Switch off what you do not need to free up space.', 'settings.ui.sidebar': 'Sidebar', 'settings.ui.topbar': 'Top bar', 'settings.ui.other': 'Other', 'settings.ui.tip': 'Sidebar tip card', 'settings.ui.tipBody': 'The “A new world is closer” card.', 'settings.ui.profile': 'Profile card', 'settings.ui.profileBody': 'Avatar and profile name at the bottom of the sidebar.', 'settings.ui.foot': 'Version caption', 'settings.ui.footBody': 'The VORTEX PREVIEW line at the very bottom.', 'settings.ui.search': 'Top search', 'settings.ui.searchBody': 'Game search field in the top bar.', 'settings.ui.breadcrumb': 'Breadcrumbs', 'settings.ui.breadcrumbBody': 'The VORTEX / Home path.', 'settings.ui.notifications': 'Notifications button', 'settings.ui.notificationsBody': 'The bell in the top bar.', 'settings.ui.updateBanner': 'Update banner', 'settings.ui.updateBannerBody': 'Update progress message above the page.', 'settings.ui.reset': 'Restore the default interface', 'settings.ui.resetDone': 'Interface restored.', 'settings.language.title': 'Interface language', 'settings.language.body': 'You can change the language at any time.', 'settings.language.ru': 'Русский', 'settings.language.en': 'English', 'settings.history.title': 'Launch history', 'settings.history.body': 'Save recently opened games on this device.', 'settings.cache.title': 'Catalog cache', 'settings.cache.body': 'Search results, Discover sections, and covers stay cached for five minutes.', 'settings.cacheClear': 'Clear catalog cache', 'settings.reset.title': 'Reset appearance', 'settings.reset.body': 'Restore the default color, theme, and effects.', 'settings.resetButton': 'Reset appearance', 'settings.languageUpdated': 'Interface language updated.', 'settings.cacheCleared': 'Catalog cache cleared.', 'settings.resetDone': 'Appearance settings reset.',
     'palette.amethyst': 'Amethyst', 'palette.azure': 'Azure', 'palette.mint': 'Mint', 'palette.rose': 'Rose', 'palette.amber': 'Amber', 'palette.crimson': 'Crimson', 'palette.aqua': 'Aqua', 'palette.lime': 'Lime', 'palette.orchid': 'Orchid', 'palette.slate': 'Slate',
     'catalog.loading': 'Loading the Roblox catalog…', 'catalog.loadingNote': 'Finding current experiences from Roblox Discover', 'catalog.errorTitle': 'Could not load Roblox Discover.', 'catalog.errorBody': 'Showing games already saved on this device.', 'catalog.loadMore': 'Show more games',
     'catalog.sort.top-trending': 'Trending', 'catalog.sort.up-and-coming': 'Up-and-coming', 'catalog.sort.top-playing-now': 'Playing now', 'catalog.sort.fun-with-friends': 'With friends', 'catalog.sort.top-revisited': 'Revisited',
-    'toast.favoriteAdded': 'Added to favorites', 'toast.favoriteRemoved': 'Removed from favorites', 'toast.opening': 'Opening {game} in Roblox', 'toast.launchError': 'Could not open Roblox Player.', 'toast.notifications': 'Notifications are planned for a future release.', 'updates.title': 'Vortex update {version} is available', 'updates.downloading': 'Downloading automatically: {percent}%', 'updates.ready': 'The installer is verified and ready. Open it to update the launcher.', 'updates.open': 'Open installer', 'updates.openError': 'Could not open the installer.', 'app.title': 'Vortex — Roblox Place Launcher'
+    'toast.favoriteAdded': 'Added to favorites', 'toast.favoriteRemoved': 'Removed from favorites', 'toast.opening': 'Opening {game} in Roblox', 'toast.launchError': 'Could not open Roblox Player.', 'toast.notifications': 'Notifications are planned for a future release.', 'updates.title': 'Vortex update {version} is available', 'updates.downloading': 'Downloading automatically: {percent}%', 'updates.ready': 'Update downloaded and verified. Applying with Setup; the launcher will restart.', 'updates.applying': 'Running Setup silently. The launcher will restart automatically.', 'updates.current': 'You are using the latest version.', 'updates.error': 'Could not install update: {error}', 'updates.retry': 'Check again', 'updates.settingsTitle': 'Application updates', 'updates.settingsBody': 'Download and installation status for the new version.', 'updates.checking': 'Checking for available versions…', 'updates.unavailable': 'No published update is available.', 'updates.development': 'Automatic updates are available in the installed app.', 'app.title': 'Vortex — Roblox Place Launcher'
   }
 };
 
@@ -286,7 +326,12 @@ function renderColorTuner(name, color, label) {
 
 function applyPreferences() {
   if (!['ru', 'en'].includes(preferences.language)) preferences.language = 'ru';
-  if (!['home', 'accent', 'cards', 'effects', 'general'].includes(preferences.settingsTab)) preferences.settingsTab = 'home';
+  if (!['home', 'accent', 'cards', 'effects', 'interface', 'general', 'version'].includes(preferences.settingsTab)) preferences.settingsTab = 'home';
+  if (!Array.isArray(preferences.sidebarOrder)) preferences.sidebarOrder = [];
+  preferences.sidebarOrder = [...new Set(preferences.sidebarOrder.filter((key) => NAV_KEYS.includes(key)))];
+  for (const flag of ['uiSidebarTip', 'uiProfileCard', 'uiTopbarSearch', 'uiBreadcrumb', 'uiNotifications', 'uiSidebarFoot', 'uiUpdateBanner']) {
+    preferences[flag] = preferences[flag] !== false;
+  }
   if (!['dark', 'light', 'oled'].includes(preferences.theme)) preferences.theme = 'dark';
   if (!['solid', 'gradient'].includes(preferences.accentMode)) preferences.accentMode = 'solid';
   if (!['spacious', 'comfortable', 'compact'].includes(preferences.density)) preferences.density = 'comfortable';
@@ -297,11 +342,14 @@ function applyPreferences() {
   preferences.themeBackground = /^#[0-9a-f]{6}$/i.test(preferences.themeBackground) ? preferences.themeBackground : '';
   preferences.themeSurface = /^#[0-9a-f]{6}$/i.test(preferences.themeSurface) ? preferences.themeSurface : '';
   if (!['orbit', 'aurora', 'minimal'].includes(preferences.homeHeroStyle)) preferences.homeHeroStyle = 'orbit';
+  if (!['balanced', 'spotlight', 'library'].includes(preferences.homeLayout)) preferences.homeLayout = 'balanced';
+  if (!['aurora', 'grid', 'plain'].includes(preferences.homeSkin)) preferences.homeSkin = 'aurora';
+  preferences.homeMinimal = Boolean(preferences.homeMinimal);
   if (![4, 6, 8].includes(Number(preferences.homeGameCount))) preferences.homeGameCount = 4;
   if (!['fade', 'slide', 'zoom', 'none'].includes(preferences.pageTransition)) preferences.pageTransition = 'fade';
   if (!['rise', 'fade', 'pop', 'none'].includes(preferences.cardAnimation)) preferences.cardAnimation = 'rise';
   preferences.homeGreeting = String(preferences.homeGreeting ?? '').slice(0, 48);
-  if (!getGame(preferences.homeFeaturedGame)) preferences.homeFeaturedGame = preferenceDefaults.homeFeaturedGame;
+  if (!getGame(preferences.homeFeaturedGame)) preferences.homeFeaturedGame = '';
   preferences.glow = Math.max(0, Math.min(100, Number(preferences.glow) || 0));
 
   const root = document.documentElement.style;
@@ -374,6 +422,17 @@ function applyPreferences() {
   document.body.classList.toggle('no-glow', !preferences.ambient);
   document.body.classList.toggle('high-contrast', preferences.contrast);
   document.body.dataset.cardAnimation = preferences.cardAnimation;
+  // Home page look, managed in Settings → Home.
+  document.body.dataset.homeLayout = preferences.homeLayout;
+  document.body.dataset.homeSkin = preferences.homeSkin;
+  document.body.classList.toggle('home-minimal', preferences.homeMinimal);
+  // Interface parts the user can switch off in Settings → Interface.
+  document.body.classList.toggle('ui-no-sidebar-tip', !preferences.uiSidebarTip);
+  document.body.classList.toggle('ui-no-profile', !preferences.uiProfileCard);
+  document.body.classList.toggle('ui-no-sidebar-foot', !preferences.uiSidebarFoot);
+  document.body.classList.toggle('ui-no-topbar-search', !preferences.uiTopbarSearch);
+  document.body.classList.toggle('ui-no-breadcrumb', !preferences.uiBreadcrumb);
+  document.body.classList.toggle('ui-no-notifications', !preferences.uiNotifications);
   applyStaticTranslations();
 }
 
@@ -393,7 +452,9 @@ function applyStaticTranslations() {
 
 function allGames() {
   const knownIds = new Set(games.map((game) => game.id));
-  return [...games, ...dynamicGames.filter((game) => game && !knownIds.has(String(game.id)))];
+  const custom = (preferences.customGames || []).filter((game) => game && !knownIds.has(String(game.id)));
+  const customIds = new Set(custom.map((game) => String(game.id)));
+  return [...games, ...custom, ...dynamicGames.filter((game) => game && !knownIds.has(String(game.id)) && !customIds.has(String(game.id)))];
 }
 
 function getGame(id) { return allGames().find((game) => game.id === String(id)); }
@@ -472,21 +533,25 @@ function pageHeading(eyebrow, title, description, action = '') {
 }
 
 function renderHome() {
-  const featured = localizeGame(getGame(preferences.homeFeaturedGame) || games[0]);
   const library = [...new Map([...allGames()].map((game) => [String(game.id), game])).values()];
-  const picks = library.filter((game) => String(game.id) !== String(featured.id)).slice(0, Number(preferences.homeGameCount));
+  const featuredRaw = getGame(preferences.homeFeaturedGame) || library[0];
+  const featured = featuredRaw ? localizeGame(featuredRaw) : null;
+  const picks = featured ? library.filter((game) => String(game.id) !== String(featured.id)).slice(0, Number(preferences.homeGameCount)) : library.slice(0, Number(preferences.homeGameCount));
   const greeting = preferences.homeGreeting.trim() || t('page.home.title');
-  const hero = preferences.homeShowHero ? `<section class="hero-card" data-hero-style="${preferences.homeHeroStyle}">
-      <div class="hero-copy"><span class="hero-kicker"><span>${icon('sparkle', 13)}</span> ${t('hero.kicker')}</span><h2>${t('hero.title')}</h2><p>${t('hero.body')}</p>
+  const emptyHint = library.length ? '' : `<section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('sparkle', 20)}</div><h2>${t('home.empty.title')}</h2><p>${t('home.empty.body')}</p><button class="ghost-button" data-nav="settings">${icon('sliders')} ${t('home.empty.action')}</button></div></section>`;
+  const hero = preferences.homeShowHero && featured ? `<section class="hero-card" data-hero-style="${preferences.homeHeroStyle}">
+      <div class="hero-copy"><span class="hero-kicker"><span>${icon('sparkle', 13)}</span> ${t('hero.kicker')}</span><h2>${escapeHtml(featured.title)}</h2><p>${escapeHtml(featured.description || t('hero.body'))}</p>
         <div class="hero-actions"><button class="primary-button" data-action="play" data-id="${escapeHtml(featured.id)}">${icon('play')} ${t('hero.play', { title: escapeHtml(featured.title) })}</button><span class="hero-meta"><span>${icon('sparkle', 12)}</span> ${t('hero.meta')}</span></div>
       </div>
       <div class="hero-art" aria-hidden="true"><div class="hero-rings"></div><span class="hero-star one">${icon('sparkle', 13)}</span><span class="hero-star two">${icon('sparkle', 8)}</span><span class="hero-star three">${icon('sparkle', 9)}</span><div class="hero-orbit-label"><span>${icon('sparkle', 11)}</span> ${t('hero.orbit')}</div></div>
     </section>` : '';
   const recommendations = preferences.homeShowRecommendations ? `<section class="section-block"><div class="section-heading"><div><h2>${t('home.section.title')}</h2><p>${t('home.section.subtitle')}</p></div><button class="link-button" data-nav="catalog">${t('home.allGames')} ${icon('arrow', 13)}</button></div>
-      ${renderGrid(picks)}</section>` : '';
-  return `${pageHeading(t('page.home.eyebrow'), `<span class="heading-inline-icon">${icon('handWave', 19)}</span>${escapeHtml(greeting)}`, t('page.home.description'))}
-    ${hero}${recommendations}
-    <p class="catalog-disclaimer"><strong>${t('home.disclaimer')}</strong> ${t('home.disclaimerBody')}</p>`;
+      ${renderGrid(picks, t('home.picks.emptyTitle'), t('home.picks.emptyBody'), 'catalog')}</section>` : '';
+  return `<div class="home-view" data-home-view data-home-layout="${preferences.homeLayout}" data-home-skin="${preferences.homeSkin}">
+    ${pageHeading(t('page.home.eyebrow'), `<span class="heading-inline-icon">${icon('handWave', 19)}</span>${escapeHtml(greeting)}`, t('page.home.description'))}
+    ${emptyHint}${hero}${recommendations}
+    <p class="catalog-disclaimer"><strong>${t('home.disclaimer')}</strong> ${t('home.disclaimerBody')}</p>
+  </div>`;
 }
 
 function filterGames() {
@@ -574,53 +639,255 @@ function renderRecent() {
     ${renderGrid(list, t('empty.recent.title'), t('empty.recent.body'), 'catalog')}`;
 }
 
-function renderReviews() {
-  return `${pageHeading(t('page.reviews.eyebrow'), t('page.reviews.title'), t('page.reviews.description'))}
-    <section class="review-banner"><div class="review-illustration">${icon('message', 25)}</div><div><h2>${t('reviews.title')}</h2><p>${t('reviews.body')}</p></div><button class="ghost-button review-cta" disabled aria-disabled="true">${icon('clock')} ${t('reviews.soon')}</button></section>`;
-}
-
 function renderPlans() {
   const plans = [
     ['users', 'plans.friends', 'plans.friendsBody'],
     ['trophy', 'plans.recommendations', 'plans.recommendationsBody'],
-    ['flag', 'plans.collections', 'plans.collectionsBody'],
-    ['message', 'plans.reviews', 'plans.reviewsBody']
+    ['flag', 'plans.collections', 'plans.collectionsBody']
   ];
   return `${pageHeading(t('page.plans.eyebrow'), t('page.plans.title'), t('page.plans.description'))}
-    <div class="roadmap-grid">${plans.map(([iconName, titleKey, bodyKey]) => `<article class="roadmap-card"><div class="roadmap-icon">${icon(iconName)}</div><h3>${t(titleKey)}</h3><p>${t(bodyKey)}</p><span class="roadmap-state">${t('plans.status')}</span></article>`).join('')}</div>`;
+    <div class="roadmap-grid">${plans.map(([iconName, titleKey, bodyKey]) => `<article class="roadmap-card"><div class="roadmap-icon">${icon(iconName)}</div><h3>${t(titleKey)}</h3><p>${t(bodyKey)}</p><span class="roadmap-state">${t('plans.status')}</span></article>`).join('')}</div>
+    <section class="plans-reviews"><div class="section-heading"><div><h2>${t('page.reviews.title')}</h2><p>${t('page.reviews.description')}</p></div><span class="roadmap-state">${t('reviews.soon')}</span></div>
+      <section class="review-banner"><div class="review-illustration">${icon('message', 25)}</div><div><h2>${t('reviews.title')}</h2><p>${t('reviews.body')}</p></div></section></section>`;
 }
 
 function settingsTabs() {
-  const tabs = [ ['home', 'home'], ['accent', 'palette'], ['cards', 'layout'], ['effects', 'motion'], ['general', 'slidersHorizontal'] ];
+  const tabs = [ ['home', 'home'], ['accent', 'palette'], ['cards', 'layout'], ['effects', 'motion'], ['interface', 'sliders'], ['general', 'slidersHorizontal'], ['version', 'download'] ];
   return `<div class="settings-tabs">${tabs.map(([key, iconName]) => `<button class="settings-tab ${preferences.settingsTab === key ? 'active' : ''}" data-settings-tab="${key}"><span>${icon(iconName)}</span>${t(`settings.tab.${key}`)}</button>`).join('')}</div>`;
 }
 
 function renderHomeSettings() {
-  const featuredGame = getGame(preferences.homeFeaturedGame) || games[0];
-  const choices = games.map((game) => `<button class="home-game-option ${String(game.id) === String(featuredGame.id) ? 'active' : ''}" data-home-featured="${escapeHtml(game.id)}" aria-pressed="${String(game.id) === String(featuredGame.id)}"><span class="home-game-art art-${game.art}"></span><span class="home-game-copy"><strong>${escapeHtml(game.title)}</strong><small>${escapeHtml(localizeGame(game).genre)}</small></span></button>`).join('');
+  const featuredId = String(preferences.homeFeaturedGame);
+  const customGames = Array.isArray(preferences.customGames) ? preferences.customGames : [];
+  const customList = customGames.length
+    ? `<div class="home-game-options">${customGames.map((game) => `<div class="custom-game-row"><button class="home-game-option ${String(game.id) === featuredId ? 'active' : ''}" data-home-featured="${escapeHtml(game.id)}" aria-pressed="${String(game.id) === featuredId}"><span class="home-game-art art-live"></span><span class="home-game-copy"><strong>${escapeHtml(game.title)}</strong><small>${escapeHtml(game.creator || game.genre || 'Roblox')}</small></span></button><button class="ghost-button custom-game-remove" data-remove-custom="${escapeHtml(game.id)}" aria-label="${t('settings.home.remove')}">${icon('close', 13)}</button></div>`).join('')}</div>`
+    : `<p class="catalog-disclaimer">${t('settings.home.customEmpty')}</p>`;
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.home.title')}</h2><p>${t('settings.home.body')}</p></div>${icon('home', 18)}</div>
       <label class="home-greeting-field"><span>${t('settings.home.greeting')}</span><input type="text" maxlength="48" value="${escapeHtml(preferences.homeGreeting)}" placeholder="${t('settings.home.greetingHint')}" data-home-greeting /></label>
-      <div class="setting-line home-featured-head"><div class="setting-label"><strong>${t('settings.home.featured')}</strong></div></div><div class="home-game-options">${choices}</div>
+      <div class="setting-line home-featured-head"><div class="setting-label"><strong>${t('settings.home.customTitle')}</strong><small>${t('settings.home.customBody')}</small></div></div>
+      <div class="custom-game-form">
+        <div class="game-search-field">
+          <input type="text" maxlength="100" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="game-search-results" placeholder="${t('settings.home.searchHint')}" data-game-search />
+          <div class="game-search-results" id="game-search-results" role="listbox" hidden></div>
+        </div>
+        <button class="primary-button" data-add-custom>${t('settings.home.add')}</button>
+      </div>
+      <p class="custom-game-status" data-custom-status></p>
+      ${customList}
       <div class="setting-line home-setting-line"><div class="setting-label"><strong>${t('settings.home.gameCount')}</strong></div><div class="segmented"><button class="segment ${Number(preferences.homeGameCount) === 4 ? 'active' : ''}" data-pref="homeGameCount" data-value="4">4</button><button class="segment ${Number(preferences.homeGameCount) === 6 ? 'active' : ''}" data-pref="homeGameCount" data-value="6">6</button><button class="segment ${Number(preferences.homeGameCount) === 8 ? 'active' : ''}" data-pref="homeGameCount" data-value="8">8</button></div></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.heroStyle')}</strong></div><div class="segmented"><button class="segment ${preferences.homeHeroStyle === 'orbit' ? 'active' : ''}" data-pref="homeHeroStyle" data-value="orbit">${t('settings.home.orbit')}</button><button class="segment ${preferences.homeHeroStyle === 'aurora' ? 'active' : ''}" data-pref="homeHeroStyle" data-value="aurora">${t('settings.home.aurora')}</button><button class="segment ${preferences.homeHeroStyle === 'minimal' ? 'active' : ''}" data-pref="homeHeroStyle" data-value="minimal">${t('settings.home.minimal')}</button></div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.heroStyle')}</strong><small>${t('settings.home.heroStyleBody')}</small></div><div class="segmented">${[['orbit', t('settings.home.orbit')], ['aurora', t('settings.home.aurora')], ['minimal', t('settings.home.minimal')]].map(([value, label]) => `<button class="segment ${preferences.homeHeroStyle === value ? 'active' : ''}" data-pref="homeHeroStyle" data-value="${value}" ${previewAttr('heroStyle', value, label)}>${label}</button>`).join('')}</div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.layout')}</strong><small>${t('settings.home.layoutBody')}</small></div><div class="segmented">${[['balanced', t('settings.home.layoutBalanced')], ['spotlight', t('settings.home.layoutSpotlight')], ['library', t('settings.home.layoutLibrary')]].map(([value, label]) => `<button class="segment ${preferences.homeLayout === value ? 'active' : ''}" data-pref="homeLayout" data-value="${value}" ${previewAttr('homeLayout', value, label)}>${label}</button>`).join('')}</div></div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.home.sections')}</h2><p>${t('settings.home.body')}</p></div>${icon('layout', 18)}</div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.hero')}</strong></div><button class="toggle" role="switch" aria-checked="${preferences.homeShowHero}" data-toggle="homeShowHero" aria-label="${t('settings.home.hero')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.recommendations')}</strong></div><button class="toggle" role="switch" aria-checked="${preferences.homeShowRecommendations}" data-toggle="homeShowRecommendations" aria-label="${t('settings.home.recommendations')}"></button></div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.home.sections')}</h2><p>${t('settings.home.sectionsBody')}</p></div>${icon('layout', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.hero')}</strong><small>${t('settings.home.heroHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.homeShowHero}" data-toggle="homeShowHero" aria-label="${t('settings.home.hero')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.recommendations')}</strong><small>${t('settings.home.recommendationsHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.homeShowRecommendations}" data-toggle="homeShowRecommendations" aria-label="${t('settings.home.recommendations')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.minimal')}</strong><small>${t('settings.home.minimalBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.homeMinimal}" data-toggle="homeMinimal" aria-label="${t('settings.home.minimal')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.skin')}</strong><small>${t('settings.home.skinBody')}</small></div><div class="segmented">${[['aurora', t('settings.home.skinAurora')], ['grid', t('settings.home.skinGrid')], ['plain', t('settings.home.skinPlain')]].map(([value, label]) => `<button class="segment ${preferences.homeSkin === value ? 'active' : ''}" data-pref="homeSkin" data-value="${value}" ${previewAttr('homeSkin', value, label)}>${label}</button>`).join('')}</div></div>
+      <p class="catalog-disclaimer">${t('settings.home.hint')}</p>
     </section>`;
 }
+
+// Live game lookup for the "My games" field. Results are cached per query so typing
+// back and forth does not hammer the Roblox search API.
+const gameSearchCache = new Map();
+const gameSearchResults = new Map();
+let gameSearchTimer = null;
+let gameSearchRequestId = 0;
+let gameSearchItems = [];
+let gameSearchActiveIndex = -1;
+
+function gameSearchInput() {
+  return pageContent.querySelector('[data-game-search]');
+}
+
+function gameSearchList() {
+  return pageContent.querySelector('.game-search-results');
+}
+
+function closeGameSearch() {
+  const list = gameSearchList();
+  if (list) {
+    list.hidden = true;
+    list.innerHTML = '';
+  }
+  gameSearchItems = [];
+  gameSearchActiveIndex = -1;
+  const input = gameSearchInput();
+  if (input) input.setAttribute('aria-expanded', 'false');
+}
+
+function highlightGameSearch(index) {
+  const list = gameSearchList();
+  if (!list) return;
+  const options = [...list.querySelectorAll('.game-search-option')];
+  if (!options.length) return;
+  gameSearchActiveIndex = (index + options.length) % options.length;
+  options.forEach((option, position) => option.classList.toggle('active', position === gameSearchActiveIndex));
+  options[gameSearchActiveIndex]?.scrollIntoView({ block: 'nearest' });
+}
+
+function renderGameSearchResults(items, note = '') {
+  const list = gameSearchList();
+  const input = gameSearchInput();
+  if (!list || !input) return;
+  gameSearchItems = items;
+  gameSearchActiveIndex = -1;
+  list.hidden = false;
+  input.setAttribute('aria-expanded', 'true');
+  if (!items.length) {
+    list.innerHTML = `<p class="game-search-note">${escapeHtml(note || t('settings.home.searchEmpty'))}</p>`;
+    return;
+  }
+  list.innerHTML = items.map((game, index) => {
+    const thumbnail = safeThumbnail(game.thumbnail);
+    const meta = [game.creator, game.playerCount ? t('search.players', { count: formatCount(game.playerCount) }) : ''].filter(Boolean).join(' · ');
+    return `<button class="game-search-option" role="option" data-game-pick="${escapeHtml(game.id)}" data-index="${index}" aria-selected="false">
+      <span class="game-search-art ${thumbnail ? 'has-thumbnail' : ''}">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}</span>
+      <span class="game-search-copy"><strong>${escapeHtml(game.title)}</strong><small>${escapeHtml(meta || t('tag.roblox'))}</small></span>
+      ${icon('arrow', 13)}
+    </button>`;
+  }).join('');
+}
+
+async function searchGamesByName(query) {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) {
+    closeGameSearch();
+    return;
+  }
+  if (!window.vortexDesktop?.searchGames) {
+    renderGameSearchResults([], t('settings.home.customDesktopOnly'));
+    return;
+  }
+  const cacheKey = trimmed.toLocaleLowerCase(preferences.language);
+  const cached = gameSearchCache.get(cacheKey);
+  if (cached) {
+    renderGameSearchResults(cached);
+    return;
+  }
+  const requestId = ++gameSearchRequestId;
+  renderGameSearchResults([], t('settings.home.searchLoading'));
+  try {
+    const response = await window.vortexDesktop.searchGames({ query: trimmed });
+    if (requestId !== gameSearchRequestId) return;
+    const items = (response?.items || []).slice(0, 8).map((item) => normalizeDiscoveredGame(item, trimmed));
+    items.forEach((item) => gameSearchResults.set(String(item.id), item));
+    gameSearchCache.set(cacheKey, items);
+    if (gameSearchInput()?.value.trim() !== trimmed) return;
+    renderGameSearchResults(items);
+  } catch {
+    if (requestId !== gameSearchRequestId) return;
+    renderGameSearchResults([], t('settings.home.customError'));
+  }
+}
+
+function pickGameFromSearch(placeId) {
+  const game = gameSearchResults.get(String(placeId));
+  if (!game) return;
+  addCustomGame(game);
+}
+
+function scheduleGameSearch(query) {
+  if (gameSearchTimer) window.clearTimeout(gameSearchTimer);
+  if (query.trim().length < 2) {
+    closeGameSearch();
+    return;
+  }
+  gameSearchTimer = window.setTimeout(() => searchGamesByName(query), 320);
+}
+
+async function addCustomGame(preselected = null) {
+  const input = pageContent.querySelector('[data-game-search], [data-custom-input]');
+  const status = pageContent.querySelector('[data-custom-status]');
+  const setStatus = (text) => { if (status) status.textContent = text; };
+  const store = (game) => {
+    const id = String(game.id);
+    preferences.customGames = [game, ...(preferences.customGames || []).filter((existing) => String(existing.id) !== id)].slice(0, 12);
+    preferences.homeFeaturedGame = id;
+    savePreferences();
+    closeGameSearch();
+    renderPage();
+    showToast(t('settings.home.customAdded', { game: game.title }));
+  };
+
+  if (preselected) {
+    store(preselected);
+    return;
+  }
+
+  const raw = String(input?.value || '').trim();
+  const placeId = (raw.match(/roblox\.com\/games\/(\d{5,20})/i) || raw.match(/^(\d{5,20})$/))?.[1];
+  if (placeId) {
+    if (!window.vortexDesktop?.searchGames) { setStatus(t('settings.home.customDesktopOnly')); return; }
+    setStatus(t('settings.home.customLoading'));
+    try {
+      const response = await window.vortexDesktop.searchGames({ query: placeId });
+      const item = response?.items?.[0];
+      if (!item) { setStatus(t('settings.home.customNotFound')); return; }
+      store({ ...normalizeDiscoveredGame(item), id: placeId });
+    } catch {
+      setStatus(t('settings.home.customError'));
+    }
+    return;
+  }
+
+  // A name was typed: use the first match from the live dropdown.
+  if (raw.length >= 2) {
+    const cached = gameSearchCache.get(raw.toLocaleLowerCase(preferences.language));
+    const first = cached?.[0] ?? gameSearchItems[0];
+    if (first) { store(first); return; }
+    if (!window.vortexDesktop?.searchGames) { setStatus(t('settings.home.customDesktopOnly')); return; }
+    setStatus(t('settings.home.searchLoading'));
+    await searchGamesByName(raw);
+    const found = gameSearchItems[0];
+    if (found) store(found);
+    else setStatus(raw ? t('settings.home.searchEmpty') : t('settings.home.customInvalid'));
+    return;
+  }
+
+  setStatus(t('settings.home.customInvalid'));
+}
+
+document.addEventListener('keydown', (event) => {
+  if (!event.target.matches?.('[data-game-search]')) {
+    if (event.key === 'Enter' && event.target.matches?.('[data-custom-input]')) addCustomGame();
+    return;
+  }
+  const list = gameSearchList();
+  const open = list && !list.hidden && gameSearchItems.length;
+  if (event.key === 'ArrowDown' && open) {
+    event.preventDefault();
+    highlightGameSearch(gameSearchActiveIndex + 1);
+    return;
+  }
+  if (event.key === 'ArrowUp' && open) {
+    event.preventDefault();
+    highlightGameSearch(gameSearchActiveIndex - 1);
+    return;
+  }
+  if (event.key === 'Escape') {
+    closeGameSearch();
+    return;
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    const picked = gameSearchActiveIndex >= 0 ? gameSearchItems[gameSearchActiveIndex] : gameSearchItems[0];
+    if (picked) pickGameFromSearch(picked.id);
+    else addCustomGame();
+  }
+});
 
 function renderAccentSettings() {
   const themeDefaults = { dark: { background: '#0b0c10', surface: '#111319' }, light: { background: '#f2f1f6', surface: '#ffffff' }, oled: { background: '#030305', surface: '#08090c' } }[preferences.theme];
   const displayBackground = preferences.themeBackground || themeDefaults.background;
   const displaySurface = preferences.themeSurface || themeDefaults.surface;
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.accent.title')}</h2><p>${t('settings.accent.body')}</p></div>${icon('palette', 18)}</div>
-      <div class="palette-row">${palettes.map((palette) => `<button class="palette-option ${preferences.accent.toLowerCase() === palette.color ? 'active' : ''}" data-accent="${palette.color}"><span class="palette-swatch" style="background:${palette.color};color:${palette.color}"></span>${t(`palette.${palette.key}`)}</button>`).join('')}</div>
+      <div class="palette-row">${palettes.map((palette) => `<button class="palette-option ${preferences.accent.toLowerCase() === palette.color ? 'active' : ''}" data-accent="${palette.color}" ${previewAttr('accent', palette.color, t(`palette.${palette.key}`))}><span class="palette-swatch" style="background:${palette.color};color:${palette.color}"></span>${t(`palette.${palette.key}`)}</button>`).join('')}</div>
       ${renderColorTuner('accent', preferences.accent, t('settings.customColor'))}
       <div class="setting-line accent-mode-line"><div class="setting-label"><strong>${t('settings.accentMode')}</strong></div><div class="segmented"><button class="segment ${preferences.accentMode === 'solid' ? 'active' : ''}" data-pref="accentMode" data-value="solid">${t('settings.solid')}</button><button class="segment ${preferences.accentMode === 'gradient' ? 'active' : ''}" data-pref="accentMode" data-value="gradient">${t('settings.gradient')}</button></div></div>
       ${preferences.accentMode === 'gradient' ? `<div class="gradient-options">${renderColorTuner('accentSecondary', preferences.accentSecondary, t('settings.gradientEnd'))}<label class="gradient-angle"><span>${t('settings.gradientAngle')}</span><input type="range" min="0" max="360" value="${preferences.gradientAngle}" data-setting="gradientAngle" /><output id="gradient-angle-value">${preferences.gradientAngle}°</output></label><div class="gradient-preview" aria-hidden="true"></div></div>` : ''}
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.theme.title')}</h2><p>${t('settings.theme.body')}</p></div></div><div class="segmented" style="max-width:390px"><button class="segment ${preferences.theme === 'dark' ? 'active' : ''}" data-pref="theme" data-value="dark">${icon('moon', 13)} ${t('settings.dark')}</button><button class="segment ${preferences.theme === 'light' ? 'active' : ''}" data-pref="theme" data-value="light">${icon('sun', 13)} ${t('settings.light')}</button><button class="segment ${preferences.theme === 'oled' ? 'active' : ''}" data-pref="theme" data-value="oled">${icon('contrast', 13)} ${t('settings.oled')}</button></div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.theme.title')}</h2><p>${t('settings.theme.body')}</p></div></div><div class="segmented" style="max-width:390px">${[['dark', `${icon('moon', 13)} ${t('settings.dark')}`], ['light', `${icon('sun', 13)} ${t('settings.light')}`], ['oled', `${icon('contrast', 13)} ${t('settings.oled')}`]].map(([value, label]) => `<button class="segment ${preferences.theme === value ? 'active' : ''}" data-pref="theme" data-value="${value}" ${previewAttr('theme', value, t(`settings.${value}`))}>${label}</button>`).join('')}</div>
       <p class="theme-color-hint">${t('settings.themeColorHint')}</p><div class="theme-color-tuners">${renderColorTuner('themeBackground', displayBackground, t('settings.themeBackground'))}${renderColorTuner('themeSurface', displaySurface, t('settings.themeSurface'))}</div>
       <button class="text-button theme-reset" data-action="reset-theme-colors">${t('settings.themeReset')}</button>
       <div class="settings-preview" style="margin-top:17px"><div class="preview-thumb"></div><div class="preview-copy"><strong>${t('settings.preview.title')}</strong><small>${t('settings.preview.body')}</small></div></div>
@@ -629,23 +896,184 @@ function renderAccentSettings() {
 
 function renderCardSettings() {
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.density.title')}</h2><p>${t('settings.density.body')}</p></div>${icon('grid', 18)}</div>
-      <div class="segmented density-segmented"><button class="segment ${preferences.density === 'spacious' ? 'active' : ''}" data-pref="density" data-value="spacious">${t('settings.spacious')}</button><button class="segment ${preferences.density === 'comfortable' ? 'active' : ''}" data-pref="density" data-value="comfortable">${t('settings.comfortable')}</button><button class="segment ${preferences.density === 'compact' ? 'active' : ''}" data-pref="density" data-value="compact">${t('settings.compact')}</button></div>
-      <div class="setting-line" style="margin-top:13px"><div class="setting-label"><strong>${t('settings.corners.title')}</strong><small>${t('settings.corners.body')}</small></div><div class="segmented"><button class="segment ${preferences.corners === 'soft' ? 'active' : ''}" data-pref="corners" data-value="soft">${t('settings.soft')}</button><button class="segment ${preferences.corners === 'sharp' ? 'active' : ''}" data-pref="corners" data-value="sharp">${t('settings.sharp')}</button></div></div>
+      <div class="segmented density-segmented">${[['spacious', t('settings.spacious')], ['comfortable', t('settings.comfortable')], ['compact', t('settings.compact')]].map(([value, label]) => `<button class="segment ${preferences.density === value ? 'active' : ''}" data-pref="density" data-value="${value}" ${previewAttr('density', value, label)}>${label}</button>`).join('')}</div>
+      <div class="setting-line" style="margin-top:13px"><div class="setting-label"><strong>${t('settings.corners.title')}</strong><small>${t('settings.corners.body')}</small></div><div class="segmented">${[['soft', t('settings.soft')], ['sharp', t('settings.sharp')]].map(([value, label]) => `<button class="segment ${preferences.corners === value ? 'active' : ''}" data-pref="corners" data-value="${value}" ${previewAttr('corners', value, label)}>${label}</button>`).join('')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.descriptions')}</strong><small>${t('settings.descriptionsBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.showDescriptions}" data-toggle="showDescriptions" aria-label="${t('settings.descriptions')}"></button></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.playerStats')}</strong><small>${t('settings.playerStatsBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.showStats}" data-toggle="showStats" aria-label="${t('settings.playerStats')}"></button></div>
       <div class="settings-preview"><div class="density-preview-art" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><div class="preview-copy"><strong>${t('settings.anyScreen')}</strong><small>${t('settings.appliesToCatalog')}</small></div></div>
     </section>`;
 }
 
+function renderAnimationOption(preference, value, label, active) {
+  return `<button class="segment ${active ? 'active' : ''}" data-pref="${preference}" data-value="${value}" data-preview="${preference}:${value}" data-preview-label="${escapeHtml(label)}"><span>${label}</span></button>`;
+}
+
+function previewAttr(type, value, label) {
+  return `data-preview="${type}:${value}" data-preview-label="${escapeHtml(label)}"`;
+}
+
+// Segmented control where every option shows a hover preview of what it changes.
+function segmentsWithPreview(preference, options) {
+  return `<div class="segmented">${options.map(([value, label, type]) => `<button class="segment ${preferences[preference] === value || String(preferences[preference]) === String(value) ? 'active' : ''}" data-pref="${preference}" data-value="${value}" ${previewAttr(type || preference, value, label)}>${label}</button>`).join('')}</div>`;
+}
+
+// Floating preview: every option that carries data-preview="<type>:<value>" shows a small
+// mock of the launcher while the pointer is over it, the same way effect options always did.
+function previewMarkup(type, value, label) {
+  if (type === 'pageTransition' || type === 'cardAnimation') {
+    return `<div class="hover-preview-mock animation-mock"><i class="animation-preview-screen"><b></b><b></b><b></b></i></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'accent') {
+    return `<div class="hover-preview-mock accent-mock" style="--mock-accent:${escapeHtml(value)}"><span class="mock-chip"></span><span class="mock-bar"></span><span class="mock-bar short"></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'accentMode') {
+    return `<div class="hover-preview-mock fill-mock ${value === 'gradient' ? 'is-gradient' : ''}"><span class="mock-chip"></span><span class="mock-bar"></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'theme') {
+    const tone = { dark: ['#0b0c10', '#14161d'], light: ['#f2f1f6', '#ffffff'], oled: ['#030305', '#08090c'] }[value] || ['#0b0c10', '#14161d'];
+    return `<div class="hover-preview-mock theme-mock" style="--mock-bg:${tone[0]};--mock-surface:${tone[1]}"><span class="mock-side"></span><span class="mock-bar"></span><span class="mock-bar short"></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'density') {
+    const columns = { spacious: 2, comfortable: 3, compact: 4 }[value] || 3;
+    return `<div class="hover-preview-mock grid-mock" style="--mock-columns:${columns}">${'<i></i>'.repeat(columns * 2)}</div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'corners') {
+    return `<div class="hover-preview-mock corners-mock ${value === 'sharp' ? 'is-sharp' : ''}"><i></i><i></i></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'homeLayout') {
+    const heroHeight = { balanced: '38%', spotlight: '58%', library: '22%' }[value] || '38%';
+    return `<div class="hover-preview-mock layout-mock" style="--mock-hero:${heroHeight}"><span class="mock-hero"></span><span class="mock-grid">${'<i></i>'.repeat(3)}</span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'homeSkin') {
+    return `<div class="hover-preview-mock skin-mock skin-${escapeHtml(value)}"><span class="mock-hero"></span><span class="mock-grid">${'<i></i>'.repeat(3)}</span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'heroStyle') {
+    return `<div class="hover-preview-mock hero-style-mock hero-${escapeHtml(value)}"><span class="mock-orbit"></span><span class="mock-bar"></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'toggle') {
+    return `<div class="hover-preview-mock toggle-mock"><span class="mock-toggle"></span><span class="mock-bar"></span><span class="mock-bar short"></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  return '';
+}
+
+function previewTarget(event) {
+  return event.target.closest?.('[data-preview]') || null;
+}
+
+function hideHoverPreview() {
+  const layer = document.getElementById('hover-preview-layer');
+  if (layer) layer.hidden = true;
+}
+
+function showHoverPreview(target) {
+  const [type, value = ''] = String(target.dataset.preview || '').split(':');
+  const label = target.dataset.previewLabel || target.textContent.trim();
+  const markup = previewMarkup(type, value, label);
+  if (!markup) return;
+  let layer = document.getElementById('hover-preview-layer');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.id = 'hover-preview-layer';
+    layer.className = 'hover-preview-layer';
+    layer.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(layer);
+  }
+  layer.innerHTML = markup;
+  layer.hidden = false;
+  const box = target.getBoundingClientRect();
+  const width = layer.offsetWidth || 150;
+  const height = layer.offsetHeight || 90;
+  const left = Math.max(12, Math.min(window.innerWidth - width - 12, box.left + box.width / 2 - width / 2));
+  const above = box.top - height - 10;
+  const top = above > 8 ? above : Math.min(window.innerHeight - height - 12, box.bottom + 10);
+  layer.style.left = `${left}px`;
+  layer.style.top = `${Math.max(8, top)}px`;
+}
+
+document.addEventListener('mouseover', (event) => {
+  const target = previewTarget(event);
+  if (!target) return;
+  if (target.contains(event.relatedTarget)) return;
+  showHoverPreview(target);
+});
+document.addEventListener('mouseout', (event) => {
+  const target = previewTarget(event);
+  if (!target || target.contains(event.relatedTarget)) return;
+  hideHoverPreview();
+});
+document.addEventListener('scroll', hideHoverPreview, true);
+
 function renderEffectSettings() {
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.effects.title')}</h2><p>${t('settings.effects.body')}</p></div>${icon('wand', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.glow.title')}</strong><small>${t('settings.glow.body')}</small></div><label class="range-control"><input type="range" min="0" max="100" value="${preferences.glow}" data-setting="glow" /><span class="range-value" id="glow-value">${preferences.glow}%</span></label></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.ambient.title')}</strong><small>${t('settings.ambient.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.ambient}" data-toggle="ambient" aria-label="${t('settings.ambient.title')}"></button></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.motion.title')}</strong><small>${t('settings.motion.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.motion}" data-toggle="motion" aria-label="${t('settings.motion.title')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.transitionStyle')}</strong></div><div class="segmented animation-segmented"><button class="segment ${preferences.pageTransition === 'fade' ? 'active' : ''}" data-pref="pageTransition" data-value="fade">${t('settings.transition.fade')}</button><button class="segment ${preferences.pageTransition === 'slide' ? 'active' : ''}" data-pref="pageTransition" data-value="slide">${t('settings.transition.slide')}</button><button class="segment ${preferences.pageTransition === 'zoom' ? 'active' : ''}" data-pref="pageTransition" data-value="zoom">${t('settings.transition.zoom')}</button><button class="segment ${preferences.pageTransition === 'none' ? 'active' : ''}" data-pref="pageTransition" data-value="none">${t('settings.transition.none')}</button></div></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardAnimation')}</strong></div><div class="segmented animation-segmented"><button class="segment ${preferences.cardAnimation === 'rise' ? 'active' : ''}" data-pref="cardAnimation" data-value="rise">${t('settings.cards.rise')}</button><button class="segment ${preferences.cardAnimation === 'fade' ? 'active' : ''}" data-pref="cardAnimation" data-value="fade">${t('settings.cards.fade')}</button><button class="segment ${preferences.cardAnimation === 'pop' ? 'active' : ''}" data-pref="cardAnimation" data-value="pop">${t('settings.cards.pop')}</button><button class="segment ${preferences.cardAnimation === 'none' ? 'active' : ''}" data-pref="cardAnimation" data-value="none">${t('settings.cards.none')}</button></div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.transitionStyle')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('pageTransition', 'fade', t('settings.transition.fade'), preferences.pageTransition === 'fade')}${renderAnimationOption('pageTransition', 'slide', t('settings.transition.slide'), preferences.pageTransition === 'slide')}${renderAnimationOption('pageTransition', 'zoom', t('settings.transition.zoom'), preferences.pageTransition === 'zoom')}${renderAnimationOption('pageTransition', 'none', t('settings.transition.none'), preferences.pageTransition === 'none')}</div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardAnimation')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('cardAnimation', 'rise', t('settings.cards.rise'), preferences.cardAnimation === 'rise')}${renderAnimationOption('cardAnimation', 'fade', t('settings.cards.fade'), preferences.cardAnimation === 'fade')}${renderAnimationOption('cardAnimation', 'pop', t('settings.cards.pop'), preferences.cardAnimation === 'pop')}${renderAnimationOption('cardAnimation', 'none', t('settings.cards.none'), preferences.cardAnimation === 'none')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.contrast.title')}</strong><small>${t('settings.contrast.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.contrast}" data-toggle="contrast" aria-label="${t('settings.contrast.title')}"></button></div>
     </section><p class="catalog-disclaimer">${t('settings.savedLocally')}</p>`;
+}
+
+function renderInterfaceSettings() {
+  const order = navOrder();
+  const rows = order.map((key, index) => {
+    const item = NAV_ITEMS.find((entry) => entry.key === key);
+    if (!item) return '';
+    return `<div class="ui-row" data-ui-row="${key}">
+      <button class="ui-row-handle" data-ui-move="${key}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="${t('settings.ui.moveUp')}">${icon('navUp', 13)}</button>
+      <button class="ui-row-handle" data-ui-move="${key}" data-direction="1" ${index === order.length - 1 ? 'disabled' : ''} aria-label="${t('settings.ui.moveDown')}">${icon('navDown', 13)}</button>
+      <span class="ui-row-icon" data-icon="${item.icon}"></span>
+      <span class="ui-row-copy"><strong>${t(`nav.${item.key}`)}</strong><small>${t(`settings.ui.group.${item.group}`)}</small></span>
+    </div>`;
+  }).join('');
+  const partToggle = (pref, titleKey, bodyKey, previewType) => `<div class="setting-line"><div class="setting-label"><strong>${t(titleKey)}</strong><small>${t(bodyKey)}</small></div><button class="toggle" role="switch" aria-checked="${preferences[pref]}" data-toggle="${pref}" data-preview="${previewType}:${preferences[pref] ? 'on' : 'off'}" data-preview-label="${escapeHtml(t(titleKey))}" aria-label="${t(titleKey)}"></button></div>`;
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.ui.navTitle')}</h2><p>${t('settings.ui.navBody')}</p></div>${icon('layout', 18)}</div>
+      <div class="ui-list" data-ui-order>${rows}</div>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.ui.partsTitle')}</h2><p>${t('settings.ui.partsBody')}</p></div>${icon('sliders', 18)}</div>
+      <p class="ui-section-title">${t('settings.ui.sidebar')}</p>
+      ${partToggle('uiSidebarTip', 'settings.ui.tip', 'settings.ui.tipBody', 'toggle')}
+      ${partToggle('uiProfileCard', 'settings.ui.profile', 'settings.ui.profileBody', 'toggle')}
+      ${partToggle('uiSidebarFoot', 'settings.ui.foot', 'settings.ui.footBody', 'toggle')}
+      <p class="ui-section-title">${t('settings.ui.topbar')}</p>
+      ${partToggle('uiTopbarSearch', 'settings.ui.search', 'settings.ui.searchBody', 'toggle')}
+      ${partToggle('uiBreadcrumb', 'settings.ui.breadcrumb', 'settings.ui.breadcrumbBody', 'toggle')}
+      ${partToggle('uiNotifications', 'settings.ui.notifications', 'settings.ui.notificationsBody', 'toggle')}
+      <p class="ui-section-title">${t('settings.ui.other')}</p>
+      ${partToggle('uiUpdateBanner', 'settings.ui.updateBanner', 'settings.ui.updateBannerBody', 'toggle')}
+      <button class="text-button theme-reset" data-action="reset-interface">${t('settings.ui.reset')}</button>
+    </section>`;
+}
+
+function moveNavItem(key, direction) {
+  const order = navOrder();
+  const index = order.indexOf(key);
+  const target = index + Number(direction);
+  if (index < 0 || target < 0 || target >= order.length) return;
+  [order[index], order[target]] = [order[target], order[index]];
+  preferences.sidebarOrder = order;
+  savePreferences();
+  renderSidebar();
+  renderPage();
+}
+
+function renderUpdateSettings() {
+  const state = latestUpdateState || { status: 'checking', progress: 0 };
+  const status = state.status;
+  const version = state.latestVersion || state.currentVersion || '';
+  const statusMessage = status === 'downloading' ? t('updates.downloading', { percent: Math.max(0, Math.min(100, Number(state.progress) || 0)) })
+    : status === 'downloaded' ? t('updates.ready')
+      : status === 'applying' ? t('updates.applying')
+        : status === 'error' ? t('updates.error', { error: escapeHtml(state.errorMessage || 'Unknown error') })
+          : status === 'current' ? t('updates.current')
+            : status === 'unavailable' ? t('updates.unavailable')
+              : status === 'development' ? t('updates.development') : t('updates.checking');
+  const progress = Math.max(0, Math.min(100, Number(state.progress) || 0));
+  const visualProgress = status === 'applying' || status === 'downloaded' ? 100 : progress;
+  return `<section class="settings-card update-settings-card" id="update-settings-card" data-update-status="${escapeHtml(status)}"><div class="settings-card-head"><div><h2>${t('updates.settingsTitle')}</h2><p>${t('updates.settingsBody')}</p></div>${icon('download', 18)}</div>
+    <div class="update-settings-preview"><div class="update-preview-art" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="update-preview-copy"><strong>${status === 'error' ? t('updates.error', { error: escapeHtml(state.errorMessage || 'Unknown error') }) : escapeHtml(version ? `Vortex ${version}` : t('updates.settingsTitle'))}</strong><small>${statusMessage}</small><span class="update-settings-progress"><i style="--progress:${visualProgress}%"></i></span></div></div>
+    ${status === 'error' ? `<button class="ghost-button update-retry-button" data-action="retry-update">${t('updates.retry')}</button>` : ''}
+  </section>`;
 }
 
 function renderGeneralSettings() {
@@ -664,12 +1092,21 @@ function renderGeneralSettings() {
 }
 
 function renderSettings() {
-  const panel = preferences.settingsTab === 'home' ? renderHomeSettings() : preferences.settingsTab === 'cards' ? renderCardSettings() : preferences.settingsTab === 'effects' ? renderEffectSettings() : preferences.settingsTab === 'general' ? renderGeneralSettings() : renderAccentSettings();
+  const panel = preferences.settingsTab === 'home' ? renderHomeSettings() : preferences.settingsTab === 'cards' ? renderCardSettings() : preferences.settingsTab === 'effects' ? renderEffectSettings() : preferences.settingsTab === 'interface' ? renderInterfaceSettings() : preferences.settingsTab === 'general' ? renderGeneralSettings() : preferences.settingsTab === 'version' ? renderUpdateSettings() : renderAccentSettings();
   return `${pageHeading(t('page.settings.eyebrow'), t('page.settings.title'), t('page.settings.description'))}
     <div class="settings-layout">${settingsTabs()}<div class="settings-panel">${panel}</div></div>`;
 }
 
-const viewNames = { home: 'nav.home', catalog: 'nav.catalog', favorites: 'nav.favorites', recent: 'nav.recent', reviews: 'nav.reviews', plans: 'nav.plans', settings: 'nav.settings' };
+const viewNames = { home: 'nav.home', catalog: 'nav.catalog', favorites: 'nav.favorites', recent: 'nav.recent', plans: 'nav.plans', settings: 'nav.settings' };
+
+function renderSidebar() {
+  const groups = renderSidebarNav();
+  const menu = document.querySelector('[data-nav-group="menu"]');
+  const space = document.querySelector('[data-nav-group="space"]');
+  if (menu) menu.innerHTML = groups.menu;
+  if (space) space.innerHTML = groups.space;
+  mountIcons(document.querySelector('.sidebar') || document.body);
+}
 
 function updateSidebar() {
   document.querySelectorAll('[data-nav]').forEach((button) => button.classList.toggle('active', button.dataset.nav === currentView));
@@ -680,7 +1117,7 @@ function renderPage() {
   applyPreferences();
   updateSidebar();
   renderUpdateBanner();
-  const pages = { home: renderHome, catalog: renderCatalog, favorites: renderFavorites, recent: renderRecent, reviews: renderReviews, plans: renderPlans, settings: renderSettings };
+  const pages = { home: renderHome, catalog: renderCatalog, favorites: renderFavorites, recent: renderRecent, plans: renderPlans, settings: renderSettings };
   pageContent.innerHTML = (pages[currentView] || renderHome)();
   mountIcons(pageContent);
   if (pageContent.dataset.renderedView !== currentView) {
@@ -696,19 +1133,24 @@ function renderUpdateBanner(state) {
   if (state) latestUpdateState = state;
   const banner = document.getElementById('update-banner');
   if (!banner) return;
-  if (!latestUpdateState || !['downloading', 'downloaded'].includes(latestUpdateState.status)) {
+  const status = latestUpdateState?.status;
+  const visibleStatuses = ['downloading', 'downloaded', 'applying', 'error'];
+  if (!visibleStatuses.includes(status) || !preferences.uiUpdateBanner) {
     banner.hidden = true;
     banner.innerHTML = '';
     return;
   }
-  const isDownloaded = latestUpdateState.status === 'downloaded';
   const progress = Math.max(0, Math.min(100, Number(latestUpdateState.progress) || 0));
-  const title = isDownloaded
-    ? t('updates.title', { version: escapeHtml(latestUpdateState.latestVersion || '') })
-    : t('updates.title', { version: escapeHtml(latestUpdateState.latestVersion || '') });
-  const message = isDownloaded ? t('updates.ready') : t('updates.downloading', { percent: progress });
+  const title = t('updates.title', { version: escapeHtml(latestUpdateState.latestVersion || '') });
+  const message = status === 'downloaded' ? t('updates.ready')
+    : status === 'applying' ? t('updates.applying')
+      : status === 'error' ? t('updates.error', { error: escapeHtml(latestUpdateState.errorMessage || 'Unknown error') })
+        : t('updates.downloading', { percent: progress });
+  banner.dataset.status = status;
   banner.hidden = false;
-  banner.innerHTML = `<span class="update-banner-icon">${icon(isDownloaded ? 'check' : 'sparkle', 18)}</span><span class="update-banner-copy"><strong>${title}</strong><small>${escapeHtml(message)}</small></span>${isDownloaded ? `<button class="ghost-button" data-action="open-update-installer">${icon('download', 13)} ${t('updates.open')}</button>` : `<span class="update-banner-progress" aria-label="${progress}%"><i style="--progress:${progress}%"></i></span>`}`;
+  banner.innerHTML = `<span class="update-banner-icon">${icon(status === 'error' ? 'close' : status === 'downloaded' ? 'check' : 'sparkle', 18)}</span><span class="update-banner-copy"><strong>${title}</strong><small>${message}</small></span>${status === 'error' ? `<button class="ghost-button" data-action="retry-update">${t('updates.retry')}</button>` : `<span class="update-banner-progress" aria-label="${progress}%"><i style="--progress:${status === 'applying' || status === 'downloaded' ? 100 : progress}%"></i></span>`}`;
+  const updateSettingsCard = document.getElementById('update-settings-card');
+  if (updateSettingsCard && currentView === 'settings' && preferences.settingsTab === 'version') updateSettingsCard.outerHTML = renderUpdateSettings();
 }
 
 let toastTimer;
@@ -767,21 +1209,26 @@ function saveCachedSearch(query) {
 
 async function hydrateFeaturedGames() {
   if (!window.vortexDesktop?.getFeaturedGames) return;
+  const customGames = Array.isArray(preferences.customGames) ? preferences.customGames : [];
+  if (!customGames.length) return;
+  const refreshCustom = (items) => {
+    const byId = new Map((items || []).map((game) => [String(game.id), game]));
+    preferences.customGames = customGames.map((game) => (byId.get(String(game.id)) ? { ...game, ...byId.get(String(game.id)), id: String(game.id), live: true } : game));
+    savePreferences();
+  };
   const cached = readStored('vortex.featuredCache', null);
   if (cached && Date.now() - cached.savedAt < SEARCH_CACHE_TTL) {
-    const byId = new Map((cached.items || []).map((game) => [String(game.id), game]));
-    games.forEach((game) => { const updated = byId.get(game.id); if (updated) Object.assign(game, updated, { live: true }); });
+    refreshCustom(cached.items);
     if (currentView === 'home') renderPage();
     return;
   }
   try {
-    const items = await window.vortexDesktop.getFeaturedGames(games.map((game) => game.id));
-    const byId = new Map((items || []).map((game) => [String(game.id), game]));
-    games.forEach((game) => { const updated = byId.get(game.id); if (updated) Object.assign(game, updated, { live: true }); });
-    try { localStorage.setItem('vortex.featuredCache', JSON.stringify({ savedAt: Date.now(), items })); } catch { /* Keep the hydrated cards in memory. */ }
+    const items = await window.vortexDesktop.getFeaturedGames(customGames.map((game) => String(game.id)));
+    refreshCustom(items);
+    try { localStorage.setItem('vortex.featuredCache', JSON.stringify({ savedAt: Date.now(), items })); } catch { /* Keep the cards in memory. */ }
     if (currentView === 'home') renderPage();
   } catch {
-    // Local starter cards remain usable if Roblox's public API is unavailable.
+    // Saved cards remain usable if Roblox's public API is unavailable.
   }
 }
 
@@ -925,7 +1372,7 @@ async function fetchLiveSearch(append = false) {
       return;
     }
     searchStatus = 'error';
-    searchResults = games.filter((game) => game.id === query || `${game.title} ${game.genre} ${game.description} ${game.search}`.toLocaleLowerCase(preferences.language).includes(query.toLocaleLowerCase(preferences.language)));
+    searchResults = allGames().filter((game) => game.id === query || `${game.title} ${game.genre} ${game.description} ${game.search}`.toLocaleLowerCase(preferences.language).includes(query.toLocaleLowerCase(preferences.language)));
     searchPageToken = null;
     renderPage();
   }
@@ -976,6 +1423,17 @@ function setView(view) {
 }
 
 document.addEventListener('click', (event) => {
+  const move = event.target.closest('[data-ui-move]');
+  if (move) {
+    moveNavItem(move.dataset.uiMove, move.dataset.direction);
+    return;
+  }
+  const gamePick = event.target.closest('[data-game-pick]');
+  if (gamePick) {
+    pickGameFromSearch(gamePick.dataset.gamePick);
+    return;
+  }
+  if (!event.target.closest('.game-search-field')) closeGameSearch();
   const sortToggle = event.target.closest('[data-sort-toggle]');
   if (sortToggle) {
     const select = sortToggle.closest('[data-custom-select]');
@@ -1031,8 +1489,9 @@ document.addEventListener('click', (event) => {
       else { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); }
     }
     if (action.dataset.action === 'notifications') showToast(t('toast.notifications'));
-    if (action.dataset.action === 'open-update-installer') {
-      window.vortexDesktop?.openDownloadedUpdate?.().catch(() => showToast(t('updates.openError')));
+    if (action.dataset.action === 'retry-update') {
+      renderUpdateBanner({ status: 'checking', progress: 0 });
+      window.vortexDesktop?.retryUpdateCheck?.().catch(() => {});
     }
     if (action.dataset.action === 'clear-cache') {
       Object.keys(localStorage).filter((key) => key.startsWith(SEARCH_CACHE_PREFIX)).forEach((key) => localStorage.removeItem(key));
@@ -1042,6 +1501,20 @@ document.addEventListener('click', (event) => {
       discoveryStatus = 'idle';
       window.vortexDesktop?.clearSearchCache?.();
       showToast(t('settings.cacheCleared'));
+    }
+    if (action.dataset.action === 'reset-interface') {
+      preferences.sidebarOrder = [];
+      preferences.uiSidebarTip = true;
+      preferences.uiProfileCard = true;
+      preferences.uiTopbarSearch = true;
+      preferences.uiBreadcrumb = true;
+      preferences.uiNotifications = true;
+      preferences.uiSidebarFoot = true;
+      preferences.uiUpdateBanner = true;
+      savePreferences();
+      renderSidebar();
+      renderPage();
+      showToast(t('settings.ui.resetDone'));
     }
     if (action.dataset.action === 'reset-appearance') {
       const language = preferences.language;
@@ -1072,6 +1545,18 @@ document.addEventListener('click', (event) => {
   const accent = event.target.closest('[data-accent]');
   if (accent) { preferences.accent = accent.dataset.accent; savePreferences(); renderPage(); return; }
 
+  if (event.target.closest('[data-add-custom]')) { addCustomGame(); return; }
+
+  const removeCustom = event.target.closest('[data-remove-custom]');
+  if (removeCustom) {
+    const id = removeCustom.dataset.removeCustom;
+    preferences.customGames = (preferences.customGames || []).filter((game) => String(game.id) !== id);
+    if (String(preferences.homeFeaturedGame) === id) preferences.homeFeaturedGame = '';
+    savePreferences();
+    renderPage();
+    return;
+  }
+
   const featuredGame = event.target.closest('[data-home-featured]');
   if (featuredGame) { preferences.homeFeaturedGame = featuredGame.dataset.homeFeatured; savePreferences(); renderPage(); return; }
 
@@ -1090,6 +1575,10 @@ document.addEventListener('click', (event) => {
 document.addEventListener('input', (event) => {
   if (event.target === searchInput) {
     scheduleLiveSearch(searchInput.value);
+    return;
+  }
+  if (event.target.matches('[data-game-search]')) {
+    scheduleGameSearch(event.target.value);
     return;
   }
   if (event.target.hasAttribute('data-color-hex')) {
@@ -1180,6 +1669,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 mountIcons();
+renderSidebar();
 applyPreferences();
 renderPage();
 window.vortexDesktop?.onWindowState?.(({ isMaximized }) => setWindowMaximized(Boolean(isMaximized)));

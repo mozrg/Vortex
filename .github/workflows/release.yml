@@ -30,17 +30,20 @@ jobs:
           }
       - name: Build installer
         run: npm run build:win
-      - name: Create release and upload installer with checksum
+      - name: Create release and upload installer with SHA-256
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $packageVersion = node -p "require('./package.json').version"
-          $installer = "dist/Vortex Launcher Setup $packageVersion.exe"
-          if (!(Test-Path -LiteralPath $installer)) {
-            throw "Installer not found: $installer"
+          $builtInstaller = "dist/Vortex Launcher Setup $packageVersion.exe"
+          if (!(Test-Path -LiteralPath $builtInstaller)) {
+            throw "Installer not found: $builtInstaller"
           }
+          $installer = "dist/Vortex.Launcher.Setup.$packageVersion.exe"
+          Copy-Item -LiteralPath $builtInstaller -Destination $installer
           $checksum = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
           $checksumFile = "${installer}.sha256"
           [System.IO.File]::WriteAllText($checksumFile, $checksum)
+
           gh release create $env:GITHUB_REF_NAME $installer $checksumFile --verify-tag --title "Vortex Place Launcher $env:GITHUB_REF_NAME" --generate-notes

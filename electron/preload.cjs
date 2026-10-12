@@ -10,6 +10,13 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
     return () => ipcRenderer.removeListener('window:state', listener);
   },
   openGame: (placeId) => ipcRenderer.invoke('game:open', placeId),
+  getUpdateState: () => ipcRenderer.invoke('updates:get-state'),
+  openDownloadedUpdate: () => ipcRenderer.invoke('updates:open-installer'),
+  onUpdateState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('updates:state', listener);
+    return () => ipcRenderer.removeListener('updates:state', listener);
+  },
   searchGames: (request) => ipcRenderer.invoke('games:search', request),
   discoverGames: (request) => ipcRenderer.invoke('games:discover', request),
   getFeaturedGames: (placeIds) => ipcRenderer.invoke('games:featured', placeIds),

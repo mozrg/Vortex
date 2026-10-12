@@ -1,6 +1,6 @@
 {
   "name": "vortex-roblox-launcher",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "A customizable desktop launcher for Roblox experiences.",
   "main": "electron/main.cjs",
@@ -34,7 +34,9 @@
     ],
     "win": {
       "icon": "assets/vortex-app-icon.ico",
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "nsis": {
       "oneClick": false,

@@ -20,6 +20,7 @@ const icons = {
   moon: '<path d="M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5 8.7 8.7 0 1 0 20.5 14.2Z"/>',
   contrast: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>',
   close: '<path d="m18 6-12 12M6 6l12 12"/>',
   arrowUpRight: '<path d="M7 17 17 7M7 7h10v10"/>',
   wave: '<path d="M3 15c2.2 0 2.2-6 4.5-6s2.3 6 4.5 6 2.3-6 4.5-6 2.3 6 4.5 6"/><path d="M4 20h16"/>',
@@ -77,7 +78,7 @@ const preferenceDefaults = {
   theme: 'dark', themeBackground: '', themeSurface: '',
   density: 'comfortable', corners: 'soft', showDescriptions: true, showStats: true,
   homeGreeting: '', homeFeaturedGame: '2753915549', homeGameCount: 4, homeHeroStyle: 'orbit',
-  homeShowHero: true, homeShowRecommendations: true, homeShowQuickAccess: true,
+  homeShowHero: true, homeShowRecommendations: true,
   pageTransition: 'fade', cardAnimation: 'rise', glow: 72, ambient: true, motion: true,
   contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home'
 };
@@ -103,7 +104,7 @@ const translations = {
     'page.plans.eyebrow': 'ДАЛЬШЕ — БОЛЬШЕ', 'page.plans.title': 'В планах', 'page.plans.description': 'Идеи, которые помогут быстрее находить игры и собирать друзей.', 'plans.friends': 'Играть с друзьями', 'plans.friendsBody': 'Приглашения, список друзей и быстрый переход в ту же игру.', 'plans.recommendations': 'Умные рекомендации', 'plans.recommendationsBody': 'Подбирать новые миры по жанрам и сохранённым играм.', 'plans.collections': 'Коллекции и списки', 'plans.collectionsBody': 'Свои подборки: «на вечер», «кооператив» или «попробовать».', 'plans.reviews': 'Отзывы и оценки', 'plans.reviewsBody': 'Оценки игроков, короткие отзывы и подборки сообщества.', 'plans.status': 'В ПЛАНАХ',
     'page.settings.eyebrow': 'ТВОЁ ПРИЛОЖЕНИЕ — ТВОИ ПРАВИЛА', 'page.settings.title': 'Настройки', 'page.settings.description': 'Настрой внешний вид и поведение лаунчера.', 'settings.tab.home': 'Главная', 'settings.tab.accent': 'Внешний вид', 'settings.tab.cards': 'Карточки', 'settings.tab.effects': 'Эффекты', 'settings.tab.general': 'Общие',
     'settings.accent.title': 'Цвет акцента', 'settings.accent.body': 'Выбери цвет — он обновится во всём лаунчере.', 'settings.customColor': 'Свой цвет', 'settings.theme.title': 'Тема приложения', 'settings.theme.body': 'Выбери оформление интерфейса.', 'settings.dark': 'Тёмная', 'settings.light': 'Светлая', 'settings.oled': 'Чёрная', 'settings.preview.title': 'Так будет выглядеть лаунчер', 'settings.preview.body': 'Акцент меняется во всех карточках и кнопках',
-    'settings.home.title': 'Главная страница', 'settings.home.body': 'Выбери, что показывать и какую игру вынести вперёд.', 'settings.home.greeting': 'Твоё приветствие', 'settings.home.greetingHint': 'Оставь пустым, чтобы вернуть «Привет, игрок».', 'settings.home.featured': 'Игра на обложке', 'settings.home.sections': 'Блоки главной', 'settings.home.hero': 'Большая обложка', 'settings.home.recommendations': 'Подборка игр', 'settings.home.quickAccess': 'Быстрый доступ', 'settings.home.gameCount': 'Размер подборки', 'settings.home.heroStyle': 'Стиль обложки', 'settings.home.orbit': 'Орбита', 'settings.home.aurora': 'Сияние', 'settings.home.minimal': 'Минимализм',
+    'settings.home.title': 'Главная страница', 'settings.home.body': 'Выбери, что показывать и какую игру вынести вперёд.', 'settings.home.greeting': 'Твоё приветствие', 'settings.home.greetingHint': 'Оставь пустым, чтобы вернуть «Привет, игрок».', 'settings.home.featured': 'Игра на обложке', 'settings.home.sections': 'Блоки главной', 'settings.home.hero': 'Большая обложка', 'settings.home.recommendations': 'Подборка игр', 'settings.home.gameCount': 'Размер подборки', 'settings.home.heroStyle': 'Стиль обложки', 'settings.home.orbit': 'Орбита', 'settings.home.aurora': 'Сияние', 'settings.home.minimal': 'Минимализм',
     'settings.accentMode': 'Заливка акцента', 'settings.solid': 'Сплошная', 'settings.gradient': 'Градиент', 'settings.gradientEnd': 'Второй цвет', 'settings.gradientAngle': 'Направление градиента', 'settings.colorHue': 'Оттенок', 'settings.colorSaturation': 'Насыщенность', 'settings.colorLightness': 'Светлота', 'settings.colorCode': 'HEX-код', 'settings.themeBackground': 'Цвет фона', 'settings.themeSurface': 'Цвет панелей', 'settings.themeColorHint': 'Можно ввести свой HEX-код; настройки применятся сразу.', 'settings.themeReset': 'Цвета темы по умолчанию',
     'settings.density.title': 'Плотность карточек', 'settings.density.body': 'Выбери размер карточек и количество игр в ряду.', 'settings.spacious': 'Крупные', 'settings.comfortable': 'Обычные', 'settings.compact': 'Компактные', 'settings.corners.title': 'Углы карточек', 'settings.corners.body': 'Выбери более мягкий или строгий вид.', 'settings.soft': 'Мягкие', 'settings.sharp': 'Строгие', 'settings.descriptions': 'Описания игр', 'settings.descriptionsBody': 'Показывать короткий текст на карточках.', 'settings.playerStats': 'Статистика игроков', 'settings.playerStatsBody': 'Показывать текущий онлайн и оценку.', 'settings.anyScreen': 'Предпросмотр размера карточек', 'settings.appliesToCatalog': 'Настройка сразу применяется к каталогу',
     'settings.effects.title': 'Атмосфера интерфейса', 'settings.effects.body': 'Свечение и анимации можно настроить отдельно.', 'settings.glow.title': 'Подсветка акцента', 'settings.glow.body': 'Сила цветного свечения в фоне и элементах.', 'settings.ambient.title': 'Свечение фона', 'settings.ambient.body': 'Мягкие цветовые ореолы на заднем плане.', 'settings.motion.title': 'Анимации', 'settings.motion.body': 'Плавные переходы и реакции элементов.', 'settings.transitionStyle': 'Переход между страницами', 'settings.transition.fade': 'Плавный', 'settings.transition.slide': 'Сдвиг', 'settings.transition.zoom': 'Масштаб', 'settings.transition.none': 'Без перехода', 'settings.cardAnimation': 'Появление карточек', 'settings.cards.rise': 'Подъём', 'settings.cards.fade': 'Затухание', 'settings.cards.pop': 'Увеличение', 'settings.cards.none': 'Без анимации', 'settings.contrast.title': 'Повышенный контраст', 'settings.contrast.body': 'Более заметные границы и подписи.', 'settings.savedLocally': 'Настройки сохраняются на этом компьютере.',
@@ -111,7 +112,7 @@ const translations = {
     'palette.amethyst': 'Аметист', 'palette.azure': 'Лазурь', 'palette.mint': 'Мята', 'palette.rose': 'Роза', 'palette.amber': 'Янтарь', 'palette.crimson': 'Рубин', 'palette.aqua': 'Аква', 'palette.lime': 'Лайм', 'palette.orchid': 'Орхидея', 'palette.slate': 'Сланец', 'palette.Amethyst': 'Amethyst', 'palette.Azure': 'Azure', 'palette.Mint': 'Mint', 'palette.Rose': 'Rose', 'palette.Amber': 'Amber',
     'catalog.loading': 'Загружаем каталог Roblox…', 'catalog.loadingNote': 'Подбираем актуальные игры из Roblox Discover', 'catalog.errorTitle': 'Не удалось загрузить Roblox Discover.', 'catalog.errorBody': 'Показываем игры, которые уже сохранены на устройстве.', 'catalog.loadMore': 'Показать ещё игры',
     'catalog.sort.top-trending': 'В тренде', 'catalog.sort.up-and-coming': 'Набирают популярность', 'catalog.sort.top-playing-now': 'Сейчас играют', 'catalog.sort.fun-with-friends': 'Для игры с друзьями', 'catalog.sort.top-revisited': 'Возвращаются в игру',
-    'toast.favoriteAdded': 'Игра добавлена в избранное', 'toast.favoriteRemoved': 'Игра убрана из избранного', 'toast.opening': 'Открываю {game} в Roblox', 'toast.launchError': 'Не удалось открыть Roblox Player.', 'toast.notifications': 'Уведомления появятся в будущих версиях.', 'app.title': 'Vortex — Roblox Place Launcher'
+    'toast.favoriteAdded': 'Игра добавлена в избранное', 'toast.favoriteRemoved': 'Игра убрана из избранного', 'toast.opening': 'Открываю {game} в Roblox', 'toast.launchError': 'Не удалось открыть Roblox Player.', 'toast.notifications': 'Уведомления появятся в будущих версиях.', 'updates.title': 'Доступно обновление Vortex {version}', 'updates.downloading': 'Загружаем автоматически: {percent}%', 'updates.ready': 'Установщик проверен и готов. Открой его, чтобы обновить лаунчер.', 'updates.open': 'Открыть установщик', 'updates.openError': 'Не удалось открыть установщик.', 'app.title': 'Vortex — Roblox Place Launcher'
   },
   en: {
     'brand.home': 'Vortex — Home', 'window.toolbar': 'Window controls', 'window.drag': 'Drag to move the window', 'window.minimize': 'Minimize window', 'window.maximize': 'Maximize window', 'window.restore': 'Restore window size', 'window.close': 'Close window', 'window.context': 'YOUR SPACE FOR NEW WORLDS', 'sidebar.menu': 'MENU', 'sidebar.primaryNav': 'Primary navigation', 'sidebar.space': 'YOUR SPACE', 'sidebar.spaceNav': 'Your space',
@@ -133,7 +134,7 @@ const translations = {
     'page.plans.eyebrow': 'WHAT’S NEXT', 'page.plans.title': 'In the works', 'page.plans.description': 'Ideas to make discovering games and meeting up easier.', 'plans.friends': 'Play with friends', 'plans.friendsBody': 'Invites, a friends list, and a quick way to join the same game.', 'plans.recommendations': 'Smart recommendations', 'plans.recommendationsBody': 'Find new worlds based on genres and your saved games.', 'plans.collections': 'Collections and lists', 'plans.collectionsBody': 'Create lists like “for tonight”, “co-op”, or “try later”.', 'plans.reviews': 'Reviews and ratings', 'plans.reviewsBody': 'Player ratings, short reviews, and community lists.', 'plans.status': 'PLANNED',
     'page.settings.eyebrow': 'MAKE IT YOURS', 'page.settings.title': 'Settings', 'page.settings.description': 'Customize how the launcher looks and works.', 'settings.tab.home': 'Home', 'settings.tab.accent': 'Appearance', 'settings.tab.cards': 'Cards', 'settings.tab.effects': 'Effects', 'settings.tab.general': 'General',
     'settings.accent.title': 'Accent color', 'settings.accent.body': 'Choose a color to update the whole launcher.', 'settings.customColor': 'Custom color', 'settings.theme.title': 'App theme', 'settings.theme.body': 'Choose an interface style.', 'settings.dark': 'Dark', 'settings.light': 'Light', 'settings.oled': 'OLED', 'settings.preview.title': 'Launcher preview', 'settings.preview.body': 'Your accent appears across cards and buttons',
-    'settings.home.title': 'Home page', 'settings.home.body': 'Choose what appears here and which game gets the spotlight.', 'settings.home.greeting': 'Your greeting', 'settings.home.greetingHint': 'Leave blank to use “Hey, player”.', 'settings.home.featured': 'Featured game', 'settings.home.sections': 'Home sections', 'settings.home.hero': 'Featured banner', 'settings.home.recommendations': 'Game picks', 'settings.home.quickAccess': 'Quick access', 'settings.home.gameCount': 'Number of games', 'settings.home.heroStyle': 'Banner style', 'settings.home.orbit': 'Orbit', 'settings.home.aurora': 'Aurora', 'settings.home.minimal': 'Minimal',
+    'settings.home.title': 'Home page', 'settings.home.body': 'Choose what appears here and which game gets the spotlight.', 'settings.home.greeting': 'Your greeting', 'settings.home.greetingHint': 'Leave blank to use “Hey, player”.', 'settings.home.featured': 'Featured game', 'settings.home.sections': 'Home sections', 'settings.home.hero': 'Featured banner', 'settings.home.recommendations': 'Game picks', 'settings.home.gameCount': 'Number of games', 'settings.home.heroStyle': 'Banner style', 'settings.home.orbit': 'Orbit', 'settings.home.aurora': 'Aurora', 'settings.home.minimal': 'Minimal',
     'settings.accentMode': 'Accent fill', 'settings.solid': 'Solid', 'settings.gradient': 'Gradient', 'settings.gradientEnd': 'Second color', 'settings.gradientAngle': 'Gradient angle', 'settings.colorHue': 'Hue', 'settings.colorSaturation': 'Saturation', 'settings.colorLightness': 'Lightness', 'settings.colorCode': 'HEX code', 'settings.themeBackground': 'Background color', 'settings.themeSurface': 'Panel color', 'settings.themeColorHint': 'Enter a custom HEX code; changes apply immediately.', 'settings.themeReset': 'Restore theme colors',
     'settings.density.title': 'Card size and density', 'settings.density.body': 'Choose card size and how many games fit in a row.', 'settings.spacious': 'Large', 'settings.comfortable': 'Regular', 'settings.compact': 'Compact', 'settings.corners.title': 'Card corners', 'settings.corners.body': 'Choose a softer or sharper look.', 'settings.soft': 'Rounded', 'settings.sharp': 'Sharp', 'settings.descriptions': 'Game descriptions', 'settings.descriptionsBody': 'Show a short description on each card.', 'settings.playerStats': 'Player stats', 'settings.playerStatsBody': 'Show the current player count and rating.', 'settings.anyScreen': 'Card size preview', 'settings.appliesToCatalog': 'Changes apply to the catalog right away',
     'settings.effects.title': 'Interface atmosphere', 'settings.effects.body': 'Adjust glow and motion independently.', 'settings.glow.title': 'Accent glow', 'settings.glow.body': 'Set the strength of colored highlights.', 'settings.ambient.title': 'Background glow', 'settings.ambient.body': 'Soft colored light in the background.', 'settings.motion.title': 'Animations', 'settings.motion.body': 'Smooth transitions and interactive effects.', 'settings.transitionStyle': 'Page transition', 'settings.transition.fade': 'Fade', 'settings.transition.slide': 'Slide', 'settings.transition.zoom': 'Zoom', 'settings.transition.none': 'None', 'settings.cardAnimation': 'Card entrance', 'settings.cards.rise': 'Rise', 'settings.cards.fade': 'Fade', 'settings.cards.pop': 'Pop', 'settings.cards.none': 'None', 'settings.contrast.title': 'High contrast', 'settings.contrast.body': 'Make borders and labels easier to see.', 'settings.savedLocally': 'Settings are saved on this device.',
@@ -141,7 +142,7 @@ const translations = {
     'palette.amethyst': 'Amethyst', 'palette.azure': 'Azure', 'palette.mint': 'Mint', 'palette.rose': 'Rose', 'palette.amber': 'Amber', 'palette.crimson': 'Crimson', 'palette.aqua': 'Aqua', 'palette.lime': 'Lime', 'palette.orchid': 'Orchid', 'palette.slate': 'Slate',
     'catalog.loading': 'Loading the Roblox catalog…', 'catalog.loadingNote': 'Finding current experiences from Roblox Discover', 'catalog.errorTitle': 'Could not load Roblox Discover.', 'catalog.errorBody': 'Showing games already saved on this device.', 'catalog.loadMore': 'Show more games',
     'catalog.sort.top-trending': 'Trending', 'catalog.sort.up-and-coming': 'Up-and-coming', 'catalog.sort.top-playing-now': 'Playing now', 'catalog.sort.fun-with-friends': 'With friends', 'catalog.sort.top-revisited': 'Revisited',
-    'toast.favoriteAdded': 'Added to favorites', 'toast.favoriteRemoved': 'Removed from favorites', 'toast.opening': 'Opening {game} in Roblox', 'toast.launchError': 'Could not open Roblox Player.', 'toast.notifications': 'Notifications are planned for a future release.', 'app.title': 'Vortex — Roblox Place Launcher'
+    'toast.favoriteAdded': 'Added to favorites', 'toast.favoriteRemoved': 'Removed from favorites', 'toast.opening': 'Opening {game} in Roblox', 'toast.launchError': 'Could not open Roblox Player.', 'toast.notifications': 'Notifications are planned for a future release.', 'updates.title': 'Vortex update {version} is available', 'updates.downloading': 'Downloading automatically: {percent}%', 'updates.ready': 'The installer is verified and ready. Open it to update the launcher.', 'updates.open': 'Open installer', 'updates.openError': 'Could not open the installer.', 'app.title': 'Vortex — Roblox Place Launcher'
   }
 };
 
@@ -190,7 +191,7 @@ let catalogVisibleCount = CATALOG_PAGE_SIZE;
 const pageContent = document.getElementById('page-content');
 const searchInput = document.getElementById('global-search');
 const breadcrumbCurrent = document.getElementById('breadcrumb-current');
-const favoriteCount = document.getElementById('favorite-count');
+let latestUpdateState = null;
 
 function icon(name, size = 16) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.sparkle}</svg>`;
@@ -483,13 +484,8 @@ function renderHome() {
     </section>` : '';
   const recommendations = preferences.homeShowRecommendations ? `<section class="section-block"><div class="section-heading"><div><h2>${t('home.section.title')}</h2><p>${t('home.section.subtitle')}</p></div><button class="link-button" data-nav="catalog">${t('home.allGames')} ${icon('arrow', 13)}</button></div>
       ${renderGrid(picks)}</section>` : '';
-  const quickAccess = preferences.homeShowQuickAccess ? `<section class="home-shortcuts" aria-label="${t('settings.home.quickAccess')}">
-      <button class="home-shortcut" data-nav="catalog"><span class="shortcut-icon">${icon('compass', 17)}</span><span><small>${t('nav.catalog')}</small><strong>${formatCount(library.length)}</strong></span>${icon('arrow', 13)}</button>
-      <button class="home-shortcut" data-nav="favorites"><span class="shortcut-icon">${icon('heart', 17)}</span><span><small>${t('nav.favorites')}</small><strong>${formatCount(favorites.size)}</strong></span>${icon('arrow', 13)}</button>
-      <button class="home-shortcut" data-nav="recent"><span class="shortcut-icon">${icon('clock', 17)}</span><span><small>${t('nav.recent')}</small><strong>${formatCount(recentGames.length)}</strong></span>${icon('arrow', 13)}</button>
-    </section>` : '';
   return `${pageHeading(t('page.home.eyebrow'), `<span class="heading-inline-icon">${icon('handWave', 19)}</span>${escapeHtml(greeting)}`, t('page.home.description'))}
-    ${hero}${recommendations}${quickAccess}
+    ${hero}${recommendations}
     <p class="catalog-disclaimer"><strong>${t('home.disclaimer')}</strong> ${t('home.disclaimerBody')}</p>`;
 }
 
@@ -611,7 +607,6 @@ function renderHomeSettings() {
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.home.sections')}</h2><p>${t('settings.home.body')}</p></div>${icon('layout', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.hero')}</strong></div><button class="toggle" role="switch" aria-checked="${preferences.homeShowHero}" data-toggle="homeShowHero" aria-label="${t('settings.home.hero')}"></button></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.recommendations')}</strong></div><button class="toggle" role="switch" aria-checked="${preferences.homeShowRecommendations}" data-toggle="homeShowRecommendations" aria-label="${t('settings.home.recommendations')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.quickAccess')}</strong></div><button class="toggle" role="switch" aria-checked="${preferences.homeShowQuickAccess}" data-toggle="homeShowQuickAccess" aria-label="${t('settings.home.quickAccess')}"></button></div>
     </section>`;
 }
 
@@ -678,16 +673,13 @@ const viewNames = { home: 'nav.home', catalog: 'nav.catalog', favorites: 'nav.fa
 
 function updateSidebar() {
   document.querySelectorAll('[data-nav]').forEach((button) => button.classList.toggle('active', button.dataset.nav === currentView));
-  favoriteCount.textContent = String(favorites.size).padStart(2, '0');
-  const catalogCount = document.getElementById('catalog-count');
-  const discoveredCount = discoveryCatalog[activeDiscoverySort]?.items?.length || 0;
-  if (catalogCount) catalogCount.textContent = discoveredCount ? String(discoveredCount).padStart(2, '0') : '—';
   breadcrumbCurrent.textContent = searchQuery && currentView === 'catalog' ? t('page.search.title') : t(viewNames[currentView] || 'nav.home');
 }
 
 function renderPage() {
   applyPreferences();
   updateSidebar();
+  renderUpdateBanner();
   const pages = { home: renderHome, catalog: renderCatalog, favorites: renderFavorites, recent: renderRecent, reviews: renderReviews, plans: renderPlans, settings: renderSettings };
   pageContent.innerHTML = (pages[currentView] || renderHome)();
   mountIcons(pageContent);
@@ -698,6 +690,25 @@ function renderPage() {
     void pageContent.offsetWidth;
     pageContent.classList.add('page-entering');
   }
+}
+
+function renderUpdateBanner(state) {
+  if (state) latestUpdateState = state;
+  const banner = document.getElementById('update-banner');
+  if (!banner) return;
+  if (!latestUpdateState || !['downloading', 'downloaded'].includes(latestUpdateState.status)) {
+    banner.hidden = true;
+    banner.innerHTML = '';
+    return;
+  }
+  const isDownloaded = latestUpdateState.status === 'downloaded';
+  const progress = Math.max(0, Math.min(100, Number(latestUpdateState.progress) || 0));
+  const title = isDownloaded
+    ? t('updates.title', { version: escapeHtml(latestUpdateState.latestVersion || '') })
+    : t('updates.title', { version: escapeHtml(latestUpdateState.latestVersion || '') });
+  const message = isDownloaded ? t('updates.ready') : t('updates.downloading', { percent: progress });
+  banner.hidden = false;
+  banner.innerHTML = `<span class="update-banner-icon">${icon(isDownloaded ? 'check' : 'sparkle', 18)}</span><span class="update-banner-copy"><strong>${title}</strong><small>${escapeHtml(message)}</small></span>${isDownloaded ? `<button class="ghost-button" data-action="open-update-installer">${icon('download', 13)} ${t('updates.open')}</button>` : `<span class="update-banner-progress" aria-label="${progress}%"><i style="--progress:${progress}%"></i></span>`}`;
 }
 
 let toastTimer;
@@ -1020,6 +1031,9 @@ document.addEventListener('click', (event) => {
       else { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); }
     }
     if (action.dataset.action === 'notifications') showToast(t('toast.notifications'));
+    if (action.dataset.action === 'open-update-installer') {
+      window.vortexDesktop?.openDownloadedUpdate?.().catch(() => showToast(t('updates.openError')));
+    }
     if (action.dataset.action === 'clear-cache') {
       Object.keys(localStorage).filter((key) => key.startsWith(SEARCH_CACHE_PREFIX)).forEach((key) => localStorage.removeItem(key));
       localStorage.removeItem('vortex.featuredCache');
@@ -1169,5 +1183,7 @@ mountIcons();
 applyPreferences();
 renderPage();
 window.vortexDesktop?.onWindowState?.(({ isMaximized }) => setWindowMaximized(Boolean(isMaximized)));
+window.vortexDesktop?.onUpdateState?.(renderUpdateBanner);
+window.vortexDesktop?.getUpdateState?.().then(renderUpdateBanner).catch(() => {});
 hydrateFeaturedGames();
 loadDiscoveryCatalog(activeDiscoverySort);

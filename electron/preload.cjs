@@ -20,5 +20,6 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
   searchGames: (request) => ipcRenderer.invoke('games:search', request),
   discoverGames: (request) => ipcRenderer.invoke('games:discover', request),
   getFeaturedGames: (placeIds) => ipcRenderer.invoke('games:featured', placeIds),
-  clearSearchCache: () => ipcRenderer.invoke('games:clear-cache')
+  clearSearchCache: () => ipcRenderer.invoke('games:clear-cache'),
+  reportRecentGames: (payload) => ipcRenderer.send('tray:recent-games', payload)
 });

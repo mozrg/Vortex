@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, session, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, Menu, Tray, nativeImage, screen } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
@@ -465,6 +465,13 @@ function createWindow() {
   });
   mainWindow = window;
 
+  // Closing hides the app to the tray instead of quitting; a full exit runs from
+  // the tray panel. Update installs call app.exit() directly, which bypasses this.
+  window.on('close', (event) => {
+    event.preventDefault();
+    window.hide();
+  });
+
   const sendWindowState = () => window.webContents.send('window:state', { isMaximized: window.isMaximized() });
   window.on('maximize', sendWindowState);
   window.on('unmaximize', sendWindowState);
@@ -630,17 +637,27 @@ ipcMain.handle('games:search', async (_event, request = {}) => {
       return /^\d{5,20}$/.test(String(placeId ?? '')) && /^\d{1,20}$/.test(String(game.universeId ?? '')) && Boolean(game.name);
     });
 
-  const thumbnails = await getThumbnails(records.map((game) => game.universeId));
-  const items = records.map((game) => mapGame({
-    id: game.universeId,
-    rootPlaceId: game.rootPlaceId ?? game.placeId,
-    name: game.name,
-    description: game.description,
-    creatorName: game.creatorName,
-    playerCount: game.playerCount,
-    totalUpVotes: game.totalUpVotes,
-    totalDownVotes: game.totalDownVotes
-  }, thumbnails.get(String(game.universeId)), game.rootPlaceId ?? game.placeId));
+  // Omni-search returns no descriptions, so every hit is enriched with full game
+  // details (description, creator, votes, thumbnail) from the games API.
+  const details = await getGameDetailsByUniverse(records.map((game) => game.universeId));
+  const detailsByUniverse = new Map(details.map((game) => [game.universeId, game]));
+  const items = records
+    .map((game) => {
+      const placeId = game.rootPlaceId ?? game.placeId;
+      const detail = detailsByUniverse.get(String(game.universeId));
+      if (detail) return { ...detail, id: String(placeId) };
+      return mapGame({
+        id: game.universeId,
+        rootPlaceId: placeId,
+        name: game.name,
+        description: game.description,
+        creatorName: game.creatorName,
+        playerCount: game.playerCount,
+        totalUpVotes: game.totalUpVotes,
+        totalDownVotes: game.totalDownVotes
+      }, '', placeId);
+    })
+    .filter((item) => Boolean(item.id));
 
   return { items, nextPageToken: payload.nextPageToken || null, sessionId };
 });
@@ -697,18 +714,26 @@ ipcMain.handle('games:discover', async (_event, request = {}) => {
   }
 
   const validGames = sourceGames.filter((game) => /^\d{5,20}$/.test(String(game.rootPlaceId ?? '')) && /^\d{1,20}$/.test(String(game.universeId ?? '')) && Boolean(game.name));
-  const thumbnails = await getThumbnails(validGames.map((game) => game.universeId));
-  const items = validGames.map((game) => mapGame({
-    id: game.universeId,
-    rootPlaceId: game.rootPlaceId,
-    name: game.name,
-    description: game.description,
-    creatorName: game.creatorName,
-    playerCount: game.playerCount,
-    totalUpVotes: game.totalUpVotes,
-    totalDownVotes: game.totalDownVotes,
-    genreL1: game.genreL1
-  }, thumbnails.get(String(game.universeId)), game.rootPlaceId));
+  // Discover rows carry no descriptions either — enrich them from the games API.
+  const details = await getGameDetailsByUniverse(validGames.map((game) => game.universeId));
+  const detailsByUniverse = new Map(details.map((game) => [game.universeId, game]));
+  const items = validGames
+    .map((game) => {
+      const detail = detailsByUniverse.get(String(game.universeId));
+      if (detail) return { ...detail, id: String(game.rootPlaceId), genre: detail.genre || String(game.genreL1 ?? '') };
+      return mapGame({
+        id: game.universeId,
+        rootPlaceId: game.rootPlaceId,
+        name: game.name,
+        description: game.description,
+        creatorName: game.creatorName,
+        playerCount: game.playerCount,
+        totalUpVotes: game.totalUpVotes,
+        totalDownVotes: game.totalDownVotes,
+        genreL1: game.genreL1
+      }, '', game.rootPlaceId);
+    })
+    .filter((item) => Boolean(item.id));
 
   return {
     sessionId,
@@ -725,16 +750,154 @@ ipcMain.handle('games:clear-cache', async () => {
   return true;
 });
 
+// ---------- Tray ----------
+// Closing the window hides it to the tray instead of quitting; the tray panel
+// (styled like the launcher itself) can reopen the app, relaunch one of the five
+// most recent games, or quit completely.
+let tray = null;
+let trayWindow = null;
+let trayIcon = null;
+let recentGamesForTray = [];
+// The tray panel mirrors the launcher's appearance; the renderer pushes this
+// palette whenever settings change (accent, theme, tray scale, language).
+const TRAY_SCALES = { compact: 0.9, normal: 1, large: 1.1 };
+let trayStyle = {
+  accent: '#9b7cff', accentMode: 'solid', accentSecondary: '#c274ec', gradientAngle: 135,
+  theme: 'dark', themeBackground: '', themeSurface: '', corners: 'soft', trayScale: 'normal', language: 'ru', accentText: ''
+};
+
+function sanitizeTrayStyle(style) {
+  const next = { ...trayStyle, ...style };
+  const hex = /^#[0-9a-f]{6}$/i;
+  if (!hex.test(String(next.accent))) next.accent = '#9b7cff';
+  if (!hex.test(String(next.accentSecondary))) next.accentSecondary = '#c274ec';
+  if (!['solid', 'gradient'].includes(next.accentMode)) next.accentMode = 'solid';
+  if (!['dark', 'light', 'oled'].includes(next.theme)) next.theme = 'dark';
+  if (!hex.test(String(next.themeBackground))) next.themeBackground = '';
+  if (!hex.test(String(next.themeSurface))) next.themeSurface = '';
+  if (!['soft', 'sharp'].includes(next.corners)) next.corners = 'soft';
+  if (!Object.keys(TRAY_SCALES).includes(next.trayScale)) next.trayScale = 'normal';
+  if (!['ru', 'en'].includes(next.language)) next.language = 'ru';
+  next.gradientAngle = Math.max(0, Math.min(360, Number(next.gradientAngle) || 135));
+  next.accentText = hex.test(String(next.accentText)) ? String(next.accentText) : '';
+  return next;
+}
+
+function trayScale() {
+  return TRAY_SCALES[trayStyle.trayScale] ?? 1;
+}
+
+function trayBounds() {
+  const cursor = screen.getCursorScreenPoint();
+  const display = screen.getDisplayNearestPoint(cursor);
+  const width = Math.round(316 * trayScale());
+  const height = Math.round(436 * trayScale());
+  return {
+    x: Math.max(display.workArea.x, Math.min(display.workArea.x + display.workArea.width - width, cursor.x - width / 2)),
+    y: Math.max(display.workArea.y, Math.min(display.workArea.y + display.workArea.height - height, cursor.y - height - 12))
+  };
+}
+
+function showTrayWindow() {
+  const position = trayBounds();
+  if (!trayWindow || trayWindow.isDestroyed()) {
+    trayWindow = new BrowserWindow({
+      width: Math.round(316 * trayScale()),
+      height: Math.round(436 * trayScale()),
+      x: position.x,
+      y: position.y,
+      show: false,
+      frame: false,
+      resizable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      transparent: true,
+      backgroundColor: '#00000000',
+      webPreferences: {
+        preload: path.join(__dirname, 'tray-preload.cjs'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true
+      }
+    });
+    // Clicking anywhere outside the panel (another app, the desktop, or the
+    // empty margin of this window) closes the tray; see tray.html's
+    // pointerdown handler, which hides via the 'tray:dismiss' channel.
+    trayWindow.on('blur', () => { if (trayWindow && !trayWindow.isDestroyed()) trayWindow.hide(); });
+    trayWindow.loadFile(path.join(__dirname, '..', 'tray.html'));
+  }
+  const next = trayBounds();
+  // Keep the window in step with the current tray scale preference.
+  trayWindow.setSize(Math.round(316 * trayScale()), Math.round(436 * trayScale()), false);
+  trayWindow.setPosition(next.x, next.y, false);
+  trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle);
+  trayWindow.show();
+  trayWindow.focus();
+}
+
+function createTray() {
+  if (tray) return;
+  trayIcon = nativeImage.createFromPath(path.join(__dirname, '..', 'assets', 'vortex-app-icon.ico'));
+  if (trayIcon.isEmpty()) trayIcon = nativeImage.createFromPath(path.join(__dirname, '..', 'assets', 'vortex-app-icon.svg'));
+  tray = new Tray(trayIcon.isEmpty() ? undefined : trayIcon);
+  tray.setToolTip('Vortex — Roblox Place Launcher');
+  // Left click opens the app, the right click opens the tray panel — both
+  // use the styled window so the tray always matches the launcher design.
+  tray.on('click', () => showMainWindowFromTray());
+  tray.on('right-click', () => showTrayWindow());
+}
+
+function showMainWindowFromTray() {
+  const window = BrowserWindow.getAllWindows().find((item) => !item.isDestroyed() && item !== trayWindow);
+  if (!window) { createWindow(); return; }
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+}
+
+async function launchFromTray(placeId) {
+  const normalizedId = String(placeId ?? '');
+  if (!/^\d{5,20}$/.test(normalizedId)) return;
+  try {
+    await shell.openExternal(`roblox://placeId=${normalizedId}`);
+  } catch {
+    await shell.openExternal(`https://www.roblox.com/games/start?placeId=${normalizedId}`);
+  }
+  if (trayWindow && !trayWindow.isDestroyed()) trayWindow.hide();
+}
+
+ipcMain.on('tray:recent-games', (_event, payload = []) => {
+  // The renderer sends { games, style }: the games feed the tray list and the
+  // context menu, the style payload lets tray.html match the launcher design.
+  const request = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : { games: payload };
+  recentGamesForTray = (Array.isArray(request.games) ? request.games : [])
+    .filter((game) => game && /^\d{5,20}$/.test(String(game.id)) && String(game.title || '').length > 0)
+    .slice(0, 5)
+    .map((game) => ({ id: String(game.id), title: String(game.title).slice(0, 60) }));
+  if (request.style && typeof request.style === 'object') trayStyle = sanitizeTrayStyle(request.style);
+  if (trayWindow && !trayWindow.isDestroyed()) trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle);
+});
+
+ipcMain.handle('tray:get-style', () => trayStyle);
+
+ipcMain.on('tray:open', () => { if (trayWindow && !trayWindow.isDestroyed()) trayWindow.hide(); showMainWindowFromTray(); });
+ipcMain.on('tray:dismiss', () => { if (trayWindow && !trayWindow.isDestroyed()) trayWindow.hide(); });
+ipcMain.on('tray:quit', () => app.exit(0));
+ipcMain.handle('tray:get-games', () => recentGamesForTray);
+ipcMain.on('tray:launch', (_event, placeId) => { void launchFromTray(placeId); });
+
 app.whenReady().then(() => {
   if (!gotSingleInstanceLock) return;
   Menu.setApplicationMenu(null);
+  createTray();
   createWindow();
   void checkForUpdates();
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    showMainWindowFromTray();
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // The tray keeps the process alive; quitting happens from the tray panel or
+  // a real exit (update install), never merely because a window closed.
 });

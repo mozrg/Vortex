@@ -1,6 +1,6 @@
 {
   "name": "vortex-roblox-launcher",
-  "version": "1.0.11",
+  "version": "1.0.19",
   "private": true,
   "description": "A customizable desktop launcher for Roblox experiences.",
   "main": "electron/main.cjs",
@@ -26,9 +26,11 @@
       "app.js",
       "index.html",
       "startup.html",
+      "tray.html",
       "styles.css",
       "electron/**/*",
       "assets/vortex-app-icon.svg",
+      "assets/vortex-app-icon.ico",
       "assets/vortex-logo.svg",
       "package.json"
     ],

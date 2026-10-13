@@ -24,6 +24,7 @@
     },
     "files": [
       "app.js",
+      "js/*.js",
       "index.html",
       "startup.html",
       "tray.html",

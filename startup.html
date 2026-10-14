@@ -16,7 +16,8 @@
       main::after { right: -165px; bottom: -38px; width: 260px; height: 105px; }
 
       .brand { display: flex; align-items: center; gap: 12px; }
-      .brand img { width: 44px; height: 37px; object-fit: contain; filter: drop-shadow(0 2px 8px rgba(155, 124, 255, .35)); }
+      .brand img { width: 44px; height: 37px; object-fit: contain; }
+      .brand-logo { width: 44px; height: 37px; flex: 0 0 auto; }
       .brand-copy { display: grid; gap: 4px; }
       .brand-copy strong { font-size: 15px; letter-spacing: .19em; }
       .brand-copy small { color: #898395; font-size: 8px; font-weight: 700; letter-spacing: .2em; }
@@ -27,26 +28,17 @@
       /* Status card with an integrated progress bar pinned to its bottom. */
       .status-card { position: relative; display: flex; width: 100%; align-items: center; gap: 13px; margin-top: 22px; padding: 13px 15px 15px; border: 1px solid rgba(190, 169, 255, .15); border-radius: 12px; background: linear-gradient(110deg, rgba(155, 124, 255, .09), rgba(255,255,255,.025)); overflow: hidden; }
 
-      /* Circular animated icon: soft ring with an orbiting glow dot. */
-      .status-icon { position: relative; display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border: 1.5px solid rgba(183, 158, 255, .28); border-radius: 50%; background: radial-gradient(circle at 35% 30%, rgba(155, 124, 255, .28), rgba(155, 124, 255, .07)); }
-      .status-icon::before { width: 9px; height: 9px; border: none; border-radius: 50%; background: #d9c9ff; box-shadow: 0 0 10px rgba(200, 175, 255, .9); content: ""; animation: pulse-dot 1.5s ease-in-out infinite; }
-      .status-icon::after { position: absolute; inset: -4px; border: 1px solid transparent; border-top-color: rgba(199, 174, 255, .65); border-radius: 50%; content: ""; animation: spin 1.1s linear infinite; }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      @keyframes pulse-dot { 0%, 100% { opacity: .5; transform: scale(.85); } 50% { opacity: 1; transform: scale(1.1); } }
 
       .status-copy { display: grid; min-width: 0; gap: 4px; }
       .status-copy strong { color: #eae5f6; font-size: 10.5px; font-weight: 650; }
       .status-copy small { overflow: hidden; color: #9b95a6; font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
 
       .status-card.failed { border-color: rgba(224,112,95,.35); }
-      .status-card.failed .status-icon { border-color: rgba(224,112,95,.4); background: radial-gradient(circle at 35% 30%, rgba(224,112,95,.25), rgba(224,112,95,.06)); }
-      .status-card.failed .status-icon::after { display: none; }
-      .status-card.failed .status-icon::before { background: #ffb3a6; box-shadow: 0 0 10px rgba(255, 150, 130, .8); animation: none; }
       .status-card.failed .status-copy small { color: #e0a496; }
 
       /* Progress lives INSIDE the card: a hairline track along its bottom. */
       .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(255,255,255,.07); }
-      .progress i { display: block; width: 30%; height: 100%; background: linear-gradient(90deg, #7251ce, #c4afff); box-shadow: 0 0 8px rgba(155, 124, 255, .7); animation: load 1.6s ease-in-out infinite; }
+      .progress i { display: block; width: 30%; height: 100%; background: linear-gradient(90deg, #7251ce, #c4afff); animation: load 1.6s ease-in-out infinite; }
       .progress.downloading i { animation: none; transition: width .25s ease; }
 
       .version { margin-top: 12px; color: #6d6878; font-size: 8.5px; letter-spacing: .06em; }
@@ -56,11 +48,20 @@
   </head>
   <body>
     <main>
-      <div class="brand"><img src="assets/vortex-logo.svg" alt="" /><span class="brand-copy"><strong>VORTEX</strong><small>PLACE LAUNCHER</small></span></div>
+      <div class="brand"><svg class="brand-logo" viewBox="0 0 709 572" fill="none" aria-hidden="true">
+          <defs>
+            <clipPath id="logo-wipe"><rect x="0" y="0" width="709" height="572"><animate attributeName="width" values="0;709;709" keyTimes="0;.45;1" dur="1.4s" fill="freeze" calcMode="spline" keySplines=".4 0 .2 1"/></rect></clipPath>
+          </defs>
+          <g clip-path="url(#logo-wipe)">
+            <path fill="#f6f4ff" fill-rule="evenodd" class="logo-v" d="M698 37 L696 37 L695 36 L649 36 L648 37 L646 37 L645 36 L627 36 L626 37 L623 37 L622 36 L524 36 L523 37 L519 37 L518 38 L516 38 L512 40 L510 42 L509 42 L489 62 L489 63 L476 77 L476 78 L473 81 L473 82 L469 86 L469 87 L466 90 L466 91 L457 102 L457 103 L452 109 L450 113 L447 116 L444 122 L442 124 L440 128 L440 130 L439 131 L439 143 L443 151 L445 153 L453 169 L453 171 L456 176 L457 181 L459 184 L459 186 L460 187 L460 189 L461 190 L461 192 L463 196 L463 199 L464 200 L464 203 L465 204 L465 207 L466 208 L466 212 L467 213 L467 218 L468 219 L468 229 L469 230 L469 247 L468 248 L468 258 L467 259 L467 264 L466 265 L466 269 L465 270 L465 273 L464 274 L464 276 L463 277 L463 279 L462 280 L461 285 L459 288 L459 290 L454 300 L452 302 L452 303 L450 305 L448 309 L442 315 L442 316 L440 318 L439 318 L431 326 L428 327 L426 329 L414 335 L412 335 L408 337 L404 337 L403 338 L397 338 L396 339 L385 339 L384 338 L378 338 L377 337 L374 337 L373 336 L368 335 L362 332 L356 327 L355 327 L347 319 L347 318 L345 316 L345 315 L343 313 L341 309 L341 307 L339 303 L339 286 L340 285 L340 282 L341 281 L341 279 L344 273 L352 263 L350 263 L340 268 L332 275 L332 276 L326 283 L325 285 L325 287 L324 288 L324 290 L322 293 L322 296 L321 297 L321 301 L320 302 L320 313 L321 314 L321 320 L322 321 L322 323 L323 324 L323 326 L324 327 L325 332 L332 346 L334 348 L336 352 L339 355 L339 356 L344 361 L344 362 L347 365 L347 366 L354 373 L354 374 L373 393 L374 393 L388 407 L389 407 L393 411 L394 411 L402 419 L403 419 L408 424 L409 424 L414 429 L415 429 L419 433 L420 433 L428 440 L432 442 L439 442 L443 440 L447 436 L450 430 L452 428 L453 425 L456 422 L457 419 L459 417 L461 412 L466 406 L467 403 L469 401 L473 393 L475 391 L478 385 L480 383 L480 382 L484 377 L485 374 L489 369 L491 364 L497 356 L498 353 L504 345 L505 342 L507 340 L508 337 L512 332 L513 329 L519 321 L520 318 L522 316 L526 308 L528 306 L531 300 L537 292 L541 284 L549 273 L550 270 L552 268 L553 265 L557 260 L561 252 L569 241 L571 236 L577 228 L578 225 L582 220 L583 217 L585 215 L585 214 L589 209 L590 206 L596 198 L597 195 L601 190 L603 185 L605 183 L605 182 L609 177 L610 174 L618 163 L619 160 L621 158 L622 155 L630 144 L634 136 L642 125 L643 122 L646 119 L647 116 L649 114 L652 108 L658 100 L659 97 L665 89 L666 86 L670 81 L671 78 L675 73 L676 70 L679 67 L682 61 L684 59 L684 58 L688 53 L689 50 L691 48 L691 47 L695 42 L696 39 Z M13 12 L11 14 L11 16 L10 17 L10 19 L12 23 L19 30 L19 31 L23 35 L23 36 L29 42 L29 43 L33 47 L33 48 L37 52 L37 53 L42 58 L42 59 L45 62 L45 63 L50 68 L50 69 L55 74 L55 75 L58 78 L58 79 L70 93 L70 94 L73 97 L73 98 L78 103 L78 104 L85 112 L85 113 L88 116 L88 117 L100 131 L100 132 L103 135 L103 136 L106 139 L106 140 L109 143 L109 144 L112 147 L112 148 L117 153 L117 154 L120 157 L120 158 L125 164 L125 165 L130 170 L130 171 L136 178 L138 182 L142 186 L142 187 L145 190 L145 191 L148 194 L148 195 L152 199 L152 200 L154 202 L154 203 L156 205 L158 209 L162 213 L162 214 L168 221 L169 224 L171 226 L171 227 L173 229 L173 230 L175 232 L175 233 L177 235 L179 239 L182 242 L183 245 L189 253 L190 256 L193 259 L194 262 L200 270 L204 278 L209 284 L210 287 L216 295 L217 298 L219 300 L223 308 L226 311 L227 314 L231 319 L235 327 L239 332 L241 337 L245 342 L246 345 L248 347 L249 350 L251 352 L253 357 L257 362 L262 372 L266 377 L268 382 L272 387 L274 392 L278 397 L283 407 L285 409 L286 412 L288 414 L292 422 L296 427 L300 436 L302 438 L305 444 L307 446 L309 451 L311 453 L312 456 L314 458 L316 463 L320 468 L322 473 L324 475 L326 480 L328 482 L334 494 L338 499 L340 504 L342 506 L343 509 L345 511 L348 518 L352 523 L355 530 L357 532 L363 544 L365 546 L366 549 L368 551 L372 559 L374 561 L377 555 L379 553 L381 548 L383 546 L384 543 L386 541 L387 538 L391 533 L395 524 L399 519 L402 512 L404 510 L405 507 L407 505 L408 502 L410 500 L419 482 L418 482 L410 474 L409 474 L401 466 L400 466 L389 455 L388 455 L368 435 L368 434 L348 413 L348 412 L338 401 L338 400 L334 396 L334 395 L322 381 L320 377 L316 373 L316 372 L314 370 L314 369 L312 367 L312 366 L304 355 L303 352 L301 350 L292 332 L292 330 L289 325 L289 323 L287 319 L287 316 L286 315 L286 313 L285 312 L285 308 L284 307 L284 302 L283 301 L283 290 L282 289 L282 287 L283 286 L283 275 L284 274 L285 265 L286 264 L286 261 L287 260 L287 258 L288 257 L289 252 L296 238 L298 236 L299 233 L301 231 L304 225 L301 221 L301 220 L298 217 L298 216 L295 213 L295 212 L292 209 L292 208 L283 197 L281 193 L275 186 L275 185 L276 184 L283 185 L284 186 L286 186 L287 187 L289 187 L290 188 L295 189 L298 191 L300 191 L303 193 L305 193 L313 197 L315 197 L322 201 L324 201 L332 205 L334 207 L338 209 L340 209 L342 211 L356 218 L358 220 L359 220 L361 222 L362 222 L364 224 L365 224 L367 226 L371 228 L374 231 L378 233 L383 238 L384 238 L388 242 L389 242 L401 253 L401 254 L412 266 L412 267 L415 270 L415 271 L421 279 L424 285 L425 290 L426 291 L426 295 L427 296 L427 300 L428 301 L428 309 L429 308 L429 304 L430 303 L430 285 L429 284 L429 280 L427 276 L427 273 L426 272 L426 270 L425 269 L424 264 L420 257 L420 255 L418 251 L416 249 L415 246 L413 244 L409 235 L401 224 L400 221 L394 213 L393 210 L388 204 L386 200 L383 197 L383 196 L381 194 L381 193 L379 191 L377 187 L374 184 L372 180 L369 177 L367 173 L364 170 L364 169 L361 166 L361 165 L358 162 L358 161 L355 158 L355 157 L352 154 L352 153 L349 150 L349 149 L346 146 L346 145 L343 142 L343 141 L340 138 L340 137 L331 127 L329 123 L320 113 L320 112 L317 109 L317 108 L308 98 L308 97 L305 94 L305 93 L302 90 L302 89 L297 84 L297 83 L293 79 L293 78 L290 75 L290 74 L284 68 L284 67 L277 59 L277 58 L271 52 L271 51 L268 48 L268 47 L265 44 L265 43 L261 39 L261 38 L257 34 L257 33 L253 29 L253 28 L249 24 L249 23 L244 18 L243 16 L242 16 L237 12 L235 12 L231 10 L17 10 Z" style="transform-origin:354px 286px;">
+              <animateTransform attributeName="transform" type="scale" values="1;1.045;1" additive="sum" dur="2.8s" repeatCount="indefinite" calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1"/>
+              <animate attributeName="opacity" values="1;.75;1" dur="2.8s" repeatCount="indefinite" calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1"/>
+            </path>
+          </g>
+        </svg><span class="brand-copy"><strong>VORTEX</strong><small>PLACE LAUNCHER</small></span></div>
       <h1 data-copy="title">Запускаем Vortex</h1>
       <p class="subtitle" data-copy="subtitle">Подготавливаем каталог и проверяем обновления</p>
       <section class="status-card" id="status-card" aria-live="polite">
-        <span class="status-icon" aria-hidden="true"></span>
         <span class="status-copy"><strong data-copy="startup">Подготовка лаунчера</strong><small id="updates-copy">Проверяем обновления…</small></span>
         <div class="progress" aria-hidden="true"><i></i></div>
       </section>

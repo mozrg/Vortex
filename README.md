@@ -4,7 +4,9 @@ Vortex — десктопный лаунчер для Windows: поиск пле
 
 ![Версия](https://img.shields.io/badge/version-1.0.19-9b7cff) ![Платформа](https://img.shields.io/badge/platform-Windows-0078D6)
 
-**Скачать:** [сайт проекта](https://mozrg.github.io/Vortex/) — прямая ссылка на установщик, размер файла и контрольная сумма SHA-256.
+**Скачать:** [сайт проекта](https://vortex.mivermiver51.workers.dev) — прямая ссылка на установщик, размер файла и контрольная сумма SHA-256.
+
+Mirror: [vortex-site-ola27u6e4-mozrzes-projects.vercel.app](https://vortex-site-ola27u6e4-mozrzes-projects.vercel.app)
 
 ## Что умеет
 

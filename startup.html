@@ -7,36 +7,50 @@
     <title>Vortex Launcher</title>
     <style>
       * { box-sizing: border-box; }
-      :root { color-scheme: dark; font-family: "Segoe UI", sans-serif; }
+      :root { color-scheme: dark; font-family: "Segoe UI", "Inter", sans-serif; }
       html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #0b0c11; color: #f4f2fa; }
       body { border: 1px solid rgba(190, 169, 255, .22); -webkit-app-region: drag; }
-      main { position: relative; display: flex; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; padding: 25px 36px 22px; overflow: hidden; background: radial-gradient(ellipse at 50% 0%, rgba(136, 101, 230, .24), transparent 53%), linear-gradient(145deg, #14121c, #0c0d13 68%); }
+      main { position: relative; display: flex; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; padding: 26px 38px 24px; overflow: hidden; background: radial-gradient(ellipse at 50% -20%, rgba(136, 101, 230, .28), transparent 55%), linear-gradient(145deg, #14121c, #0c0d13 68%); }
       main::before, main::after { position: absolute; width: 300px; height: 130px; border: 1px solid rgba(183, 158, 255, .08); border-radius: 50%; content: ""; transform: rotate(-23deg); pointer-events: none; }
       main::before { right: -185px; bottom: -55px; }
       main::after { right: -165px; bottom: -38px; width: 260px; height: 105px; }
-      .brand { display: flex; align-items: center; gap: 11px; }
-      .brand img { width: 43px; height: 36px; object-fit: contain; }
+
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .brand img { width: 44px; height: 37px; object-fit: contain; filter: drop-shadow(0 2px 8px rgba(155, 124, 255, .35)); }
       .brand-copy { display: grid; gap: 4px; }
       .brand-copy strong { font-size: 15px; letter-spacing: .19em; }
       .brand-copy small { color: #898395; font-size: 8px; font-weight: 700; letter-spacing: .2em; }
-      h1 { margin: 22px 0 6px; font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
-      .subtitle { margin: 0; color: #8c8997; font-size: 10px; }
-      .status-card { display: flex; width: 100%; align-items: center; gap: 11px; margin-top: 20px; padding: 12px 13px; border: 1px solid rgba(190, 169, 255, .15); border-radius: 11px; background: linear-gradient(110deg, rgba(155, 124, 255, .09), rgba(255,255,255,.025)); }
-      .status-icon { position: relative; display: grid; width: 31px; height: 31px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(183, 158, 255, .22); border-radius: 9px; background: rgba(155, 124, 255, .1); }
-      .status-icon::before, .status-icon::after { position: absolute; width: 12px; height: 12px; border: 1px solid #b7a2ff; border-radius: 4px; content: ""; transform: rotate(45deg); animation: orbit 2.4s ease-in-out infinite alternate; }
-      .status-icon::after { width: 6px; height: 6px; border-color: #e0d6ff; animation-delay: .35s; }
+
+      h1 { margin: 24px 0 6px; font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
+      .subtitle { margin: 0; color: #97939f; font-size: 10.5px; }
+
+      /* Status card with an integrated progress bar pinned to its bottom. */
+      .status-card { position: relative; display: flex; width: 100%; align-items: center; gap: 13px; margin-top: 22px; padding: 13px 15px 15px; border: 1px solid rgba(190, 169, 255, .15); border-radius: 12px; background: linear-gradient(110deg, rgba(155, 124, 255, .09), rgba(255,255,255,.025)); overflow: hidden; }
+
+      /* Circular animated icon: soft ring with an orbiting glow dot. */
+      .status-icon { position: relative; display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border: 1.5px solid rgba(183, 158, 255, .28); border-radius: 50%; background: radial-gradient(circle at 35% 30%, rgba(155, 124, 255, .28), rgba(155, 124, 255, .07)); }
+      .status-icon::before { width: 9px; height: 9px; border: none; border-radius: 50%; background: #d9c9ff; box-shadow: 0 0 10px rgba(200, 175, 255, .9); content: ""; animation: pulse-dot 1.5s ease-in-out infinite; }
+      .status-icon::after { position: absolute; inset: -4px; border: 1px solid transparent; border-top-color: rgba(199, 174, 255, .65); border-radius: 50%; content: ""; animation: spin 1.1s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes pulse-dot { 0%, 100% { opacity: .5; transform: scale(.85); } 50% { opacity: 1; transform: scale(1.1); } }
+
       .status-copy { display: grid; min-width: 0; gap: 4px; }
-      .status-copy strong { color: #e7e1f4; font-size: 10px; font-weight: 650; }
-      .status-copy small { overflow: hidden; color: #938da0; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+      .status-copy strong { color: #eae5f6; font-size: 10.5px; font-weight: 650; }
+      .status-copy small { overflow: hidden; color: #9b95a6; font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
+
       .status-card.failed { border-color: rgba(224,112,95,.35); }
-      .status-card.failed .status-icon { border-color: rgba(224,112,95,.35); background: rgba(224,112,95,.1); }
+      .status-card.failed .status-icon { border-color: rgba(224,112,95,.4); background: radial-gradient(circle at 35% 30%, rgba(224,112,95,.25), rgba(224,112,95,.06)); }
+      .status-card.failed .status-icon::after { display: none; }
+      .status-card.failed .status-icon::before { background: #ffb3a6; box-shadow: 0 0 10px rgba(255, 150, 130, .8); animation: none; }
       .status-card.failed .status-copy small { color: #e0a496; }
-      .progress { width: 100%; height: 3px; overflow: hidden; margin-top: 16px; border-radius: 5px; background: rgba(255,255,255,.08); }
-      .progress i { display: block; width: 32%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #7251ce, #c4afff); box-shadow: 0 0 13px rgba(155, 124, 255, .75); animation: load 1.6s ease-in-out infinite; }
+
+      /* Progress lives INSIDE the card: a hairline track along its bottom. */
+      .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(255,255,255,.07); }
+      .progress i { display: block; width: 30%; height: 100%; background: linear-gradient(90deg, #7251ce, #c4afff); box-shadow: 0 0 8px rgba(155, 124, 255, .7); animation: load 1.6s ease-in-out infinite; }
       .progress.downloading i { animation: none; transition: width .25s ease; }
-      .version { margin-top: 10px; color: #666271; font-size: 8px; letter-spacing: .06em; }
+
+      .version { margin-top: 12px; color: #6d6878; font-size: 8.5px; letter-spacing: .06em; }
       @keyframes load { 0% { transform: translateX(-110%); } 100% { transform: translateX(430%); } }
-      @keyframes orbit { from { opacity: .55; transform: rotate(45deg) scale(.82); } to { opacity: 1; transform: rotate(135deg) scale(1.06); } }
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
     </style>
   </head>
@@ -48,8 +62,8 @@
       <section class="status-card" id="status-card" aria-live="polite">
         <span class="status-icon" aria-hidden="true"></span>
         <span class="status-copy"><strong data-copy="startup">Подготовка лаунчера</strong><small id="updates-copy">Проверяем обновления…</small></span>
+        <div class="progress" aria-hidden="true"><i></i></div>
       </section>
-      <div class="progress" aria-hidden="true"><i></i></div>
       <small class="version" id="version-copy">VORTEX · PLACE LAUNCHER</small>
     </main>
     <script>

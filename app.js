@@ -1239,7 +1239,10 @@ function renderGeneralSettings() {
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.presence.title')}</h2><p>${t('settings.presence.body')}</p></div>${icon('bell', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.presence.cookie')}</strong><small>${t('settings.presence.cookieHint')}</small></div>
-        <span class="roblox-username-field"><input type="password" autocomplete="off" placeholder=".ROBLOSECURITY" data-presence-cookie /><button class="primary-button" data-save-presence>${t('common.save')}</button><button class="ghost-button" data-remove-presence>${t('settings.presence.disable')}</button></span></div>
+        <span class="presence-cookie-field">
+          <textarea rows="2" autocomplete="off" spellcheck="false" placeholder=".ROBLOSECURITY" data-presence-cookie ></textarea>
+          <small class="presence-cookie-meter" data-presence-meter data-hint="${t('settings.presence.cookieHint')}</small>
+          <button class="primary-button" data-save-presence>${t('common.save')}</button><button class="ghost-button" data-remove-presence>${t('settings.presence.disable')}</button></span></div>
       <p class="theme-color-hint">${t('settings.presence.hint')}</p>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.title')}</h2><p>${t('settings.tray.body')}</p></div>${icon('tray', 18)}</div>
@@ -2083,6 +2086,16 @@ document.addEventListener('click', async (event) => {
 });
 
 document.addEventListener('input', (event) => {
+  if (event.target.matches('[data-presence-cookie]')) {
+    // Live length feedback for the pasted cookie.
+    const meter = pageContent.querySelector('[data-presence-meter]');
+    if (meter) {
+      const len = event.target.value.trim().length;
+      meter.textContent = len ? len + ' chars' : (meter.dataset.hint || '');
+    }
+    return;
+  }
+
   if (event.target === searchInput) {
     scheduleLiveSearch(searchInput.value);
     return;

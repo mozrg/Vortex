@@ -779,3 +779,12 @@ body.light-theme .roblox-username-field input { background: rgba(255,255,255,.6)
 .friends-warn h2 { margin: 0; font: 700 14px var(--font-display); }
 .friends-warn p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
 .friends-warn-actions { display: flex; justify-content: center; gap: 10px; margin-top: 6px; }
+
+/* ---------- Friends presence ---------- */
+.friends-presence-note { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--surface-2) 62%, transparent); color: var(--muted); font-size: 9px; line-height: 1.6; }
+.friends-presence-note svg { flex: 0 0 auto; color: var(--accent-text); }
+.friend-row .friend-avatar { position: relative; }
+.friend-row.online .friend-avatar::after, .friend-row.playing .friend-avatar::after { position: absolute; right: -2px; bottom: -2px; width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 50%; content: ""; background: #55c7a4; }
+.friend-row.playing .friend-avatar::after { background: var(--accent-fill); box-shadow: 0 0 6px rgba(var(--accent-rgb), .8); }
+.friend-row.playing { border-color: var(--accent-border); background: color-mix(in srgb, var(--accent-wash) 55%, transparent); }
+.friend-row.playing .friend-copy small { color: var(--accent-text); }

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, session, Menu, Tray, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, Menu, Tray, nativeImage, screen, safeStorage } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
@@ -812,12 +812,39 @@ async function fetchRobloxUserNames(userIds) {
   return result;
 }
 
+// Live presence needs an authenticated session; Roblox hides all statuses
+// from anonymous callers. The .ROBLOSECURITY cookie is OPTIONAL and stored
+// encrypted on disk (safeStorage)  never in plain JSON preferences.
+let robloxSecurityCookie = '';
+function cookieFilePath() { return path.join(app.getPath('userData'), 'rbx-presence.bin'); }
+
+async function loadRobloxCookie() {
+  robloxSecurityCookie = '';
+  try {
+    const blob = await fsp.readFile(cookieFilePath());
+    const decrypted = safeStorage.decryptString(blob);
+    if (decrypted) robloxSecurityCookie = decrypted;
+  } catch { /* no cookie stored yet */ }
+}
+
+async function saveRobloxCookie(cookie) {
+  robloxSecurityCookie = cookie;
+  try {
+    if (!cookie) { await fsp.rm(cookieFilePath(), { force: true }); return true; }
+    const encrypted = safeStorage.encryptString(cookie);
+    await fsp.writeFile(cookieFilePath(), encrypted);
+    return true;
+  } catch { return false; }
+}
+
 async function fetchRobloxPresence(userIds) {
   if (!userIds.length) return [];
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (robloxSecurityCookie) headers.Cookie = '.ROBLOSECURITY=' + robloxSecurityCookie;
     const payload = await fetchJson(new Request('https://presence.roblox.com/v1/presence/users', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ userIds: userIds.slice(0, 100) })
     }), 10000);
     return Array.isArray(payload && payload.userPresences) ? payload.userPresences : [];
@@ -885,6 +912,22 @@ async function detectLocalRobloxAccount() {
   return null;
 }
 
+ipcMain.handle('friends:presence-cookie', async (_event, request = {}) => {
+  const cookie = String(request.cookie ?? '').trim();
+  if (request.remove) { await saveRobloxCookie(''); return { ok: true, enabled: false }; }
+  if (!/^[_A-Za-z0-9%-]{100,600}$/.test(cookie)) return { ok: false, error: 'invalid' };
+  // Validate the cookie with a light authenticated call before storing.
+  try {
+    const headers = { Cookie: '.ROBLOSECURITY=' + cookie };
+    const me = await fetchJson(new Request('https://users.roblox.com/v1/users/authenticated', { headers }), 10000);
+    if (!me || !me.id) return { ok: false, error: 'rejected' };
+    await saveRobloxCookie(cookie);
+    return { ok: true, enabled: true, userId: String(me.id), name: me.name };
+  } catch { return { ok: false, error: 'rejected' }; }
+});
+
+ipcMain.handle('friends:presence-status', () => ({ enabled: Boolean(robloxSecurityCookie) }));
+
 ipcMain.handle('friends:detect-account', async () => {
   const account = await detectLocalRobloxAccount();
   return { ok: Boolean(account), account };
@@ -920,7 +963,7 @@ ipcMain.handle('friends:list', async (_event, request = {}) => {
   });
   const rank = { playing: 0, online: 1, offline: 2 };
   enriched.sort((a, b) => (rank[a.presence] ?? 2) - (rank[b.presence] ?? 2));
-  return { ok: true, user, friends: enriched };
+  return { ok: true, user, friends: enriched, livePresence: Boolean(robloxSecurityCookie) };
 });
 
 // ---------- Tray ----------
@@ -1103,7 +1146,8 @@ ipcMain.on('tray:quit', () => app.exit(0));
 ipcMain.handle('tray:get-games', () => recentGamesForTray);
 ipcMain.on('tray:launch', (_event, placeId) => { void launchFromTray(placeId); });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await loadRobloxCookie();
   if (!gotSingleInstanceLock) return;
   Menu.setApplicationMenu(null);
   createTray();

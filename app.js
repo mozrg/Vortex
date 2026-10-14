@@ -533,6 +533,7 @@ function renderFriends() {
     }
   }
   const data = friendsCache.data;
+  const presenceNote = data.livePresence ? '' : `<div class="friends-presence-note">${icon('bell', 12)} ${t('friends.presenceOff')}</div>`;
   if (!data.ok) {
     return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
       <section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${t('friends.notFound.title')}</h2><p>${t('friends.notFound.body')}</p></div></section>`;
@@ -550,6 +551,7 @@ function renderFriends() {
     <div class="friends-list">${list.map(row).join('')}</div>`;
   return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
     <section class="section-block">
+      ${presenceNote}
       ${group('friends.groupPlaying', playing, playing.length ? '' : 'keep')}
       ${group('friends.groupOnline', online, online.length ? '' : '')}
       ${group('friends.groupOffline', offline, offline.length ? '' : '')}
@@ -1234,6 +1236,11 @@ function renderGeneralSettings() {
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.friends.title')}</h2><p>${t('settings.friends.body')}</p></div>${icon('users', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.friends.username')}</strong><small>${t('settings.friends.usernameHint')}</small></div>
         <span class="roblox-username-field"><input type="text" maxlength="20" autocomplete="off" placeholder="Roblox" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username /><button class="ghost-button" data-detect-username>${t('friends.detect')}</button><button class="primary-button" data-save-username>${t('common.save')}</button></span></div>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.presence.title')}</h2><p>${t('settings.presence.body')}</p></div>${icon('bell', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.presence.cookie')}</strong><small>${t('settings.presence.cookieHint')}</small></div>
+        <span class="roblox-username-field"><input type="password" autocomplete="off" placeholder=".ROBLOSECURITY" data-presence-cookie /><button class="primary-button" data-save-presence>${t('common.save')}</button><button class="ghost-button" data-remove-presence>${t('settings.presence.disable')}</button></span></div>
+      <p class="theme-color-hint">${t('settings.presence.hint')}</p>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.title')}</h2><p>${t('settings.tray.body')}</p></div>${icon('tray', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.scale')}</strong><small>${t('settings.tray.scaleBody')}</small></div><div class="segmented tray-scale-segmented">${[['compact', t('settings.tray.compact')], ['normal', t('settings.tray.normal')], ['large', t('settings.tray.large')]].map(([value, label]) => `<button class="segment ${preferences.trayScale === value ? 'active' : ''}" data-pref="trayScale" data-value="${value}">${label}</button>`).join('')}</div></div>
@@ -2014,6 +2021,22 @@ document.addEventListener('click', async (event) => {
     savePreferences();
     renderPage();
     showToast(t('settings.friends.saved'));
+    return;
+  }
+
+  if (target.closest('[data-save-presence]')) {
+    const input = pageContent.querySelector('[data-presence-cookie]');
+    const cookie = String(input?.value || '').trim();
+    if (!cookie) { showToast(t('settings.presence.missing')); return; }
+    try {
+      const result = await window.vortexDesktop?.setPresenceCookie(cookie);
+      if (result && result.ok) { friendsCache = { at: 0, data: null }; renderPage(); showToast(t('settings.presence.saved')); }
+      else showToast(t('settings.presence.invalid'));
+    } catch { showToast(t('settings.presence.invalid')); }
+    return;
+  }
+  if (target.closest('[data-remove-presence]')) {
+    try { await window.vortexDesktop?.removePresenceCookie(); friendsCache = { at: 0, data: null }; renderPage(); showToast(t('settings.presence.disabled')); } catch {}
     return;
   }
 

@@ -23,5 +23,8 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
   clearSearchCache: () => ipcRenderer.invoke('games:clear-cache'),
   reportRecentGames: (payload) => ipcRenderer.send('tray:recent-games', payload),
   listFriends: (username) => ipcRenderer.invoke('friends:list', { username }),
-  detectRobloxAccount: () => ipcRenderer.invoke('friends:detect-account')
+  detectRobloxAccount: () => ipcRenderer.invoke('friends:detect-account'),
+  setPresenceCookie: (cookie) => ipcRenderer.invoke('friends:presence-cookie', { cookie }),
+  removePresenceCookie: () => ipcRenderer.invoke('friends:presence-cookie', { remove: true }),
+  getPresenceStatus: () => ipcRenderer.invoke('friends:presence-status')
 });

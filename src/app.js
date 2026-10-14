@@ -69,7 +69,8 @@ const preferenceDefaults = {
   uiBreadcrumb: true, uiNotifications: true, uiSidebarFoot: true, uiUpdateBanner: true,
   pageTransition: 'fade', cardAnimation: 'rise', glow: 72, ambient: true, motion: true,
   contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home', trayScale: 'normal', robloxUsername: '', friendsNoticeAccepted: false,
-  themeText: '', themeMuted: '', themeLine: ''
+  themeText: '', themeMuted: '', themeLine: '',
+  themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeVignette: false
 };
 
 const readStored = (key, fallback) => {
@@ -165,6 +166,25 @@ function hexToRgba(hex, alpha) {
   return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
 }
 
+// Wallpaper layer: one fixed element behind the app with the user image,
+// blur and dimming; grain and vignette ride along as pseudo-element effects.
+let wallpaperLayerEl = null;
+function syncWallpaperLayer() {
+  const root = document.documentElement;
+  root.classList.toggle('has-wallpaper', Boolean(preferences.themeWallpaper));
+  root.classList.toggle('has-grain', preferences.themeGrain);
+  root.classList.toggle('has-vignette', preferences.themeVignette);
+  if (!preferences.themeWallpaper) { wallpaperLayerEl?.remove(); wallpaperLayerEl = null; return; }
+  if (!wallpaperLayerEl) {
+    wallpaperLayerEl = document.createElement('div');
+    wallpaperLayerEl.className = 'wallpaper-layer';
+    document.body.prepend(wallpaperLayerEl);
+  }
+  wallpaperLayerEl.style.setProperty('--wallpaper-image', 'url(' + preferences.themeWallpaper + ')');
+  wallpaperLayerEl.style.setProperty('--wallpaper-blur', preferences.themeWallpaperBlur + 'px');
+  wallpaperLayerEl.style.setProperty('--wallpaper-dim', preferences.themeWallpaperDim / 100);
+}
+
 function applyPreferences() {
   if (!['ru', 'en'].includes(preferences.language)) preferences.language = 'ru';
   if (!['home', 'accent', 'cards', 'effects', 'interface', 'general', 'version'].includes(preferences.settingsTab)) preferences.settingsTab = 'home';
@@ -186,6 +206,11 @@ function applyPreferences() {
   preferences.themeText = /^#[0-9a-f]{6}$/i.test(preferences.themeText) ? preferences.themeText : '';
   preferences.themeMuted = /^#[0-9a-f]{6}$/i.test(preferences.themeMuted) ? preferences.themeMuted : '';
   preferences.themeLine = /^#[0-9a-f]{6}$/i.test(preferences.themeLine) ? preferences.themeLine : '';
+  preferences.themeWallpaper = String(preferences.themeWallpaper || '').startsWith('data:image/') ? preferences.themeWallpaper : '';
+  preferences.themeWallpaperBlur = Math.max(0, Math.min(40, Number(preferences.themeWallpaperBlur) || 0));
+  preferences.themeWallpaperDim = Math.max(0, Math.min(90, Number(preferences.themeWallpaperDim) || 0));
+  preferences.themeGrain = preferences.themeGrain === true;
+  preferences.themeVignette = preferences.themeVignette === true;
   if (!['balanced', 'spotlight', 'library'].includes(preferences.homeLayout)) preferences.homeLayout = 'balanced';
   preferences.homeMinimal = Boolean(preferences.homeMinimal);
   if (![4, 6, 8].includes(Number(preferences.homeGameCount))) preferences.homeGameCount = 4;
@@ -262,6 +287,7 @@ function applyPreferences() {
   root.setProperty('--subtle', isLightCanvas ? '#9692a1' : '#636776');
   root.setProperty('--line', preferences.themeLine ? hexToRgba(preferences.themeLine, 0.16) : (isLightCanvas ? 'rgba(38,32,56,.1)' : 'rgba(255,255,255,.075)'));
   root.setProperty('--line-strong', preferences.themeLine ? hexToRgba(preferences.themeLine, 0.34) : (isLightCanvas ? 'rgba(38,32,56,.18)' : 'rgba(255,255,255,.13)'));
+  syncWallpaperLayer();
   document.documentElement.style.setProperty('--glow-strength', String(Number(preferences.glow) / 100));
   document.body.classList.toggle('light-theme', isLightCanvas);
   document.body.classList.toggle('oled-theme', preferences.theme === 'oled' && !isLightCanvas);
@@ -944,7 +970,24 @@ function renderAccentSettings() {
       <div class="theme-io"><button class="ghost-button" data-action="export-theme">${t('settings.themeExport')}</button><button class="ghost-button" data-action="import-theme">${t('settings.themeImport')}</button><input type="file" accept=".json,application/json" data-theme-file hidden /></div>
       <button class="text-button theme-reset" data-action="reset-theme-colors">${t('settings.themeReset')}</button>
       <div class="settings-preview" style="margin-top:17px"><div class="preview-thumb"></div><div class="preview-copy"><strong>${t('settings.preview.title')}</strong><small>${t('settings.preview.body')}</small></div></div>
-    </section>`;
+    </section>` + renderWallpaperCard();
+}
+
+function renderWallpaperCard() {
+  const hasWallpaper = Boolean(preferences.themeWallpaper);
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.wallpaper.title')}</h2><p>${t('settings.wallpaper.body')}</p></div></div>
+    <div class="wallpaper-controls">
+      <div class="wallpaper-pickers">
+        <button class="ghost-button" data-action="pick-wallpaper">${t('settings.wallpaper.pick')}</button>
+        ${hasWallpaper ? `<button class="ghost-button" data-action="remove-wallpaper">${t('settings.wallpaper.remove')}</button>` : ''}
+        <input type="file" accept="image/*" data-wallpaper-file hidden />
+      </div>
+      <label class="range-line"><span>${t('settings.wallpaper.blur')}</span><input type="range" min="0" max="40" value="${preferences.themeWallpaperBlur}" data-wallpaper-blur ${hasWallpaper ? '' : 'disabled'} /><b>${preferences.themeWallpaperBlur}px</b></label>
+      <label class="range-line"><span>${t('settings.wallpaper.dim')}</span><input type="range" min="0" max="90" value="${preferences.themeWallpaperDim}" data-wallpaper-dim ${hasWallpaper ? '' : 'disabled'} /><b>${preferences.themeWallpaperDim}%</b></label>
+      <div class="toggle-row"><label class="toggle"><input type="checkbox" data-wallpaper-grain ${preferences.themeGrain ? 'checked' : ''} /><span class="toggle-track"></span>${t('settings.wallpaper.grain')}</label>
+      <label class="toggle"><input type="checkbox" data-wallpaper-vignette ${preferences.themeVignette ? 'checked' : ''} /><span class="toggle-track"></span>${t('settings.wallpaper.vignette')}</label></div>
+    </div>
+  </section>`;
 }
 
 function renderCardSettings() {
@@ -2138,6 +2181,19 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
+  // Wallpaper: pick an image, drop it, or clear it.
+  if (target.closest('[data-action="pick-wallpaper"]')) {
+    pageContent.querySelector('[data-wallpaper-file]')?.click();
+    return;
+  }
+  if (target.closest('[data-action="remove-wallpaper"]')) {
+    preferences.themeWallpaper = '';
+    savePreferences();
+    applyPreferences();
+    renderPage();
+    return;
+  }
+
   const friendJoin = target.closest('[data-friend-join]');
   if (friendJoin) {
     const placeId = friendJoin.dataset.friendJoin;
@@ -2161,6 +2217,35 @@ document.addEventListener('click', async (event) => {
 
 // Imported theme files: validate and apply every known field.
 document.addEventListener('change', (event) => {
+  // Wallpaper image: read as data URL, cap at ~2.5 MB to keep localStorage sane.
+  if (event.target.matches('[data-wallpaper-file]')) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { showToast(t('settings.wallpaper.notImage')); return; }
+    if (file.size > 2.5 * 1024 * 1024) { showToast(t('settings.wallpaper.tooBig')); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      preferences.themeWallpaper = String(reader.result);
+      savePreferences();
+      applyPreferences();
+      renderPage();
+      showToast(t('settings.wallpaper.applied'));
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+    return;
+  }
+  if (event.target.matches('[data-wallpaper-grain]')) {
+    preferences.themeGrain = event.target.checked;
+    savePreferences(); applyPreferences();
+    return;
+  }
+  if (event.target.matches('[data-wallpaper-vignette]')) {
+    preferences.themeVignette = event.target.checked;
+    savePreferences(); applyPreferences();
+    return;
+  }
+
   if (!event.target.matches('[data-theme-file]')) return;
   const file = event.target.files && event.target.files[0];
   if (!file) return;
@@ -2190,6 +2275,19 @@ document.addEventListener('change', (event) => {
 });
 
 document.addEventListener('input', (event) => {
+  if (event.target.matches('[data-wallpaper-blur]')) {
+    preferences.themeWallpaperBlur = Number(event.target.value) || 0;
+    event.target.nextElementSibling.textContent = preferences.themeWallpaperBlur + 'px';
+    savePreferences(); applyPreferences();
+    return;
+  }
+  if (event.target.matches('[data-wallpaper-dim]')) {
+    preferences.themeWallpaperDim = Number(event.target.value) || 0;
+    event.target.nextElementSibling.textContent = preferences.themeWallpaperDim + '%';
+    savePreferences(); applyPreferences();
+    return;
+  }
+
   if (event.target.matches('[data-presence-cookie]')) {
     // Live length feedback for the pasted cookie.
     const meter = pageContent.querySelector('[data-presence-meter]');

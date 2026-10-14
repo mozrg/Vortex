@@ -842,3 +842,24 @@ body.light-theme .roblox-username-field input { background: rgba(255,255,255,.6)
 .friend-row.playing .friend-avatar::after { background: var(--accent-fill); box-shadow: 0 0 6px rgba(var(--accent-rgb), .8); }
 .friend-row.playing { border-color: var(--accent-border); background: color-mix(in srgb, var(--accent-wash) 55%, transparent); }
 .friend-row.playing .friend-copy small { color: var(--accent-text); }
+
+/* ---------- Wallpaper layer (Stage 2 customization) ---------- */
+.wallpaper-layer { position: fixed; z-index: -2; inset: -44px; background-image: var(--wallpaper-image); background-position: center; background-size: cover; filter: blur(var(--wallpaper-blur, 14px)); opacity: calc(1 - var(--wallpaper-dim, .45)); pointer-events: none; }
+.wallpaper-controls { display: grid; gap: 13px; }
+.wallpaper-pickers { display: flex; gap: 10px; }
+.range-line { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; color: var(--text); font-size: 10.5px; }
+.range-line input[type="range"] { width: 100%; accent-color: var(--accent); }
+.range-line b { min-width: 38px; color: var(--muted); font-size: 9.5px; text-align: right; }
+.toggle-row { display: flex; gap: 22px; flex-wrap: wrap; }
+.toggle { display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-size: 10.5px; cursor: pointer; }
+.toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.toggle-track { position: relative; width: 30px; height: 17px; flex: 0 0 auto; border: 1px solid var(--line-strong); border-radius: 10px; background: color-mix(in srgb, var(--surface-3) 70%, transparent); transition: background .16s ease, border-color .16s ease; }
+.toggle-track::after { position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--muted); content: ""; transition: left .16s ease, background .16s ease; }
+.toggle input:checked + .toggle-track { border-color: var(--accent-border); background: var(--accent-wash); }
+.toggle input:checked + .toggle-track::after { left: 15px; background: var(--accent); }
+/* Film grain overlay: animated fine noise, disabled for reduced motion. */
+.has-grain .wallpaper-layer ~ * { }
+html.has-grain body::before { position: fixed; z-index: 50; inset: -100%; pointer-events: none; content: ""; opacity: .05; background-image: repeating-conic-gradient(#000 0% .0001%, #fff .0002% .0002%); animation: grain-shift 7s steps(6) infinite; }
+@keyframes grain-shift { 0% { transform: translate(0, 0); } 20% { transform: translate(-6%, 4%); } 40% { transform: translate(4%, -7%); } 60% { transform: translate(-8%, -3%); } 80% { transform: translate(6%, 6%); } 100% { transform: translate(0, 0); } }
+html.has-vignette body::after { position: fixed; z-index: 49; inset: 0; pointer-events: none; content: ""; background: radial-gradient(ellipse 90% 90% at 50% 45%, transparent 55%, rgba(0, 0, 0, .38) 100%); }
+@media (prefers-reduced-motion: reduce) { html.has-grain body::before { animation: none; } }

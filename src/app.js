@@ -70,7 +70,8 @@ const preferenceDefaults = {
   pageTransition: 'fade', cardAnimation: 'rise', glow: 72, ambient: true, motion: true,
   contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home', trayScale: 'normal', robloxUsername: '', friendsNoticeAccepted: false,
   themeText: '', themeMuted: '', themeLine: '',
-  themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeVignette: false
+  themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeVignette: false,
+  cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true
 };
 
 const readStored = (key, fallback) => {
@@ -211,6 +212,15 @@ function applyPreferences() {
   preferences.themeWallpaperDim = Math.max(0, Math.min(90, Number(preferences.themeWallpaperDim) || 0));
   preferences.themeGrain = preferences.themeGrain === true;
   preferences.themeVignette = preferences.themeVignette === true;
+  preferences.cardSize = Math.max(0.7, Math.min(1.3, Number(preferences.cardSize) || 1));
+  preferences.cardRadius = Math.max(0, Math.min(20, Number(preferences.cardRadius) || 0));
+  preferences.customCardRadius = preferences.customCardRadius === true;
+  for (const flag of ['cardShowDescription', 'cardShowLikes', 'cardShowPlaytime', 'cardShowGenre']) {
+    preferences[flag] = preferences[flag] !== false;
+  }
+  // Legacy per-card toggles fold into the unified card flags so old saved states survive:
+  preferences.cardShowDescription = preferences.cardShowDescription && preferences.showDescriptions !== false;
+  preferences.cardShowLikes = preferences.cardShowLikes && preferences.showStats !== false;
   if (!['balanced', 'spotlight', 'library'].includes(preferences.homeLayout)) preferences.homeLayout = 'balanced';
   preferences.homeMinimal = Boolean(preferences.homeMinimal);
   if (![4, 6, 8].includes(Number(preferences.homeGameCount))) preferences.homeGameCount = 4;
@@ -288,13 +298,16 @@ function applyPreferences() {
   root.setProperty('--line', preferences.themeLine ? hexToRgba(preferences.themeLine, 0.16) : (isLightCanvas ? 'rgba(38,32,56,.1)' : 'rgba(255,255,255,.075)'));
   root.setProperty('--line-strong', preferences.themeLine ? hexToRgba(preferences.themeLine, 0.34) : (isLightCanvas ? 'rgba(38,32,56,.18)' : 'rgba(255,255,255,.13)'));
   syncWallpaperLayer();
+  root.setProperty('--card-size', preferences.cardSize);
+  root.setProperty('--card-radius', preferences.cardRadius + 'px');
   document.documentElement.style.setProperty('--glow-strength', String(Number(preferences.glow) / 100));
+  document.body.classList.toggle('custom-card-radius', preferences.customCardRadius === true);
   document.body.classList.toggle('light-theme', isLightCanvas);
   document.body.classList.toggle('oled-theme', preferences.theme === 'oled' && !isLightCanvas);
   document.body.classList.toggle('spacious', preferences.density === 'spacious');
   document.body.classList.toggle('compact', preferences.density === 'compact');
-  document.body.classList.toggle('hide-descriptions', !preferences.showDescriptions);
-  document.body.classList.toggle('hide-game-stats', !preferences.showStats);
+  document.body.classList.toggle('hide-descriptions', !preferences.cardShowDescription);
+  document.body.classList.toggle('hide-game-stats', !preferences.cardShowLikes);
   document.body.classList.toggle('sharp-corners', preferences.corners === 'sharp');
   document.body.classList.toggle('no-motion', !preferences.motion);
   document.body.classList.toggle('no-glow', !preferences.ambient);
@@ -407,10 +420,10 @@ function renderGameCard(game) {
     </div>
     <div class="game-info">
       <div class="game-title-row"><h3 class="game-title">${escapeHtml(game.title)}</h3></div>
-      <p class="game-description ${expandedDescription ? 'expanded' : ''}" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
-      ${canExpandDescription ? `<button class="description-more" data-action="toggle-description" data-id="${id}" aria-expanded="${expandedDescription}">${t(expandedDescription ? 'card.readLess' : 'card.readMore')}</button>` : ''}
-      ${liveStats}
-      <div class="game-card-footer">${category}${renderPlaytimeBadge(game.id)}<button class="card-play" data-action="play" data-id="${id}">${icon('play', 11)} ${t('card.play')}</button></div>
+      ${preferences.cardShowDescription ? `<p class="game-description ${expandedDescription ? 'expanded' : ''}" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
+      ${canExpandDescription ? `<button class="description-more" data-action="toggle-description" data-id="${id}" aria-expanded="${expandedDescription}">${t(expandedDescription ? 'card.readLess' : 'card.readMore')}</button>` : ''}` : ''}
+      ${preferences.cardShowLikes ? liveStats : ''}
+      <div class="game-card-footer">${preferences.cardShowGenre ? category : ''}${preferences.cardShowPlaytime ? renderPlaytimeBadge(game.id) : ''}<button class="card-play" data-action="play" data-id="${id}">${icon('play', 11)} ${t('card.play')}</button></div>
     </div>
   </article>`;
 }
@@ -991,11 +1004,21 @@ function renderWallpaperCard() {
 }
 
 function renderCardSettings() {
-  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.density.title')}</h2><p>${t('settings.density.body')}</p></div>${icon('grid', 18)}</div>
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cardTuning.title')}</h2><p>${t('settings.cardTuning.body')}</p></div>${icon('sliders', 18)}</div>
+    <div class="wallpaper-controls">
+      <label class="range-line"><span>${t('settings.cardTuning.size')}</span><input type="range" min="0.7" max="1.3" step="0.05" value="${preferences.cardSize}" data-card-size /><b>${Math.round(preferences.cardSize * 100)}%</b></label>
+      <label class="range-line"><span>${t('settings.cardTuning.radius')}</span><input type="range" min="0" max="20" value="${preferences.cardRadius}" data-card-radius /><b>${preferences.cardRadius}px</b></label>
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" data-card-flag="cardShowDescription" ${preferences.cardShowDescription ? 'checked' : ''} /><span class="toggle-track"></span>${t('settings.cardTuning.description')}</label>
+        <label class="toggle"><input type="checkbox" data-card-flag="cardShowLikes" ${preferences.cardShowLikes ? 'checked' : ''} /><span class="toggle-track"></span>${t('settings.cardTuning.likes')}</label>
+        <label class="toggle"><input type="checkbox" data-card-flag="cardShowPlaytime" ${preferences.cardShowPlaytime ? 'checked' : ''} /><span class="toggle-track"></span>${t('settings.cardTuning.playtime')}</label>
+        <label class="toggle"><input type="checkbox" data-card-flag="cardShowGenre" ${preferences.cardShowGenre ? 'checked' : ''} /><span class="toggle-track"></span>${t('settings.cardTuning.genre')}</label>
+      </div>
+    </div>
+  </section>
+  <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.density.title')}</h2><p>${t('settings.density.body')}</p></div>${icon('grid', 18)}</div>
       <div class="segmented density-segmented">${[['spacious', t('settings.spacious')], ['comfortable', t('settings.comfortable')], ['compact', t('settings.compact')]].map(([value, label]) => `<button class="segment ${preferences.density === value ? 'active' : ''}" data-pref="density" data-value="${value}" ${previewAttr('density', value, label)}>${label}</button>`).join('')}</div>
       <div class="setting-line" style="margin-top:13px"><div class="setting-label"><strong>${t('settings.corners.title')}</strong><small>${t('settings.corners.body')}</small></div><div class="segmented">${[['soft', t('settings.soft')], ['sharp', t('settings.sharp')]].map(([value, label]) => `<button class="segment ${preferences.corners === value ? 'active' : ''}" data-pref="corners" data-value="${value}" ${previewAttr('corners', value, label)}>${label}</button>`).join('')}</div></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.descriptions')}</strong><small>${t('settings.descriptionsBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.showDescriptions}" data-toggle="showDescriptions" aria-label="${t('settings.descriptions')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.playerStats')}</strong><small>${t('settings.playerStatsBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.showStats}" data-toggle="showStats" aria-label="${t('settings.playerStats')}"></button></div>
       <div class="settings-preview"><div class="density-preview-art" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><div class="preview-copy"><strong>${t('settings.anyScreen')}</strong><small>${t('settings.appliesToCatalog')}</small></div></div>
     </section>`;
 }
@@ -2235,6 +2258,14 @@ document.addEventListener('change', (event) => {
     event.target.value = '';
     return;
   }
+  if (event.target.matches('[data-card-flag]')) {
+    const flag = event.target.dataset.cardFlag;
+    if (['cardShowDescription', 'cardShowLikes', 'cardShowPlaytime', 'cardShowGenre'].includes(flag)) {
+      preferences[flag] = event.target.checked;
+      savePreferences(); renderPage();
+    }
+    return;
+  }
   if (event.target.matches('[data-wallpaper-grain]')) {
     preferences.themeGrain = event.target.checked;
     savePreferences(); applyPreferences();
@@ -2275,6 +2306,19 @@ document.addEventListener('change', (event) => {
 });
 
 document.addEventListener('input', (event) => {
+  if (event.target.matches('[data-card-size]')) {
+    preferences.cardSize = Math.max(0.7, Math.min(1.3, Number(event.target.value) || 1));
+    event.target.nextElementSibling.textContent = Math.round(preferences.cardSize * 100) + '%';
+    savePreferences(); applyPreferences();
+    return;
+  }
+  if (event.target.matches('[data-card-radius]')) {
+    preferences.cardRadius = Math.max(0, Math.min(20, Number(event.target.value) || 0));
+    preferences.customCardRadius = true;
+    event.target.nextElementSibling.textContent = preferences.cardRadius + 'px';
+    savePreferences(); applyPreferences();
+    return;
+  }
   if (event.target.matches('[data-wallpaper-blur]')) {
     preferences.themeWallpaperBlur = Number(event.target.value) || 0;
     event.target.nextElementSibling.textContent = preferences.themeWallpaperBlur + 'px';

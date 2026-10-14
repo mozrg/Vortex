@@ -863,3 +863,16 @@ html.has-grain body::before { position: fixed; z-index: 50; inset: -100%; pointe
 @keyframes grain-shift { 0% { transform: translate(0, 0); } 20% { transform: translate(-6%, 4%); } 40% { transform: translate(4%, -7%); } 60% { transform: translate(-8%, -3%); } 80% { transform: translate(6%, 6%); } 100% { transform: translate(0, 0); } }
 html.has-vignette body::after { position: fixed; z-index: 49; inset: 0; pointer-events: none; content: ""; background: radial-gradient(ellipse 90% 90% at 50% 45%, transparent 55%, rgba(0, 0, 0, .38) 100%); }
 @media (prefers-reduced-motion: reduce) { html.has-grain body::before { animation: none; } }
+
+/* ---------- Card tuning (Stage 3) ---------- */
+/* Size scales via column width (not transform, which fights hover/entrance animations):
+   --card-size widens the auto-fill track so the whole grid reflows. */
+.game-grid:not(.fixed-grid) { grid-template-columns: repeat(auto-fill, minmax(calc(190px * var(--card-size, 1)), 1fr)); }
+.game-card .game-cover { height: calc(132px * var(--card-size, 1)); }
+body.spacious .game-card .game-cover { height: calc(164px * var(--card-size, 1)); }
+body.compact .game-card .game-cover { height: calc(101px * var(--card-size, 1)); }
+.game-card .game-info { font-size: calc(0.86rem * var(--card-size, 1)); }
+/* Radius: enabled only with body.custom-card-radius so the corners preset stays intact
+   when the user never touched the slider (custom radius 0 is a valid choice). */
+body.custom-card-radius .game-card { border-radius: var(--card-radius, 12px); }
+body.custom-card-radius .game-card .game-cover { border-radius: calc(var(--card-radius, 12px) - 3px) calc(var(--card-radius, 12px) - 3px) 0 0; }

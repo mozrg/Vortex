@@ -7,6 +7,11 @@ const { pipeline } = require('node:stream/promises');
 const { createHash, randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
+// Dev escape hatch: VORTEX_REMOTE_DEBUGGING=9222 opens a CDP port for UI tests.
+if (process.env.VORTEX_REMOTE_DEBUGGING) {
+  const port = Number(process.env.VORTEX_REMOTE_DEBUGGING) || 9222;
+  app.commandLine.appendSwitch('remote-debugging-port', String(port));
+}
 if (!gotSingleInstanceLock) app.quit();
 else app.on('second-instance', () => {
   const window = BrowserWindow.getAllWindows().find((item) => !item.isDestroyed());

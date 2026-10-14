@@ -75,6 +75,62 @@ const preferenceDefaults = {
   homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal'
 };
 
+// ---------- Customization profiles (Stage 6) ----------
+// A profile snapshots every LOOK-related preference (colors, wallpaper, cards,
+// widgets, animations, density) so the user can save looks, switch between
+// them and share them as JSON. Game data (favorites, playtime, usernames)
+// never enters a profile.
+const PROFILE_KEYS = [
+  'theme', 'themeBackground', 'themeSurface', 'themeText', 'themeMuted', 'themeLine',
+  'accent', 'accentSecondary', 'accentMode', 'gradientAngle',
+  'themeWallpaper', 'themeWallpaperBlur', 'themeWallpaperDim', 'themeGrain', 'themeVignette',
+  'cardSize', 'cardRadius', 'customCardRadius', 'cardShowDescription', 'cardShowLikes', 'cardShowPlaytime', 'cardShowGenre',
+  'homeWidgetOrder', 'homeWidgetHidden', 'homeWidgetCollapsed',
+  'homeLayout', 'homeMinimal', 'homeShowHero', 'homeShowRecommendations',
+  'density', 'corners', 'showDescriptions', 'showStats',
+  'pageTransition', 'cardAnimation', 'animationSpeed', 'glow', 'ambient', 'motion', 'contrast',
+  'sidebarOrder', 'uiSidebarTip', 'uiProfileCard', 'uiTopbarSearch', 'uiBreadcrumb', 'uiNotifications', 'uiSidebarFoot', 'uiUpdateBanner'
+];
+
+function readProfiles() {
+  const raw = readStored('vortex.profiles', {});
+  return raw && typeof raw === 'object' ? raw : {};
+}
+
+function writeProfiles(profiles) {
+  try { localStorage.setItem('vortex.profiles', JSON.stringify(profiles)); } catch { /* quota */ }
+}
+
+function saveProfileFromCurrent(name) {
+  const clean = String(name || '').trim().slice(0, 32);
+  if (!clean) return false;
+  const snapshot = {};
+  for (const key of PROFILE_KEYS) snapshot[key] = preferences[key];
+  const profiles = readProfiles();
+  profiles[clean] = { version: 1, savedAt: Date.now(), settings: snapshot };
+  writeProfiles(profiles);
+  return true;
+}
+
+function applyProfile(name) {
+  const profiles = readProfiles();
+  const profile = profiles[String(name)];
+  if (!profile || !profile.settings) return false;
+  for (const key of PROFILE_KEYS) {
+    if (key in profile.settings) preferences[key] = profile.settings[key];
+  }
+  savePreferences();
+  applyPreferences();
+  renderPage();
+  return true;
+}
+
+function deleteProfile(name) {
+  const profiles = readProfiles();
+  delete profiles[String(name)];
+  writeProfiles(profiles);
+}
+
 const readStored = (key, fallback) => {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) : fallback; } catch { return fallback; }
 };
@@ -1517,6 +1573,23 @@ function renderGeneralSettings() {
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cache.title')}</h2><p>${t('settings.cache.body')}</p></div>${icon('search', 18)}</div>
       <button class="ghost-button" data-action="clear-cache">${icon('close', 13)} ${t('settings.cacheClear')}</button>
     </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.profiles.title')}</h2><p>${t('settings.profiles.body')}</p></div>${icon('palette', 18)}</div>
+      <div class="profile-actions">
+        <input type="text" maxlength="32" placeholder="${t('settings.profiles.namePlaceholder')}" data-profile-name />
+        <button class="primary-button" data-action="save-profile">${icon('check', 13)} ${t('settings.profiles.save')}</button>
+        <button class="ghost-button" data-action="export-profiles">${icon('download', 13)} ${t('settings.profiles.export')}</button>
+        <button class="ghost-button" data-action="import-profiles">${icon('upload', 13)} ${t('settings.profiles.import')}</button>
+        <input type="file" accept=".json,application/json" data-profiles-file hidden />
+      </div>
+      <div class="profile-list">${Object.keys(readProfiles()).length ? Object.entries(readProfiles()).map(([name, profile]) => `
+        <div class="profile-row">
+          <span class="profile-copy"><strong>${escapeHtml(name)}</strong><small>${new Date(profile.savedAt || Date.now()).toLocaleDateString(preferences.language)}</small></span>
+          <button class="primary-button" data-apply-profile="${escapeHtml(name)}">${t('settings.profiles.apply')}</button>
+          <button class="ghost-button" data-overwrite-profile="${escapeHtml(name)}">${t('settings.profiles.overwrite')}</button>
+          <button class="ghost-button" data-remove-profile="${escapeHtml(name)}" aria-label="${t('settings.profiles.remove')}">${icon('close', 12)}</button>
+        </div>`).join('') : `<p class="catalog-disclaimer">${t('settings.profiles.empty')}</p>`}
+      </div>
+    </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.reset.title')}</h2><p>${t('settings.reset.body')}</p></div>${icon('slidersHorizontal', 18)}</div>
       <button class="ghost-button" data-action="reset-appearance">${icon('motion', 13)} ${t('settings.resetButton')}</button>
     </section>`;
@@ -2180,6 +2253,24 @@ document.addEventListener('click', async (event) => {
       renderPage();
       showToast(t('home.widgets.resetDone'));
     }
+    if (action.dataset.action === 'save-profile') {
+      const name = pageContent.querySelector('[data-profile-name]')?.value;
+      if (saveProfileFromCurrent(name)) {
+        showToast(t('settings.profiles.saved', { name: String(name).trim() }));
+        renderPage();
+      } else showToast(t('settings.profiles.needName'));
+    }
+    if (action.dataset.action === 'export-profiles') {
+      const blob = new Blob([JSON.stringify(readProfiles(), null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'vortex-profiles.json';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+    if (action.dataset.action === 'import-profiles') {
+      pageContent.querySelector('[data-profiles-file]')?.click();
+    }
     return;
   }
 
@@ -2384,6 +2475,28 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
+  // ---------- Customization profiles: non-action buttons ----------
+  const applyProfileBtn = target.closest('[data-apply-profile]');
+  if (applyProfileBtn) {
+    const ok = applyProfile(applyProfileBtn.dataset.applyProfile);
+    showToast(ok ? t('settings.profiles.applied', { name: applyProfileBtn.dataset.applyProfile }) : t('settings.profiles.missing'));
+    return;
+  }
+  const overwriteProfileBtn = target.closest('[data-overwrite-profile]');
+  if (overwriteProfileBtn) {
+    const name = overwriteProfileBtn.dataset.overwriteProfile;
+    saveProfileFromCurrent(name);
+    showToast(t('settings.profiles.saved', { name }));
+    renderPage();
+    return;
+  }
+  const removeProfileBtn = target.closest('[data-remove-profile]');
+  if (removeProfileBtn) {
+    deleteProfile(removeProfileBtn.dataset.removeProfile);
+    renderPage();
+    return;
+  }
+
   // Wallpaper: pick an image, drop it, or clear it.
   if (target.closest('[data-action="pick-wallpaper"]')) {
     pageContent.querySelector('[data-wallpaper-file]')?.click();
@@ -2464,6 +2577,36 @@ document.addEventListener('change', (event) => {
   if (event.target.matches('[data-wallpaper-vignette]')) {
     preferences.themeVignette = event.target.checked;
     savePreferences(); applyPreferences();
+    return;
+  }
+
+  // Imported profiles file: merge known profile objects into storage.
+  if (event.target.matches('[data-profiles-file]')) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const imported = JSON.parse(String(reader.result));
+        if (!imported || typeof imported !== 'object' || Array.isArray(imported)) throw new Error('shape');
+        const profiles = readProfiles();
+        let count = 0;
+        for (const [name, profile] of Object.entries(imported)) {
+          const clean = String(name).slice(0, 32);
+          if (!clean || !profile || typeof profile !== 'object' || !profile.settings) continue;
+          profiles[clean] = { version: 1, savedAt: Number(profile.savedAt) || Date.now(), settings: profile.settings };
+          count += 1;
+        }
+        if (!count) throw new Error('empty');
+        writeProfiles(profiles);
+        renderPage();
+        showToast(t('settings.profiles.imported', { count: String(count) }));
+      } catch {
+        showToast(t('settings.profiles.importInvalid'));
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
     return;
   }
 

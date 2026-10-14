@@ -936,3 +936,13 @@ body.custom-card-radius .game-card .game-cover { border-radius: calc(var(--card-
 .palette-empty { padding: 18px; color: var(--muted); font-size: 11.5px; text-align: center; }
 .palette-foot { display: flex; gap: 16px; padding: 9px 15px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9.5px; }
 body.no-motion .palette-panel { animation: none; }
+
+/* ---------- Customization profiles (Stage 6) ---------- */
+.profile-actions { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; margin-bottom: 13px; }
+.profile-actions input { min-height: 34px; width: 180px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: color-mix(in srgb, var(--surface-3) 70%, transparent); color: var(--text); font-size: 11.5px; outline: none; }
+.profile-actions input:focus { border-color: var(--accent-border); }
+.profile-list { display: grid; gap: 8px; }
+.profile-row { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--surface-3) 55%, transparent); }
+.profile-copy { display: grid; gap: 1px; min-width: 0; flex: 1; }
+.profile-copy strong { font-size: 12px; color: var(--text); }
+.profile-copy small { font-size: 9.5px; color: var(--muted); }

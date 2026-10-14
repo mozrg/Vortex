@@ -1174,7 +1174,8 @@ document.addEventListener('pointermove', (event) => {
     // Leave the flow: the remaining rows compact at once, and the slot bands
     // below are measured on that compacted grid, so the ghost, the slot math
     // and the row shifts all share one coordinate system.
-    uiDrag.row.style.width = origin.width + 'px';
+    // Exact list-column width: the ghost is a perfect copy of a list row.
+    uiDrag.row.style.width = Math.round(uiDrag.listRect.width) + 'px';
     uiDrag.row.style.position = 'fixed';
     // Pin the anchor corner: with left/top auto the static (grid) position of
     // a fixed element shifts while the rows re-arrange, and the translate

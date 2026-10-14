@@ -34,12 +34,6 @@
     .tray-panel.tray-enter { opacity: 0; transform: translateY(6px); }
     .tray-panel.tray-exit { opacity: 0; transform: translateY(3px); }
 
-    .tray-head { display: flex; align-items: center; gap: calc(8px * var(--scale)); padding: calc(9px * var(--scale)) calc(12px * var(--scale)); border-bottom: 1px solid var(--line); }
-    .tray-logo { display: grid; width: calc(22px * var(--scale)); height: calc(22px * var(--scale)); flex: 0 0 auto; place-items: center; border-radius: calc(4px * var(--scale)); background: var(--accent-fill); color: var(--accent-contrast); }
-    .tray-logo svg { width: calc(13px * var(--scale)); height: calc(13px * var(--scale)); }
-    .tray-copy strong { display: block; font-size: calc(12px * var(--scale)); font-weight: 700; letter-spacing: .02em; }
-    .tray-copy small { display: block; margin-top: 1px; color: var(--muted); font-size: calc(8px * var(--scale)); }
-
     .tray-games { display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: none; max-height: calc(260px * var(--scale)); }
     .tray-games::-webkit-scrollbar { display: none; }
 
@@ -75,21 +69,16 @@
 </head>
 <body>
   <div class="tray-panel">
-    <div class="tray-head">
-      <span class="tray-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span>
-      <div class="tray-copy"><strong>Vortex</strong><small data-i18n="tray.status">ТТ  </small></div>
-    </div>
-    <p class="tray-section-title" style="margin:0;padding:calc(7px*var(--scale)) calc(12px*var(--scale)) calc(4px*var(--scale));color:var(--muted);font-size:calc(8px*var(--scale));font-weight:700;letter-spacing:.14em;text-transform:uppercase;" data-i18n="tray.recent">С Ы</p>
     <div class="tray-games" id="tray-games"></div>
     <hr class="tray-sep" />
     <div class="tray-actions">
       <button class="tray-button" id="tray-open">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
-        <span data-i18n="tray.open">ткрыть приложение</span>
+        <span data-i18n="tray.open">Открыть приложение</span>
       </button>
       <button class="tray-button danger" id="tray-quit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-        <span data-i18n="tray.quit">акрыть полностью</span>
+        <span data-i18n="tray.quit">Закрыть полностью</span>
       </button>
     </div>
   </div>
@@ -97,12 +86,12 @@
   <script>
     const translations = {
       ru: {
-        'tray.status': 'ТТ  ',
-        'tray.recent': 'С Ы',
-        'tray.open': 'ткрыть приложение',
-        'tray.quit': 'акрыть полностью',
-        'tray.launch': 'апустить',
-        'tray.empty': 'ока пусто  запусти игру,<br />и она появится здесь'
+        'tray.status': 'РАБОТАЕТ В ФОНЕ',
+        'tray.recent': 'ПОСЛЕДНИЕ ИГРЫ',
+        'tray.open': 'Открыть приложение',
+        'tray.quit': 'Закрыть полностью',
+        'tray.launch': 'Запустить',
+        'tray.empty': 'Пока пусто — запусти игру,<br />и она появится здесь'
       },
       en: {
         'tray.status': 'RUNNING IN BACKGROUND',
@@ -110,7 +99,7 @@
         'tray.open': 'Open app',
         'tray.quit': 'Quit completely',
         'tray.launch': 'Launch',
-        'tray.empty': 'Nothing yet  launch a game<br />and it will show up here'
+        'tray.empty': 'Nothing yet — launch a game<br />and it will show up here'
       }
     };
     let language = 'ru';

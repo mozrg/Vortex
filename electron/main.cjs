@@ -827,7 +827,7 @@ function showTrayWindow() {
       if (!trayWindow || trayWindow.isDestroyed() || !trayWindow.isVisible()) return;
       // Fade out quickly, then actually hide the OS window.
       void trayWindow.webContents.executeJavaScript(`window.__trayExit && window.__trayExit();`).catch(() => {});
-      window.setTimeout(() => { if (trayWindow && !trayWindow.isDestroyed()) trayWindow.hide(); }, 110);
+      setTimeout(() => { if (trayWindow && !trayWindow.isDestroyed()) trayWindow.hide(); }, 110);
     });
     trayWindow.loadFile(path.join(__dirname, '..', 'tray.html'));
   }

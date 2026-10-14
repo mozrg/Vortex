@@ -1191,12 +1191,17 @@ document.addEventListener('pointermove', (event) => {
   }
   const x = event.clientX - uiDrag.grabOffsetX;
   const y = event.clientY - uiDrag.grabOffsetY;
-  // Keep the ghost inside the list's bounds on both axes: it may not cross
-  // into the sections around the list while the drag is active.
-  const clampedX = Math.max(uiDrag.listRect.left, Math.min(uiDrag.listRect.right - uiDrag.rowWidth, x));
-  const clampedY = Math.max(uiDrag.listRect.top, Math.min(uiDrag.listRect.bottom - uiDrag.rowHeight, y));
+  // Self-correcting clamp: re-read the list position on EVERY move. If the
+  // page scrolled or anything re-laid-out under the ghost (auto-scroll,
+  // section shifts, browser zoom), stale cached bounds are what made the
+  // ghost fly away from the cursor in the field. Only the SIZE is cached.
+  const live = uiDrag.list.getBoundingClientRect();
+  const clampedX = Math.max(live.left, Math.min(live.right - uiDrag.rowWidth, x));
+  const clampedY = Math.max(live.top, Math.min(live.bottom - uiDrag.rowHeight, y));
   uiDrag.row.style.transform = `translate(${clampedX}px, ${clampedY}px)`;
-  uiDrag.ghostY = clampedY - uiDrag.listRect.top + uiDrag.rowHeight / 2;
+  uiDrag.ghostY = clampedY - live.top + uiDrag.rowHeight / 2;
+  // Keep the cached rect in sync for the auto-scroll path.
+  uiDrag.listRect = live;
   uiDragApplyShifts();
   uiDragAutoScroll(event.clientY);
 });

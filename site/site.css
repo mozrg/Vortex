@@ -17,12 +17,12 @@ nav .github-link span { color:var(--accent); }
 .language-button:hover { border-color:rgba(162,134,255,.5); background:rgba(162,134,255,.1); }
 main { width:min(100% - 56px,1160px); margin:0 auto; }
 .hero { position:relative; display:flex; min-height:490px; align-items:center; overflow:hidden; padding:68px 8px 57px; }
-.hero-glow { position:absolute; top:75px; left:4%; width:520px; height:420px; border-radius:50%; background:rgba(98,64,171,.14); filter:blur(90px); pointer-events:none; }
+.hero-glow { position:absolute; top:-40px; left:0; width:70%; height:560px; pointer-events:none; background:radial-gradient(ellipse 62% 55% at 34% 42%, rgba(98,64,171,.20), rgba(98,64,171,.07) 45%, transparent 72%); }
 .hero-copy { position:relative; z-index:1; width:57%; }
 .eyebrow { display:flex; align-items:center; gap:9px; color:#b59afa; font-size:9px; font-weight:700; letter-spacing:.16em; }
 .eyebrow i,.release-indicator i { width:6px; height:6px; border-radius:2px; background:var(--accent); box-shadow:0 0 12px rgba(162,134,255,.75); transform:rotate(45deg); }
 h1,h2,h3,p { margin-top:0; }
-h1 { margin:22px 0 15px; font:800 clamp(38px,5.2vw,62px)/1.06 var(--display); letter-spacing:-.065em; }
+h1 { margin:16px 0 15px; font:800 clamp(34px,4.6vw,54px)/1.06 var(--display); letter-spacing:.02em; }
 h1 em { color:#b79bff; font-style:normal; }
 .hero-copy>p { max-width:490px; margin-bottom:25px; color:#a5a4af; font-size:14px; line-height:1.8; }
 .hero-actions { display:flex; align-items:center; gap:22px; }

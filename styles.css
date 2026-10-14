@@ -277,10 +277,7 @@ body.ui-dragging .ui-list { position: relative; z-index: 6; }
 body.ui-dragging .ui-row { animation: none; }
 body.ui-dragging .ui-row:hover { transform: none; box-shadow: 0 4px 12px rgba(0,0,0,.22); }
 .ui-row:focus-visible { border-color: var(--accent-border); box-shadow: 0 0 0 2px var(--accent-wash); }
-.ui-row.ui-row-dragging { opacity: .92; border: 1px dashed var(--accent); background: color-mix(in srgb, var(--surface-3) 88%, var(--accent-wash)); box-shadow: 0 18px 40px rgba(0,0,0,.45), 0 6px 18px rgba(var(--accent-rgb), .25); animation: none; will-change: transform; }
-/* The ghost follows the pointer 1:1 (inline transition:none on start);
-   hover transform must never fight the inline translate. */
-.ui-row.ui-row-dragging, .ui-row.ui-row-dragging:hover { transition: none; }
+.ui-row.ui-row-dragging { opacity: .75; border: 1px dashed var(--accent); background: var(--accent-wash); box-shadow: 0 8px 22px rgba(0,0,0,.35); animation: none; }
 body.ui-dragging { user-select: none; cursor: grabbing; }
 body.ui-dragging .ui-row:not(.ui-row-dragging) { transition: transform .18s cubic-bezier(.4, 0, .2, 1), background-color .18s ease; animation: none; }
 .ui-row-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }

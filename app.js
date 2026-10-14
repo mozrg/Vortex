@@ -1045,8 +1045,11 @@ function reorderNavTo(fromKey, toIndex) {
 let uiDrag = null;
 const UI_DRAG_THRESHOLD = 4;
 
-// Buttons react live while the list reorders: the first row disables
-// its up arrow, the last one disables its down arrow.
+// In-flow drag reorder (Notion/Linear-style): the dragged row never leaves
+// the list. While the pointer moves, the row is re-inserted in the DOM at
+// the slot under the cursor, so a real gap always opens exactly where the
+// row will land. No fixed positioning, no transforms, no coordinate math 
+// the browser does all layout. Release commits the DOM order as-is.
 function updateUiRowHandles(list) {
   if (!list) return;
   const rows = [...list.querySelectorAll('.ui-row')];
@@ -1058,214 +1061,61 @@ function updateUiRowHandles(list) {
   });
 }
 
-// Desktop-icon drag: on press the row lifts out of the flow and follows the
-// cursor as a floating ghost; the remaining rows shift to open the slot the
-// ghost is currently over. The order is committed on release.
 function startUiDrag(event, row) {
   const list = row.closest('[data-ui-order]');
   if (!list) return;
-  const rect = row.getBoundingClientRect();
   uiDrag = {
     row,
     list,
     started: false,
     pointerId: event.pointerId,
-    // Press point for the drag threshold (previously read but never set:
-    // the 4px guard never actually guarded).
     pointerX: event.clientX,
-    pointerY: event.clientY,
-    // Anchor between cursor and row top-left, so the ghost keeps the grab point.
-    grabOffsetX: event.clientX - rect.left,
-    grabOffsetY: event.clientY - rect.top,
-    rowHeight: rect.height,
-    // Full pitch = row height + grid gap; the gap comes from the live computed
-    // style of the list at press time.
-    rowPitch: 0,
-    listRect: null,
-    slot: -1,
-    slots: []
+    pointerY: event.clientY
   };
   event.preventDefault();
-}
-
-// The slot under the cursor: each row occupies a band of list-height; the
-// ghost's centre picks the band it falls into, including past-the-end.
-function uiDragSlotAt(y) {
-  const { slots } = uiDrag;
-  for (let i = 0; i < slots.length; i++) {
-    if (y < slots[i].bottom) return i;
-  }
-  return slots.length;
-}
-
-// Slot bands are measured once at drag start from the untouched layout, in
-// list-local coordinates. They never change during the drag: only rows move
-// around a fixed slot grid, which is why the ghost cannot skip a row.
-function uiDragMeasureSlots() {
-  const rows = [...uiDrag.list.querySelectorAll('.ui-row:not(.ui-row-dragging)')];
-  const listRect = uiDrag.list.getBoundingClientRect();
-  uiDrag.slots = rows.map((item) => {
-    const r = item.getBoundingClientRect();
-    return { top: r.top - listRect.top, bottom: r.bottom - listRect.top };
-  });
-  // A virtual slot for the very end of the list.
-  if (rows.length) {
-    const last = uiDrag.slots[uiDrag.slots.length - 1];
-    uiDrag.slots.push({ top: last.bottom, bottom: last.bottom + (last.bottom - last.top) });
-  }
-  uiDrag.slot = -1;
-}
-
-// Visually shift the settled rows so the slot under the cursor is open.
-// Shifts are recomputed from scratch every move  no stale state, no skips.
-function uiDragApplyShifts() {
-  const target = uiDragSlotAt(uiDrag.ghostY);
-  const rows = [...uiDrag.list.querySelectorAll('.ui-row:not(.ui-row-dragging)')];
-  rows.forEach((row, index) => {
-    // Row ends up below the open slot => it parts downward by one full pitch
-    // (row height + grid gap), so it lands exactly where the ghost would sit.
-    const shift = index >= target ? uiDrag.rowPitch : 0;
-    row.style.transition = 'transform .18s cubic-bezier(.4, 0, .2, 1)';
-    row.style.transform = shift ? `translateY(${shift}px)` : '';
-  });
-  uiDrag.slot = target;
-  updateUiRowHandlesLive(rows, target);
-}
-
-// Projected final order: others[0..target) then the dragged row then the rest.
-function updateUiRowHandlesLive(rows, target) {
-  rows.forEach((row, index) => {
-    const projectedIndex = index < target ? index : index + 1;
-    const up = row.querySelector('[data-direction="-1"]');
-    const down = row.querySelector('[data-direction="1"]');
-    if (up) up.disabled = projectedIndex === 0;
-    if (down) down.disabled = projectedIndex === rows.length;
-  });
 }
 
 document.addEventListener('pointermove', (event) => {
   if (!uiDrag || event.pointerId !== uiDrag.pointerId) return;
   if (!uiDrag.started) {
-    // Only counts as a drag once the pointer moves a few pixels, so a plain
-    // click on the row never disturbs the order.
     if (Math.hypot(event.clientX - uiDrag.pointerX, event.clientY - uiDrag.pointerY) < UI_DRAG_THRESHOLD) return;
     uiDrag.started = true;
     uiDrag.row.classList.add('ui-row-dragging');
     document.body.classList.add('ui-dragging');
     if (uiDrag.row.hasAttribute('draggable')) uiDrag.row.setAttribute('draggable', 'false');
-    // The ghost leaves the flow: fixed-positioned at viewport coordinates and
-    // translated to follow the cursor, exactly like a desktop icon drag.
-    const origin = uiDrag.row.getBoundingClientRect();
-    uiDrag.rowWidth = origin.width;
-    // Refresh the grab anchor NOW: the row may have moved between the press
-    // and the drag actually starting (page entry animation, layout shifts).
-    uiDrag.grabOffsetX = uiDrag.pointerX - origin.left;
-    uiDrag.grabOffsetY = uiDrag.pointerY - origin.top;
-    // Measure the list BEFORE the ghost leaves the flow: the full-height box
-    // is what the height lock must preserve. (Measuring after the flow exit
-    // locked the already-shrunk height and the bottom row still overflowed.)
-    uiDrag.listRect = uiDrag.list.getBoundingClientRect();
-    // Pitch: the vertical distance between two consecutive row tops.
-    const firstRows = uiDrag.list.querySelectorAll('.ui-row');
-    uiDrag.rowPitch = firstRows.length > 1
-      ? Math.round(firstRows[1].getBoundingClientRect().top - firstRows[0].getBoundingClientRect().top)
-      : uiDrag.rowHeight + 8;
-    uiDrag.list.style.minHeight = uiDrag.listRect.height + 'px';
-    // Leave the flow: the remaining rows compact at once, and the slot bands
-    // below are measured on that compacted grid, so the ghost, the slot math
-    // and the row shifts all share one coordinate system.
-    // Exact list-column width: the ghost is a perfect copy of a list row.
-    uiDrag.row.style.width = Math.round(uiDrag.listRect.width) + 'px';
-    uiDrag.row.style.position = 'fixed';
-    // Pin the anchor corner: with left/top auto the static (grid) position of
-    // a fixed element shifts while the rows re-arrange, and the translate
-    // stacks on top -> the ghost drifts away from the cursor.
-    uiDrag.row.style.left = '0';
-    uiDrag.row.style.top = '0';
-    uiDrag.row.style.margin = '0';
-    // The ghost tracks the pointer 1:1: no transition lag on its transform.
-    uiDrag.row.style.transition = 'none';
-    uiDrag.row.style.zIndex = '1000';
-    uiDrag.row.style.pointerEvents = 'none';
-    uiDrag.row.style.transform = `translate(${origin.left}px, ${origin.top}px)`;
-    uiDragMeasureSlots();
   }
-  const y = event.clientY - uiDrag.grabOffsetY;
-  // Steam-style reorder: the ghost tracks the cursor vertically ONLY and is
-  // pinned to the list's left edge. Horizontal 'fly-away' is impossible by
-  // construction, and the visual matches how Steam reorders library rows.
-  const live = uiDrag.list.getBoundingClientRect();
-  const clampedY = Math.max(live.top, Math.min(live.bottom - uiDrag.rowHeight, y));
-  uiDrag.row.style.transform = `translate(${live.left}px, ${clampedY}px)`;
-  uiDrag.ghostY = clampedY - live.top + uiDrag.rowHeight / 2;
-  // Keep the cached rect in sync for the auto-scroll path.
-  uiDrag.listRect = live;
-  uiDragApplyShifts();
-  uiDragAutoScroll(event.clientY);
+  // Which row is the cursor over? Insert the dragged row before it.
+  const rows = [...uiDrag.list.querySelectorAll('.ui-row:not(.ui-row-dragging)')];
+  let anchor = null;
+  for (const item of rows) {
+    const rect = item.getBoundingClientRect();
+    if (event.clientY < rect.top + rect.height / 2) { anchor = item; break; }
+  }
+  if (anchor) {
+    if (uiDrag.row.nextElementSibling !== anchor) uiDrag.list.insertBefore(uiDrag.row, anchor);
+  } else {
+    // Cursor below every row: move to the end.
+    if (uiDrag.list.lastElementChild !== uiDrag.row) uiDrag.list.appendChild(uiDrag.row);
+  }
+  updateUiRowHandles(uiDrag.list);
 });
-
-// Auto-scroll while dragging: near the top/bottom edge of the scroll
-// container the page follows the cursor, so long lists can be dragged
-// beyond the visible area. The scroll target lives outside the ghost (fixed
-// coordinates), so the list bounds are refreshed on every scroll step.
-function uiDragAutoScroll(clientY) {
-  const scroller = uiDrag.list?.closest('.main-area');
-  if (!scroller) return;
-  const box = scroller.getBoundingClientRect();
-  const EDGE = 56;
-  const SPEED = 13;
-  let delta = 0;
-  if (clientY < box.top + EDGE) delta = -SPEED * Math.min(1, (box.top + EDGE - clientY) / EDGE);
-  else if (clientY > box.bottom - EDGE) delta = SPEED * Math.min(1, (clientY - (box.bottom - EDGE)) / EDGE);
-  if (!delta) { if (uiDrag.scrollRaf) { cancelAnimationFrame(uiDrag.scrollRaf); uiDrag.scrollRaf = null; } return; }
-  scroller.scrollTop += delta;
-  // The page moved under the fixed ghost: remeasure the list so the clamp,
-  // the slot math and the row shifts stay in sync with the content.
-  if (uiDrag.started) {
-    uiDrag.listRect = uiDrag.list.getBoundingClientRect();
-    uiDrag.scrollRaf = requestAnimationFrame(() => { if (uiDrag && uiDrag.started) uiDragAutoScroll(uiDrag.clientY); });
-  }
-}
 
 function finishUiDrag() {
   if (!uiDrag) return;
-  const { row, list, started, slot } = uiDrag;
-  if (uiDrag.scrollRaf) cancelAnimationFrame(uiDrag.scrollRaf);
+  const { row, list, started } = uiDrag;
   uiDrag = null;
   if (!started) return;
   row.classList.remove('ui-row-dragging');
   document.body.classList.remove('ui-dragging');
-  // Return the ghost to the document flow and clear the row shifts.
-  row.style.width = '';
-  row.style.position = '';
-  row.style.left = '';
-  row.style.top = '';
-  row.style.margin = '';
-  row.style.zIndex = '';
-  row.style.pointerEvents = '';
-  row.style.transform = '';
-  row.style.transition = '';
-  [...list.querySelectorAll('.ui-row')].forEach((item) => {
-    item.style.transform = '';
-    item.style.transition = '';
-  });
-  list.style.minHeight = '';
-  if (slot >= 0) {
-    // Commit the order: rebuild the list in the projected arrangement.
-    const rows = [...list.querySelectorAll('.ui-row')];
-    const dragged = row;
-    const others = rows.filter((item) => item !== dragged);
-    const clamped = Math.max(0, Math.min(slot, others.length));
-    const next = [...others.slice(0, clamped), dragged, ...others.slice(clamped)];
-    next.forEach((item) => list.appendChild(item));
-    preferences.sidebarOrder = next.map((item) => item.dataset.uiRow).filter(Boolean);
-    savePreferences();
-    renderSidebar();
-    updateUiRowHandles(list);
-  }
+  const order = [...list.querySelectorAll('.ui-row')].map((item) => item.dataset.uiRow).filter(Boolean);
+  preferences.sidebarOrder = order;
+  savePreferences();
+  renderSidebar();
+  updateUiRowHandles(list);
 }
 
 document.addEventListener('pointerup', finishUiDrag);
+document.addEventListener('pointercancel', finishUiDrag);
 document.addEventListener('pointercancel', finishUiDrag);
 
 // Keyboard support: focus a row, then reorder with the arrows.

@@ -787,23 +787,45 @@ function trayScale() {
   return TRAY_SCALES[trayStyle.trayScale] ?? 1;
 }
 
+// Steam-style menu geometry: 280px wide, height follows content.
+const TRAY_MENU_WIDTH = 280;
+const TRAY_MENU_MIN_HEIGHT = 150;
+const TRAY_MENU_MAX_HEIGHT = 420;
+let trayMenuHeight = TRAY_MENU_MIN_HEIGHT;
+
 function trayBounds() {
   const cursor = screen.getCursorScreenPoint();
   const display = screen.getDisplayNearestPoint(cursor);
-  const width = Math.round(316 * trayScale());
-  const height = Math.round(436 * trayScale());
+  const width = Math.round(TRAY_MENU_WIDTH * trayScale());
+  const height = Math.round(trayMenuHeight * trayScale());
   return {
     x: Math.max(display.workArea.x, Math.min(display.workArea.x + display.workArea.width - width, cursor.x - width / 2)),
     y: Math.max(display.workArea.y, Math.min(display.workArea.y + display.workArea.height - height, cursor.y - height - 12))
   };
 }
 
+// Measure the real panel height once the page has rendered and size the
+// window to it, so no scrollbars or empty voids ever appear.
+function fitTrayWindowToContent() {
+  if (!trayWindow || trayWindow.isDestroyed()) return;
+  void trayWindow.webContents.executeJavaScript(`(() => {
+    const panel = document.querySelector('.tray-panel');
+    return panel ? Math.ceil(panel.getBoundingClientRect().height) : 0;
+  })()`).then((height) => {
+    if (!trayWindow || trayWindow.isDestroyed() || !Number.isFinite(height) || height <= 0) return;
+    trayMenuHeight = Math.max(TRAY_MENU_MIN_HEIGHT, Math.min(TRAY_MENU_MAX_HEIGHT, height));
+    const next = trayBounds();
+    trayWindow.setSize(Math.round(TRAY_MENU_WIDTH * trayScale()), Math.round(trayMenuHeight * trayScale()), false);
+    trayWindow.setPosition(next.x, next.y, false);
+  }).catch(() => {});
+}
+
 function showTrayWindow() {
   const position = trayBounds();
   if (!trayWindow || trayWindow.isDestroyed()) {
     trayWindow = new BrowserWindow({
-      width: Math.round(316 * trayScale()),
-      height: Math.round(436 * trayScale()),
+      width: Math.round(TRAY_MENU_WIDTH * trayScale()),
+      height: Math.round(TRAY_MENU_MAX_HEIGHT * trayScale()),
       x: position.x,
       y: position.y,
       show: false,
@@ -831,11 +853,13 @@ function showTrayWindow() {
     });
     trayWindow.loadFile(path.join(__dirname, '..', 'tray.html'));
   }
+  // Keep the window in step with the current tray scale preference, then
+  // re-measure the content height (games list changes) and fit.
   const next = trayBounds();
-  // Keep the window in step with the current tray scale preference.
-  trayWindow.setSize(Math.round(316 * trayScale()), Math.round(436 * trayScale()), false);
+  trayWindow.setSize(Math.round(TRAY_MENU_WIDTH * trayScale()), Math.round(trayMenuHeight * trayScale()), false);
   trayWindow.setPosition(next.x, next.y, false);
   trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle);
+  setTimeout(fitTrayWindowToContent, 60);
   if (!trayWindow.isVisible()) {
     // Rise-from-taskbar entrance, like a native tray flyout.
     trayWindow.show();
@@ -892,7 +916,10 @@ ipcMain.on('tray:recent-games', (_event, payload = []) => {
       lastPlayed: Number(game.lastPlayed) > 0 ? Number(game.lastPlayed) : 0
     }));
   if (request.style && typeof request.style === 'object') trayStyle = sanitizeTrayStyle(request.style);
-  if (trayWindow && !trayWindow.isDestroyed()) trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle);
+  if (trayWindow && !trayWindow.isDestroyed()) {
+    trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle);
+    setTimeout(fitTrayWindowToContent, 60);
+  }
 });
 
 ipcMain.handle('tray:get-style', () => trayStyle);

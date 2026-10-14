@@ -1189,16 +1189,13 @@ document.addEventListener('pointermove', (event) => {
     uiDrag.row.style.transform = `translate(${origin.left}px, ${origin.top}px)`;
     uiDragMeasureSlots();
   }
-  const x = event.clientX - uiDrag.grabOffsetX;
   const y = event.clientY - uiDrag.grabOffsetY;
-  // Self-correcting clamp: re-read the list position on EVERY move. If the
-  // page scrolled or anything re-laid-out under the ghost (auto-scroll,
-  // section shifts, browser zoom), stale cached bounds are what made the
-  // ghost fly away from the cursor in the field. Only the SIZE is cached.
+  // Steam-style reorder: the ghost tracks the cursor vertically ONLY and is
+  // pinned to the list's left edge. Horizontal 'fly-away' is impossible by
+  // construction, and the visual matches how Steam reorders library rows.
   const live = uiDrag.list.getBoundingClientRect();
-  const clampedX = Math.max(live.left, Math.min(live.right - uiDrag.rowWidth, x));
   const clampedY = Math.max(live.top, Math.min(live.bottom - uiDrag.rowHeight, y));
-  uiDrag.row.style.transform = `translate(${clampedX}px, ${clampedY}px)`;
+  uiDrag.row.style.transform = `translate(${live.left}px, ${clampedY}px)`;
   uiDrag.ghostY = clampedY - live.top + uiDrag.rowHeight / 2;
   // Keep the cached rect in sync for the auto-scroll path.
   uiDrag.listRect = live;

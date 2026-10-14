@@ -7,10 +7,11 @@
   <style>
     :root {
       --bg: #0b0c10;
-      --surface: #111319;
-      --surface-2: #171922;
-      --line: rgba(255,255,255,.075);
-      --line-strong: rgba(255,255,255,.13);
+      --surface: #171922;
+      --surface-hover: #23252f;
+      --item: #1c1e28;
+      --line: rgba(255,255,255,.07);
+      --line-strong: rgba(255,255,255,.14);
       --text: #f4f4f6;
       --muted: #8d909e;
       --accent: #9b7cff;
@@ -21,61 +22,68 @@
       --accent-text: #c3b2ff;
       --accent-fill: #9b7cff;
       --accent-contrast: #ffffff;
-      --radius: 18px;
+      --radius: 6px;
       --scale: 1;
     }
     * { box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; margin: 0; background: transparent; font-family: 'Segoe UI', 'Inter', system-ui, 'Segoe UI Emoji', sans-serif; font-size: calc(14px * var(--scale)); letter-spacing: -.01em; }
-    body.sharp { --radius: 3px; }
-    .tray-panel { position: relative; display: flex; flex-direction: column; gap: calc(12px * var(--scale)); width: calc(316px * var(--scale)); height: calc(436px * var(--scale)); padding: calc(18px * var(--scale)) calc(16px * var(--scale)) calc(16px * var(--scale)); overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); box-shadow: inset 0 1px rgba(255,255,255,.05), 0 24px 60px rgba(0,0,0,.5); }
-    .tray-panel::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 90% 40% at 50% -10%, rgba(var(--accent-rgb), .14), transparent 70%); pointer-events: none; }
-    .tray-head { position: relative; display: flex; align-items: center; gap: calc(11px * var(--scale)); }
-    .tray-logo { display: grid; width: calc(38px * var(--scale)); height: calc(38px * var(--scale)); flex: 0 0 auto; place-items: center; border: 1px solid var(--accent-border); border-radius: calc(11px * var(--scale) * .61); background: var(--accent-wash); color: var(--accent-text); }
-    .tray-logo svg { width: calc(20px * var(--scale)); height: calc(20px * var(--scale)); }
-    .tray-copy strong { display: block; font-size: calc(13px * var(--scale)); letter-spacing: -.03em; }
-    .tray-copy small { display: block; margin-top: 3px; color: var(--muted); font-size: calc(9px * var(--scale)); letter-spacing: .05em; }
-    .tray-section-title { position: relative; margin: 2px 0 0; color: var(--muted); font-size: calc(9px * var(--scale)); font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
-    .tray-games { position: relative; display: grid; flex: 1; gap: calc(6px * var(--scale)); align-content: start; overflow-y: auto; scrollbar-width: none; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; font-family: 'Segoe UI', 'Inter', system-ui, 'Segoe UI Emoji', sans-serif; font-size: calc(13px * var(--scale)); }
+    body.sharp { --radius: 2px; }
+
+    /* Steam-style menu: compact, list-driven, single column. */
+    .tray-panel { display: flex; flex-direction: column; width: calc(280px * var(--scale)); height: auto; max-height: 100vh; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); box-shadow: 0 16px 40px rgba(0,0,0,.55), inset 0 1px rgba(255,255,255,.04); transition: opacity .1s ease, transform .1s cubic-bezier(.2,.72,.25,1); }
+    .tray-panel.tray-enter { opacity: 0; transform: translateY(6px); }
+    .tray-panel.tray-exit { opacity: 0; transform: translateY(3px); }
+
+    .tray-head { display: flex; align-items: center; gap: calc(8px * var(--scale)); padding: calc(9px * var(--scale)) calc(12px * var(--scale)); border-bottom: 1px solid var(--line); }
+    .tray-logo { display: grid; width: calc(22px * var(--scale)); height: calc(22px * var(--scale)); flex: 0 0 auto; place-items: center; border-radius: calc(4px * var(--scale)); background: var(--accent-fill); color: var(--accent-contrast); }
+    .tray-logo svg { width: calc(13px * var(--scale)); height: calc(13px * var(--scale)); }
+    .tray-copy strong { display: block; font-size: calc(12px * var(--scale)); font-weight: 700; letter-spacing: .02em; }
+    .tray-copy small { display: block; margin-top: 1px; color: var(--muted); font-size: calc(8px * var(--scale)); }
+
+    .tray-games { display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: none; max-height: calc(260px * var(--scale)); }
     .tray-games::-webkit-scrollbar { display: none; }
-    .tray-game { display: flex; align-items: center; gap: calc(10px * var(--scale)); width: 100%; min-height: calc(48px * var(--scale)); padding: calc(6px * var(--scale)) calc(9px * var(--scale)); border: 1px solid var(--line); border-radius: calc(11px * var(--scale) * .61); background: var(--surface-2); color: var(--text); text-align: left; cursor: pointer; transition: border-color .16s ease, background .16s ease, color .16s ease, transform .16s ease; }
-    .tray-game:hover { border-color: var(--accent-border); background: var(--accent-wash); transform: translateX(calc(2px * var(--scale))); }
-    .tray-game:active { transform: scale(.98); }
-    .tray-game-art { display: grid; width: calc(36px * var(--scale)); height: calc(36px * var(--scale)); flex: 0 0 auto; overflow: hidden; place-items: center; border: 1px solid var(--line); border-radius: calc(9px * var(--scale)); background: linear-gradient(140deg, rgba(var(--accent-rgb), .3), rgba(0, 0, 0, .4)); }
+
+    /* Steam-style game row: art, title, play glyph; flat, tight, hover-filled. */
+    .tray-game { display: flex; align-items: center; gap: calc(9px * var(--scale)); width: 100%; min-height: calc(38px * var(--scale)); padding: calc(5px * var(--scale)) calc(12px * var(--scale)); border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; transition: background .12s ease; }
+    .tray-game:hover { background: var(--surface-hover); }
+    .tray-game + .tray-game { border-top: 1px solid var(--line); }
+    .tray-game-art { display: grid; width: calc(28px * var(--scale)); height: calc(28px * var(--scale)); flex: 0 0 auto; overflow: hidden; place-items: center; border-radius: calc(3px * var(--scale)); background: linear-gradient(140deg, rgba(var(--accent-rgb), .35), rgba(0,0,0,.45)); }
     .tray-game-art img { width: 100%; height: 100%; object-fit: cover; }
-    .tray-game svg { width: calc(14px * var(--scale)); height: calc(14px * var(--scale)); flex: 0 0 auto; margin-left: auto; color: var(--accent-text); }
-    .tray-game strong { display: block; overflow: hidden; max-width: calc(170px * var(--scale)); font-size: calc(11px * var(--scale)); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-    .tray-game small { display: block; margin-top: 2px; color: var(--muted); font-size: calc(8px * var(--scale)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tray-game-copy { display: grid; min-width: 0; flex: 1; gap: 2px; }
-    .tray-game-play { display: grid; width: calc(24px * var(--scale)); height: calc(24px * var(--scale)); flex: 0 0 auto; margin-left: auto; place-items: center; border: 1px solid var(--accent-border); border-radius: calc(7px * var(--scale)); background: var(--accent-wash); color: var(--accent-text); opacity: 0; transform: scale(.7); transition: .16s ease; }
-    .tray-game:hover .tray-game-play { opacity: 1; transform: none; }
-    .tray-game-play svg { width: calc(11px * var(--scale)); height: calc(11px * var(--scale)); margin-left: 0; }
-    /* Entrance/exit: the panel rises slightly and fades, like a native flyout. */
-    .tray-panel { transition: opacity .12s ease, transform .12s cubic-bezier(.2, .72, .25, 1); }
-    .tray-panel.tray-enter { opacity: 0; transform: translateY(calc(8px * var(--scale))); }
-    .tray-panel.tray-exit { opacity: 0; transform: translateY(calc(4px * var(--scale))); }
+    .tray-game-copy { display: grid; min-width: 0; flex: 1; gap: 1px; }
+    .tray-game strong { display: block; overflow: hidden; font-size: calc(11.5px * var(--scale)); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+    .tray-game small { display: block; overflow: hidden; color: var(--muted); font-size: calc(8.5px * var(--scale)); text-overflow: ellipsis; white-space: nowrap; }
+    .tray-game-play { display: grid; width: calc(20px * var(--scale)); height: calc(20px * var(--scale)); flex: 0 0 auto; place-items: center; border-radius: calc(3px * var(--scale)); background: var(--accent-wash); color: var(--accent-text); opacity: 0; transition: opacity .12s ease; }
+    .tray-game:hover .tray-game-play { opacity: 1; }
+    .tray-game-play svg { width: calc(10px * var(--scale)); height: calc(10px * var(--scale)); }
+
+    .tray-empty { display: grid; gap: 6px; padding: calc(16px * var(--scale)) calc(12px * var(--scale)); place-items: center; color: var(--muted); font-size: calc(9.5px * var(--scale)); text-align: center; line-height: 1.6; }
+    .tray-empty svg { width: calc(20px * var(--scale)); height: calc(20px * var(--scale)); color: var(--accent-text); }
+
+    .tray-sep { height: 1px; margin: 0; border: 0; background: var(--line); }
+
+    /* Steam-style actions: full-width rows, not floating buttons. */
+    .tray-actions { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+    .tray-button { display: flex; align-items: center; gap: calc(9px * var(--scale)); width: 100%; min-height: calc(34px * var(--scale)); padding: 0 calc(12px * var(--scale)); border: 0; background: transparent; color: var(--text); font-size: calc(11px * var(--scale)); font-weight: 500; cursor: pointer; transition: background .12s ease; }
+    .tray-button:hover { background: var(--surface-hover); }
+    .tray-button svg { width: calc(13px * var(--scale)); height: calc(13px * var(--scale)); flex: 0 0 auto; color: var(--muted); }
+    .tray-button:hover svg { color: var(--accent-text); }
+    .tray-button.danger:hover { color: #ff8f9b; }
+    .tray-button.danger:hover svg { color: #ff8f9b; }
+
     @media (prefers-reduced-motion: reduce) { .tray-panel { transition: none; } }
-    .tray-empty { position: relative; display: grid; flex: 1; align-content: center; justify-items: center; gap: 8px; color: var(--muted); font-size: calc(10px * var(--scale)); text-align: center; line-height: 1.6; }
-    .tray-empty svg { width: calc(22px * var(--scale)); height: calc(22px * var(--scale)); color: var(--accent-text); }
-    .tray-actions { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: calc(8px * var(--scale)); }
-    .tray-button { display: inline-flex; align-items: center; justify-content: center; gap: calc(7px * var(--scale)); min-height: calc(36px * var(--scale)); padding: 0 calc(12px * var(--scale)); border: 1px solid var(--line-strong); border-radius: calc(10px * var(--scale) * .61); background: rgba(255,255,255,.03); color: var(--text); font-size: calc(10px * var(--scale)); font-weight: 600; cursor: pointer; transition: .16s ease; }
-    .tray-button:hover { border-color: var(--accent-border); background: var(--accent-wash); color: var(--accent-text); }
-    .tray-button.primary { border-color: var(--accent-border); background: var(--accent-fill); color: var(--accent-contrast); }
-    .tray-button.primary:hover { border-color: var(--accent-border); filter: brightness(1.1); }
-    .tray-button svg { width: calc(13px * var(--scale)); height: calc(13px * var(--scale)); }
-    .tray-button.danger:hover { border-color: rgba(239, 98, 111, .5); background: rgba(239, 98, 111, .12); color: #ff8f9b; }
-    body.sharp .tray-game, body.sharp .tray-button, body.sharp .tray-logo { border-radius: 2px; }
   </style>
 </head>
 <body>
   <div class="tray-panel">
     <div class="tray-head">
-      <span class="tray-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span>
+      <span class="tray-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span>
       <div class="tray-copy"><strong>Vortex</strong><small data-i18n="tray.status">ТТ  </small></div>
     </div>
-    <p class="tray-section-title" data-i18n="tray.recent">оследние игры</p>
+    <p class="tray-section-title" style="margin:0;padding:calc(7px*var(--scale)) calc(12px*var(--scale)) calc(4px*var(--scale));color:var(--muted);font-size:calc(8px*var(--scale));font-weight:700;letter-spacing:.14em;text-transform:uppercase;" data-i18n="tray.recent">С Ы</p>
     <div class="tray-games" id="tray-games"></div>
+    <hr class="tray-sep" />
     <div class="tray-actions">
-      <button class="tray-button primary" id="tray-open">
+      <button class="tray-button" id="tray-open">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
         <span data-i18n="tray.open">ткрыть приложение</span>
       </button>
@@ -85,11 +93,12 @@
       </button>
     </div>
   </div>
+
   <script>
     const translations = {
       ru: {
         'tray.status': 'ТТ  ',
-        'tray.recent': 'оследние игры',
+        'tray.recent': 'С Ы',
         'tray.open': 'ткрыть приложение',
         'tray.quit': 'акрыть полностью',
         'tray.launch': 'апустить',
@@ -97,7 +106,7 @@
       },
       en: {
         'tray.status': 'RUNNING IN BACKGROUND',
-        'tray.recent': 'Recent games',
+        'tray.recent': 'RECENT GAMES',
         'tray.open': 'Open app',
         'tray.quit': 'Quit completely',
         'tray.launch': 'Launch',
@@ -133,10 +142,10 @@
       const accentSecondary = /^#[0-9a-f]{6}$/i.test(String(style.accentSecondary)) ? String(style.accentSecondary) : '#c274ec';
       const channels = hexToRgb(accent).join(', ');
       const themeBase = {
-        dark: { background: '#0b0c10', surface: '#111319' },
+        dark: { background: '#0b0c10', surface: '#171922' },
         light: { background: '#f2f1f6', surface: '#ffffff' },
         oled: { background: '#030305', surface: '#08090c' }
-      }[style.theme] || { background: '#0b0c10', surface: '#111319' };
+      }[style.theme] || { background: '#0b0c10', surface: '#171922' };
       const background = /^#[0-9a-f]{6}$/i.test(String(style.themeBackground)) ? String(style.themeBackground) : themeBase.background;
       const isLightCanvas = relativeLuminance(background) > 0.42;
       const derivedSurface = /^#[0-9a-f]{6}$/i.test(String(style.themeBackground))
@@ -167,23 +176,25 @@
       root.setProperty('--accent-contrast', accentContrast);
       root.setProperty('--bg', background);
       root.setProperty('--surface', surface);
-      root.setProperty('--surface-2', mixHex(surface, background, 0.42));
+      root.setProperty('--surface-hover', mixHex(surface, isLightCanvas ? '#000000' : '#ffffff', isLightCanvas ? 0.06 : 0.08));
       root.setProperty('--text', isLightCanvas ? '#211e2a' : '#f4f4f6');
       root.setProperty('--muted', isLightCanvas ? '#777382' : '#8d909e');
-      root.setProperty('--line', isLightCanvas ? 'rgba(38,32,56,.1)' : 'rgba(255,255,255,.075)');
-      root.setProperty('--line-strong', isLightCanvas ? 'rgba(38,32,56,.22)' : 'rgba(255,255,255,.13)');
+      root.setProperty('--line', isLightCanvas ? 'rgba(38,32,56,.1)' : 'rgba(255,255,255,.07)');
+      root.setProperty('--line-strong', isLightCanvas ? 'rgba(38,32,56,.22)' : 'rgba(255,255,255,.14)');
       root.setProperty('--scale', String({ compact: 0.9, normal: 1, large: 1.1 }[style.trayScale] || 1));
       document.body.classList.toggle('sharp', style.corners === 'sharp');
       document.body.classList.toggle('light-theme', isLightCanvas);
       document.querySelectorAll('[data-i18n]').forEach((node) => {
         const key = node.dataset.i18n;
-        node.innerHTML = (translations[language] || translations.ru)[key] || node.innerHTML;
+        node.textContent = (translations[language] || translations.ru)[key] || node.textContent;
       });
       render(window.__games || []);
     }
 
     const playIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 14 8-14 8z"/></svg>';
-    // "5 min ago" stamps for the recent list.
+    const gamesList = document.getElementById('tray-games');
+    const strings = (key) => (translations[language] || translations.ru)[key] || key;
+    // "5 min ago" style stamps for the recent list.
     function timeAgo(ts) {
       const seconds = Math.max(0, Math.round((Date.now() - Number(ts)) / 1000));
       if (!seconds) return '';
@@ -194,20 +205,6 @@
       if (hours < 24) return language === 'ru' ? hours + ' ч назад' : hours + 'h ago';
       return language === 'ru' ? Math.round(hours / 24) + ' дн назад' : Math.round(hours / 24) + 'd ago';
     }
-    // The main process calls these to animate the panel in/out.
-    window.__trayEnter = () => {
-      const panel = document.querySelector('.tray-panel');
-      if (!panel) return;
-      panel.classList.remove('tray-exit');
-      panel.classList.add('tray-enter');
-      // rAF can be throttled in hidden windows; the timeout guarantees the
-      // class drops and the transition completes either way.
-      requestAnimationFrame(() => requestAnimationFrame(() => panel.classList.remove('tray-enter')));
-      window.setTimeout(() => panel.classList.remove('tray-enter'), 30);
-    };
-    window.__trayExit = () => document.querySelector('.tray-panel')?.classList.add('tray-exit');
-    const gamesList = document.getElementById('tray-games');
-    const strings = (key) => (translations[language] || translations.ru)[key] || key;
     function render(games) {
       window.__games = games || [];
       gamesList.innerHTML = window.__games.length
@@ -221,6 +218,16 @@
             ${strings('tray.empty')}
           </div>`;
     }
+    // The main process calls these to animate the panel in/out.
+    window.__trayEnter = () => {
+      const panel = document.querySelector('.tray-panel');
+      if (!panel) return;
+      panel.classList.remove('tray-exit');
+      panel.classList.add('tray-enter');
+      requestAnimationFrame(() => requestAnimationFrame(() => panel.classList.remove('tray-enter')));
+      window.setTimeout(() => panel.classList.remove('tray-enter'), 30);
+    };
+    window.__trayExit = () => document.querySelector('.tray-panel')?.classList.add('tray-exit');
     window.vortexTray.onGames((games, style) => { if (style) applyStyle(style); render(games); });
     Promise.all([window.vortexTray.getGames(), window.vortexTray.getStyle()]).then(([games, style]) => {
       applyStyle(style);

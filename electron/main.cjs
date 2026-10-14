@@ -439,7 +439,7 @@ function createWindow() {
     if (!splash.isDestroyed()) splash.show();
     revealMainWindow();
   });
-  splash.loadFile(path.join(__dirname, '..', 'startup.html')).catch((error) => {
+  splash.loadFile(path.join(__dirname, '..', 'src', 'startup.html')).catch((error) => {
     console.error('Could not load the startup screen:', error);
     splashFailed = true;
     revealMainWindow();
@@ -483,7 +483,7 @@ function createWindow() {
     mainReady = true;
     revealMainWindow();
   });
-  window.loadFile(path.join(__dirname, '..', 'index.html'));
+  window.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
   onUpdateStateChanged = revealMainWindow;
 }
 
@@ -1089,7 +1089,7 @@ function showTrayWindow() {
       void trayWindow.webContents.executeJavaScript(`window.__trayExit && window.__trayExit();`).catch(() => {});
       setTimeout(() => { if (trayWindow && !trayWindow.isDestroyed()) trayWindow.hide(); }, 110);
     });
-    trayWindow.loadFile(path.join(__dirname, '..', 'tray.html'));
+    trayWindow.loadFile(path.join(__dirname, '..', 'src', 'tray.html'));
   }
   // Keep the window in step with the current tray scale preference, then
   // re-measure the content height (games list changes) and fit.

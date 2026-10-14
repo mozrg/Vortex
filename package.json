@@ -23,12 +23,12 @@
       "output": "dist"
     },
     "files": [
-      "app.js",
-      "js/*.js",
-      "index.html",
-      "startup.html",
-      "tray.html",
-      "styles.css",
+      "src/app.js",
+      "src/js/*.js",
+      "src/index.html",
+      "src/startup.html",
+      "src/tray.html",
+      "src/styles.css",
       "electron/**/*",
       "assets/vortex-app-icon.svg",
       "assets/vortex-app-icon.ico",

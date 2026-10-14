@@ -432,6 +432,7 @@ body.ui-dragging .ui-row:not(.ui-row-dragging) { transition: transform .18s cubi
 .gradient-options .color-tuner { padding-top: 0; margin-top: 0; border-top: 0; }
 .gradient-angle { display: grid; grid-template-columns: 125px minmax(100px, 1fr) 35px; align-items: center; gap: 10px; color: var(--muted); font-size: 9px; }
 .gradient-preview { height: 25px; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-gradient); box-shadow: 0 5px 16px rgba(var(--accent-rgb),.17); }
+.theme-io { display: flex; gap: 10px; margin-top: 12px; }
 .theme-color-hint { margin: 14px 0 8px; color: var(--muted); font-size: 9px; }
 .theme-color-tuners { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .theme-reset { margin-top: 10px; }

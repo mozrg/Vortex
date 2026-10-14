@@ -68,7 +68,8 @@ const preferenceDefaults = {
   sidebarOrder: [], uiSidebarTip: true, uiProfileCard: true, uiTopbarSearch: true,
   uiBreadcrumb: true, uiNotifications: true, uiSidebarFoot: true, uiUpdateBanner: true,
   pageTransition: 'fade', cardAnimation: 'rise', glow: 72, ambient: true, motion: true,
-  contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home', trayScale: 'normal', robloxUsername: '', friendsNoticeAccepted: false
+  contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home', trayScale: 'normal', robloxUsername: '', friendsNoticeAccepted: false,
+  themeText: '', themeMuted: '', themeLine: ''
 };
 
 const readStored = (key, fallback) => {
@@ -157,6 +158,13 @@ function renderColorTuner(name, color, label) {
   </div>`;
 }
 
+function hexToRgba(hex, alpha) {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''));
+  if (!match) return '';
+  const [r, g, b] = [parseInt(match[1], 16), parseInt(match[2], 16), parseInt(match[3], 16)];
+  return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+}
+
 function applyPreferences() {
   if (!['ru', 'en'].includes(preferences.language)) preferences.language = 'ru';
   if (!['home', 'accent', 'cards', 'effects', 'interface', 'general', 'version'].includes(preferences.settingsTab)) preferences.settingsTab = 'home';
@@ -175,6 +183,9 @@ function applyPreferences() {
   preferences.gradientAngle = Math.max(0, Math.min(360, Number(preferences.gradientAngle) || 0));
   preferences.themeBackground = /^#[0-9a-f]{6}$/i.test(preferences.themeBackground) ? preferences.themeBackground : '';
   preferences.themeSurface = /^#[0-9a-f]{6}$/i.test(preferences.themeSurface) ? preferences.themeSurface : '';
+  preferences.themeText = /^#[0-9a-f]{6}$/i.test(preferences.themeText) ? preferences.themeText : '';
+  preferences.themeMuted = /^#[0-9a-f]{6}$/i.test(preferences.themeMuted) ? preferences.themeMuted : '';
+  preferences.themeLine = /^#[0-9a-f]{6}$/i.test(preferences.themeLine) ? preferences.themeLine : '';
   if (!['balanced', 'spotlight', 'library'].includes(preferences.homeLayout)) preferences.homeLayout = 'balanced';
   preferences.homeMinimal = Boolean(preferences.homeMinimal);
   if (![4, 6, 8].includes(Number(preferences.homeGameCount))) preferences.homeGameCount = 4;
@@ -246,11 +257,11 @@ function applyPreferences() {
   root.setProperty('--surface', surface);
   root.setProperty('--surface-2', mixHex(surface, background, 0.42));
   root.setProperty('--surface-3', mixHex(surface, background, 0.72));
-  root.setProperty('--text', isLightCanvas ? '#211e2a' : '#f4f4f6');
-  root.setProperty('--muted', isLightCanvas ? '#777382' : '#8d909e');
+  root.setProperty('--text', preferences.themeText || (isLightCanvas ? '#211e2a' : '#f4f4f6'));
+  root.setProperty('--muted', preferences.themeMuted || (isLightCanvas ? '#777382' : '#8d909e'));
   root.setProperty('--subtle', isLightCanvas ? '#9692a1' : '#636776');
-  root.setProperty('--line', isLightCanvas ? 'rgba(38,32,56,.1)' : 'rgba(255,255,255,.075)');
-  root.setProperty('--line-strong', isLightCanvas ? 'rgba(38,32,56,.18)' : 'rgba(255,255,255,.13)');
+  root.setProperty('--line', preferences.themeLine ? hexToRgba(preferences.themeLine, 0.16) : (isLightCanvas ? 'rgba(38,32,56,.1)' : 'rgba(255,255,255,.075)'));
+  root.setProperty('--line-strong', preferences.themeLine ? hexToRgba(preferences.themeLine, 0.34) : (isLightCanvas ? 'rgba(38,32,56,.18)' : 'rgba(255,255,255,.13)'));
   document.documentElement.style.setProperty('--glow-strength', String(Number(preferences.glow) / 100));
   document.body.classList.toggle('light-theme', isLightCanvas);
   document.body.classList.toggle('oled-theme', preferences.theme === 'oled' && !isLightCanvas);
@@ -917,6 +928,10 @@ function renderAccentSettings() {
   const themeDefaults = { dark: { background: '#0b0c10', surface: '#111319' }, light: { background: '#f2f1f6', surface: '#ffffff' }, oled: { background: '#030305', surface: '#08090c' } }[preferences.theme];
   const displayBackground = preferences.themeBackground || themeDefaults.background;
   const displaySurface = preferences.themeSurface || themeDefaults.surface;
+  const isLight = relativeLuminance(displayBackground) > 0.42;
+  const displayText = preferences.themeText || (isLight ? '#211e2a' : '#f4f4f6');
+  const displayMuted = preferences.themeMuted || (isLight ? '#777382' : '#8d909e');
+  const displayLine = preferences.themeLine || (isLight ? '#37303f' : '#2b2d36');
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.accent.title')}</h2><p>${t('settings.accent.body')}</p></div>${icon('palette', 18)}</div>
       <div class="palette-row">${palettes.map((palette) => `<button class="palette-option ${preferences.accent.toLowerCase() === palette.color ? 'active' : ''}" data-accent="${palette.color}" ${previewAttr('accent', palette.color, t(`palette.${palette.key}`))}><span class="palette-swatch" style="background:${palette.color};color:${palette.color}"></span>${t(`palette.${palette.key}`)}</button>`).join('')}</div>
       ${renderColorTuner('accent', preferences.accent, t('settings.customColor'))}
@@ -925,6 +940,8 @@ function renderAccentSettings() {
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.theme.title')}</h2><p>${t('settings.theme.body')}</p></div></div><div class="segmented" style="max-width:390px">${[['dark', `${icon('moon', 13)} ${t('settings.dark')}`], ['light', `${icon('sun', 13)} ${t('settings.light')}`], ['oled', `${icon('contrast', 13)} ${t('settings.oled')}`]].map(([value, label]) => `<button class="segment ${preferences.theme === value ? 'active' : ''}" data-pref="theme" data-value="${value}" ${previewAttr('theme', value, t(`settings.${value}`))}>${label}</button>`).join('')}</div>
       <p class="theme-color-hint">${t('settings.themeColorHint')}</p><div class="theme-color-tuners">${renderColorTuner('themeBackground', displayBackground, t('settings.themeBackground'))}${renderColorTuner('themeSurface', displaySurface, t('settings.themeSurface'))}</div>
+      <div class="theme-color-tuners">${renderColorTuner('themeText', displayText, t('settings.themeText'))}${renderColorTuner('themeMuted', displayMuted, t('settings.themeMuted'))}${renderColorTuner('themeLine', displayLine, t('settings.themeLine'))}</div>
+      <div class="theme-io"><button class="ghost-button" data-action="export-theme">${t('settings.themeExport')}</button><button class="ghost-button" data-action="import-theme">${t('settings.themeImport')}</button><input type="file" accept=".json,application/json" data-theme-file hidden /></div>
       <button class="text-button theme-reset" data-action="reset-theme-colors">${t('settings.themeReset')}</button>
       <div class="settings-preview" style="margin-top:17px"><div class="preview-thumb"></div><div class="preview-copy"><strong>${t('settings.preview.title')}</strong><small>${t('settings.preview.body')}</small></div></div>
     </section>`;
@@ -1924,6 +1941,9 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'reset-theme-colors') {
       preferences.themeBackground = '';
       preferences.themeSurface = '';
+      preferences.themeText = '';
+      preferences.themeMuted = '';
+      preferences.themeLine = '';
       savePreferences();
       renderPage();
     }
@@ -2090,6 +2110,34 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
+  // Theme as a portable JSON: all color tokens + accent, import with validation.
+  if (target.closest('[data-action="export-theme"]')) {
+    const theme = {
+      name: 'Vortex theme',
+      version: 1,
+      theme: preferences.theme,
+      background: preferences.themeBackground || '',
+      surface: preferences.themeSurface || '',
+      text: preferences.themeText || '',
+      muted: preferences.themeMuted || '',
+      line: preferences.themeLine || '',
+      accent: preferences.accent,
+      accentSecondary: preferences.accentSecondary,
+      gradientAngle: preferences.gradientAngle
+    };
+    const blob = new Blob([JSON.stringify(theme, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'vortex-theme.json';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    return;
+  }
+  if (target.closest('[data-action="import-theme"]')) {
+    pageContent.querySelector('[data-theme-file]')?.click();
+    return;
+  }
+
   const friendJoin = target.closest('[data-friend-join]');
   if (friendJoin) {
     const placeId = friendJoin.dataset.friendJoin;
@@ -2109,6 +2157,36 @@ document.addEventListener('click', async (event) => {
 
   const toggle = target.closest('[data-toggle]');
   if (toggle) { preferences[toggle.dataset.toggle] = !preferences[toggle.dataset.toggle]; savePreferences(); renderPage(); }
+});
+
+// Imported theme files: validate and apply every known field.
+document.addEventListener('change', (event) => {
+  if (!event.target.matches('[data-theme-file]')) return;
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const theme = JSON.parse(String(reader.result));
+      const hex = (v) => /^#[0-9a-f]{6}$/i.test(String(v || '')) ? String(v).toLowerCase() : '';
+      if (['dark', 'light', 'oled'].includes(theme.theme)) preferences.theme = theme.theme;
+      preferences.themeBackground = hex(theme.background);
+      preferences.themeSurface = hex(theme.surface);
+      preferences.themeText = hex(theme.text);
+      preferences.themeMuted = hex(theme.muted);
+      preferences.themeLine = hex(theme.line);
+      if (hex(theme.accent)) preferences.accent = hex(theme.accent);
+      if (hex(theme.accentSecondary)) preferences.accentSecondary = hex(theme.accentSecondary);
+      if (Number.isFinite(theme.gradientAngle)) preferences.gradientAngle = Math.max(0, Math.min(360, Number(theme.gradientAngle) || 0));
+      savePreferences();
+      renderPage();
+      showToast(t('settings.themeImported'));
+    } catch {
+      showToast(t('settings.themeImportInvalid'));
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
 });
 
 document.addEventListener('input', (event) => {

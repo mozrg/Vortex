@@ -750,7 +750,27 @@ body.light-theme .plans-progress-bar { background: rgba(38,32,56,.08); }
 /* ---------- Data migration card ---------- */
 .data-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 
-/* ---------- Friends page ---------- */
+/* ---------- Friends page: card grid ---------- */
+.friends-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
+.friend-card { display: flex; align-items: center; gap: 11px; min-width: 0; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--surface-2) 62%, transparent); cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .16s ease, opacity .16s ease; }
+.friend-card:hover { border-color: var(--accent-border); background: var(--accent-wash); transform: translateY(-2px); }
+.friend-card.offline { opacity: .55; }
+.friend-card.offline:hover { opacity: .9; }
+.friend-card.playing { border-color: var(--accent-border); background: color-mix(in srgb, var(--accent-wash) 45%, transparent); }
+.friend-card.playing .friend-copy small { color: var(--accent-text); }
+.friend-join { display: grid; width: 26px; height: 26px; flex: 0 0 auto; margin-left: auto; place-items: center; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-wash); color: var(--accent-text); }
+.friend-join svg { width: 11px; height: 11px; }
+
+/* Hover preview: floating panel with the friend's game. */
+.friend-preview { position: fixed; z-index: 70; display: flex; align-items: center; gap: 13px; width: max-content; max-width: 300px; padding: 13px 15px; border: 1px solid var(--accent-border); border-radius: 13px; background: var(--surface); box-shadow: 0 18px 44px rgba(0,0,0,.5); pointer-events: auto; animation: toast-in .16s ease-out; }
+.friend-preview-avatar { display: grid; width: 46px; height: 46px; flex: 0 0 auto; overflow: hidden; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: linear-gradient(140deg, rgba(var(--accent-rgb), .3), rgba(0,0,0,.35)); color: var(--accent-text); font-weight: 700; font-size: 15px; }
+.friend-preview-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.friend-preview-copy { display: grid; gap: 5px; min-width: 0; }
+.friend-preview-copy strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.friend-preview-copy small { overflow: hidden; color: var(--muted); font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
+.friend-preview .primary-button { min-height: 28px; margin-top: 3px; padding: 0 12px; font-size: 9px; }
+
+/* legacy list (kept for back-compat) */
 .friends-list { display: grid; gap: 7px; }
 .friends-group-title { margin: 18px 0 8px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
 .friends-group-title:first-child { margin-top: 0; }
@@ -770,13 +790,17 @@ body.light-theme .plans-progress-bar { background: rgba(38,32,56,.08); }
 .roblox-username-field { display: inline-flex; gap: 8px; align-items: center; }
 .roblox-username-field input { width: 160px; min-height: 34px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 9px; background: rgba(0,0,0,.16); color: var(--text); font-size: 11px; }
 
-.presence-cookie-field { display: grid; gap: 6px; justify-items: start; }
-.presence-cookie-field textarea { width: 260px; min-height: 46px; padding: 8px 11px; border: 1px solid var(--line-strong); border-radius: 9px; background: rgba(0,0,0,.16); color: var(--text); font-family: var(--font-ui); font-size: 10px; line-height: 1.5; resize: vertical; }
-.presence-cookie-field textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent-border); }
-.presence-cookie-meter { color: var(--muted); font-size: 8.5px; line-height: 1.5; }
-.presence-cookie-error { display: block; color: #ff8f9b; font-size: 9px; line-height: 1.5; max-width: 340px; }
-.presence-cookie-field .primary-button { border: 1px solid var(--accent-border); background: var(--accent-fill); color: var(--accent-contrast); font-weight: 700; min-height: 32px; padding: 0 16px; }
-.presence-cookie-field .primary-button:hover { filter: brightness(1.12); }
+/* Presence form: label on top, full-width textarea, action row below. */
+.presence-form { display: grid; gap: 8px; }
+.presence-label { color: var(--text); font-size: 11px; font-weight: 650; }
+.presence-form textarea { width: 100%; min-height: 52px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 9px; background: rgba(0,0,0,.16); color: var(--text); font-family: var(--font-ui); font-size: 10px; line-height: 1.55; resize: vertical; }
+.presence-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent-border); }
+.presence-cookie-meter { color: var(--muted); font-size: 8.5px; line-height: 1.6; }
+.presence-cookie-error { color: #ff8f9b; font-size: 9px; line-height: 1.5; }
+.presence-actions { display: flex; gap: 10px; margin-top: 2px; }
+.presence-actions .primary-button { border: 1px solid var(--accent-border); background: var(--accent-fill); color: var(--accent-contrast); font-weight: 700; min-height: 32px; padding: 0 18px; }
+.presence-actions .primary-button:hover { filter: brightness(1.12); }
+.presence-warning { margin: 6px 0 0; color: var(--muted); font-size: 9px; line-height: 1.65; }
 .presence-cookie-field .primary-button, .presence-cookie-field .ghost-button { justify-self: start; }
 .roblox-username-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent-border); }
 body.light-theme .roblox-username-field input { background: rgba(255,255,255,.6); }

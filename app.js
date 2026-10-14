@@ -500,6 +500,7 @@ function renderFavorites() {
 }
 
 let friendsCache = { at: 0, data: null };
+const FRIENDS_TTL = 30 * 1000;
 let friendsAutoDetectStarted = false;
 // First visit to the Friends page with no username: detect the local Roblox
 // account automatically, so the user never has to type anything.
@@ -516,8 +517,9 @@ async function autoDetectRobloxAccountOnce() {
     }
   } catch { /* stay on the setup screen */ }
 }
-const FRIENDS_TTL = 30 * 1000;
 
+// Friends page as a card grid: one compact card per friend, richer info on
+// hover (avatar, game, join) in a floating preview panel.
 function renderFriends() {
   const username = String(preferences.robloxUsername || '').trim();
   if (!username) {
@@ -533,7 +535,6 @@ function renderFriends() {
     }
   }
   const data = friendsCache.data;
-  const presenceNote = data.livePresence ? '' : `<div class="friends-presence-note">${icon('bell', 12)} ${t('friends.presenceOff')}</div>`;
   if (!data.ok) {
     return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
       <section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${t('friends.notFound.title')}</h2><p>${t('friends.notFound.body')}</p></div></section>`;
@@ -542,19 +543,20 @@ function renderFriends() {
   const playing = friends.filter((f) => f.presence === 'playing');
   const online = friends.filter((f) => f.presence === 'online');
   const offline = friends.filter((f) => f.presence === 'offline');
-  const row = (friend) => `<button class="friend-row ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" ${friend.placeId ? `data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}"` : ''}>
+  const presenceNote = data.livePresence ? '' : `<div class="friends-presence-note">${icon('bell', 12)} ${t('friends.presenceOff')}</div>`;
+  const card = (friend) => `<article class="friend-card ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" data-friend-name="${escapeHtml(friend.displayName || friend.name || '')}" data-friend-avatar="${escapeHtml(friend.avatar || '')}" data-game-name="${escapeHtml(friend.gameName || '')}" ${friend.placeId ? `data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}"` : ''} tabindex="0">
       <span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="lazy" />` : escapeHtml((friend.displayName || friend.name || '?')[0].toLocaleUpperCase())}</span>
       <span class="friend-copy"><strong>${escapeHtml(friend.displayName || friend.name)}</strong><small>${friend.presence === 'playing' ? escapeHtml(friend.gameName || t('friends.inGame')) : friend.presence === 'online' ? t('friends.online') : t('friends.offline')}</small></span>
-      ${friend.presence === 'playing' ? `<span class="friend-join">${icon('play', 11)} ${t('friends.join')}</span>` : ''}
-    </button>`;
-  const group = (titleKey, list, emptyNote) => !list.length && !emptyNote ? '' : `<p class="friends-group-title">${t(titleKey)} · ${list.length}</p>
-    <div class="friends-list">${list.map(row).join('')}</div>`;
+      ${friend.presence === 'playing' ? `<span class="friend-join">${icon('play', 11)}</span>` : ''}
+    </article>`;
+  const section = (titleKey, list) => !list.length ? '' : `<p class="friends-group-title">${t(titleKey)} · ${list.length}</p>
+    <div class="friends-grid">${list.map(card).join('')}</div>`;
   return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
     <section class="section-block">
       ${presenceNote}
-      ${group('friends.groupPlaying', playing, playing.length ? '' : 'keep')}
-      ${group('friends.groupOnline', online, online.length ? '' : '')}
-      ${group('friends.groupOffline', offline, offline.length ? '' : '')}
+      ${section('friends.groupPlaying', playing)}
+      ${section('friends.groupOnline', online)}
+      ${section('friends.groupOffline', offline)}
       ${friends.length ? '' : `<div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${t('friends.empty.title')}</h2><p>${t('friends.empty.body')}</p></div>`}
       <p class="catalog-disclaimer">${t('friends.disclaimer')}</p>
     </section>`;
@@ -563,10 +565,13 @@ function renderFriends() {
 async function loadFriends(username) {
   try {
     const data = await window.vortexDesktop?.listFriends(username);
-    friendsCache = { at: Date.now(), data };
+    // Cache successes only: a transient network failure must retry on the
+    // next visit instead of showing a stale error for 30 seconds.
+    if (data && data.ok) friendsCache = { at: Date.now(), data };
+    else friendsCache = { at: Date.now() - FRIENDS_TTL, data };
     if (currentView === 'friends') renderPage();
   } catch {
-    friendsCache = { at: Date.now(), data: { ok: false, error: 'network' } };
+    friendsCache = { at: 0, data: { ok: false, error: 'network' } };
     if (currentView === 'friends') renderPage();
   }
 }
@@ -1238,13 +1243,17 @@ function renderGeneralSettings() {
         <span class="roblox-username-field"><input type="text" maxlength="20" autocomplete="off" placeholder="Roblox" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username /><button class="ghost-button" data-detect-username>${t('friends.detect')}</button><button class="primary-button" data-save-username>${t('common.save')}</button></span></div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.presence.title')}</h2><p>${t('settings.presence.body')}</p></div>${icon('bell', 18)}</div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.presence.cookie')}</strong><small>${t('settings.presence.cookieHint')}</small></div>
-        <span class="presence-cookie-field">
-          <textarea rows="2" autocomplete="off" spellcheck="false" placeholder=".ROBLOSECURITY" data-presence-cookie ></textarea>
-          <small class="presence-cookie-meter" data-presence-meter data-hint="${t('settings.presence.cookieHint')}"></small>
-          <span class="presence-cookie-error" data-presence-error></span>
-          <button class="primary-button" data-save-presence>${t('common.save')}</button><button class="ghost-button" data-remove-presence>${t('settings.presence.disable')}</button></span></div>
-      <p class="theme-color-hint">${t('settings.presence.hint')}</p>
+      <div class="presence-form">
+        <label class="presence-label">${t('settings.presence.cookie')}</label>
+        <textarea rows="2" autocomplete="off" spellcheck="false" placeholder=".ROBLOSECURITY" data-presence-cookie></textarea>
+        <small class="presence-cookie-meter" data-presence-meter data-hint="${t('settings.presence.cookieHint')}"></small>
+        <span class="presence-cookie-error" data-presence-error></span>
+        <span class="presence-actions">
+          <button class="primary-button" data-save-presence>${t('common.save')}</button>
+          <button class="ghost-button" data-remove-presence>${t('settings.presence.disable')}</button>
+        </span>
+        <p class="presence-warning">${t('settings.presence.hint')}</p>
+      </div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.title')}</h2><p>${t('settings.tray.body')}</p></div>${icon('tray', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.scale')}</strong><small>${t('settings.tray.scaleBody')}</small></div><div class="segmented tray-scale-segmented">${[['compact', t('settings.tray.compact')], ['normal', t('settings.tray.normal')], ['large', t('settings.tray.large')]].map(([value, label]) => `<button class="segment ${preferences.trayScale === value ? 'active' : ''}" data-pref="trayScale" data-value="${value}">${label}</button>`).join('')}</div></div>
@@ -2208,6 +2217,48 @@ document.addEventListener('keydown', (event) => {
 // Classic scripts run before ES modules: wait for the module bundle to be
 // published on window, then boot. If it never arrives (module error), boot
 // with the fallback shims after a short grace period.
+// Friend card hover preview: floating panel with avatar, name, game and a
+// join action. Sits above the grid and follows the hovered card.
+let friendPreviewEl = null;
+function showFriendPreview(card) {
+  hideFriendPreview();
+  const name = card.dataset.friendName || '?';
+  const avatar = card.dataset.friendAvatar || '';
+  const game = card.dataset.gameName || '';
+  const joinable = card.dataset.friendJoin ? Boolean(card.dataset.friendJoin) : false;
+  const status = card.classList.contains('playing') ? t('friends.inGame') : card.classList.contains('online') ? t('friends.online') : t('friends.offline');
+  friendPreviewEl = document.createElement('div');
+  friendPreviewEl.className = 'friend-preview';
+  friendPreviewEl.innerHTML = `
+    <span class="friend-preview-avatar">${avatar ? `<img src="${escapeHtml(avatar)}" alt="" />` : escapeHtml(name[0].toLocaleUpperCase())}</span>
+    <div class="friend-preview-copy">
+      <strong>${escapeHtml(name)}</strong>
+      <small>${game ? escapeHtml(game) : status}</small>
+      ${joinable && game ? `<button class="primary-button" data-friend-join="${escapeHtml(card.dataset.friendJoin)}" data-friend-game="${escapeHtml(card.dataset.friendGame || '')}">${icon('play', 10)} ${t('friends.join')}</button>` : ''}
+    </div>`;
+  document.body.appendChild(friendPreviewEl);
+  const rect = card.getBoundingClientRect();
+  const panel = friendPreviewEl.getBoundingClientRect();
+  let left = Math.min(rect.left, window.innerWidth - panel.width - 14);
+  let top = rect.top - panel.height - 10;
+  if (top < 8) top = rect.bottom + 10;
+  friendPreviewEl.style.left = Math.max(8, left) + 'px';
+  friendPreviewEl.style.top = top + 'px';
+}
+function hideFriendPreview() {
+  friendPreviewEl?.remove();
+  friendPreviewEl = null;
+}
+document.addEventListener('mouseover', (event) => {
+  const card = event.target.closest?.('.friend-card');
+  if (card) showFriendPreview(card);
+  else if (!event.target.closest?.('.friend-preview')) hideFriendPreview();
+});
+document.addEventListener('mouseout', (event) => {
+  if (event.target.closest?.('.friend-card') && !event.relatedTarget?.closest?.('.friend-card')) hideFriendPreview();
+});
+document.addEventListener('scroll', hideFriendPreview, true);
+
 function bootVortex() {
 restorePlaySession();
 mountIcons();

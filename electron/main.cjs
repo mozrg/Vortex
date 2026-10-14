@@ -965,6 +965,24 @@ ipcMain.handle('friends:list', async (_event, request = {}) => {
       gameName: p.lastLocation ? String(p.lastLocation).slice(0, 80) : ''
     };
   });
+  // Game art for friends that are playing: placeId -> universeId -> icon.
+  const playingFriends = enriched.filter((f) => f.presence === 'playing' && f.placeId);
+  for (const friend of playingFriends) {
+    try {
+      const universe = await fetchCachedJson(new URL(`https://apis.roblox.com/universes/v1/places/${friend.placeId}/universe`), 300000);
+      const universeId = universe && universe.universeId ? String(universe.universeId) : '';
+      if (universeId) {
+        friend.universeId = universeId;
+        if (!friend.gameName) {
+          const details = await fetchCachedJson(new URL(`https://games.roblox.com/v1/games?universeIds=${universeId}`), 300000);
+          friend.gameName = String(details?.data?.[0]?.name || '').slice(0, 80);
+        }
+        const thumb = await fetchCachedJson(new URL(`https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&size=256x256&format=Png`), 300000);
+        friend.gameThumbnail = cleanThumbnail(thumb?.data?.[0]?.imageUrl) || '';
+      }
+    } catch { /* art stays empty; the name from presence still shows */ }
+  }
+
   const rank = { playing: 0, online: 1, offline: 2 };
   enriched.sort((a, b) => (rank[a.presence] ?? 2) - (rank[b.presence] ?? 2));
   return { ok: true, user, friends: enriched, livePresence: Boolean(robloxSecurityCookie) };

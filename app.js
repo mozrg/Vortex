@@ -544,10 +544,10 @@ function renderFriends() {
   const online = friends.filter((f) => f.presence === 'online');
   const offline = friends.filter((f) => f.presence === 'offline');
   const presenceNote = data.livePresence ? '' : `<div class="friends-presence-note">${icon('bell', 12)} ${t('friends.presenceOff')}</div>`;
-  const card = (friend) => `<article class="friend-card ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" data-friend-name="${escapeHtml(friend.displayName || friend.name || '')}" data-friend-avatar="${escapeHtml(friend.avatar || '')}" data-game-name="${escapeHtml(friend.gameName || '')}" ${friend.placeId ? `data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}"` : ''} tabindex="0">
+  const card = (friend) => `<article class="friend-card ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" data-friend-name="${escapeHtml(friend.displayName || friend.name || '')}" data-friend-avatar="${escapeHtml(friend.avatar || '')}" data-game-name="${escapeHtml(friend.gameName || '')}" data-game-thumb="${escapeHtml(friend.gameThumbnail || '')}" tabindex="0">
       <span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="lazy" />` : escapeHtml((friend.displayName || friend.name || '?')[0].toLocaleUpperCase())}</span>
       <span class="friend-copy"><strong>${escapeHtml(friend.displayName || friend.name)}</strong><small>${friend.presence === 'playing' ? escapeHtml(friend.gameName || t('friends.inGame')) : friend.presence === 'online' ? t('friends.online') : t('friends.offline')}</small></span>
-      ${friend.presence === 'playing' ? `<span class="friend-join">${icon('play', 11)}</span>` : ''}
+      ${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}">${icon('play', 11)}</button>` : ''}
     </article>`;
   const section = (titleKey, list) => !list.length ? '' : `<p class="friends-group-title">${t(titleKey)} · ${list.length}</p>
     <div class="friends-grid">${list.map(card).join('')}</div>`;
@@ -584,10 +584,8 @@ function renderRecent() {
 
 // Roadmap data: each direction carries a stage key and a 0..1 progress.
 const PLANS_DATA = [
-  { icon: 'users', title: 'plans.friends', body: 'plans.friendsBody', stage: 'research', progress: .35 },
-  { icon: 'trophy', title: 'plans.recommendations', body: 'plans.recommendationsBody', stage: 'design', progress: .55 },
-  { icon: 'flag', title: 'plans.collections', body: 'plans.collectionsBody', stage: 'dev', progress: .75 },
-  { icon: 'message', title: 'plans.reviews', body: 'plans.reviewsBody', stage: 'idea', progress: .1 }
+  { icon: 'trophy', title: 'plans.recommendations', body: 'plans.recommendationsBody', stage: 'design' },
+  { icon: 'flag', title: 'plans.collections', body: 'plans.collectionsBody', stage: 'dev' }
 ];
 const PLANS_FILTERS = [
   ['all', 'plans.filter.all'],
@@ -601,19 +599,14 @@ let activePlansFilter = 'all';
 const PLANS_STAGE_LABELS = { research: 'plans.filter.research', design: 'plans.filter.design', dev: 'plans.filter.dev', idea: 'plans.filter.idea' };
 
 function renderPlans() {
-  const visible = PLANS_DATA.filter((plan) => activePlansFilter === 'all' || plan.stage === activePlansFilter);
-  const overall = Math.round(PLANS_DATA.reduce((sum, plan) => sum + plan.progress, 0) / PLANS_DATA.length * 100);
+  // Simple roadmap: a short list of what is coming. No stage filters, no
+  // numeric progress, no reviews section  deliberately minimal.
   return `${pageHeading(t('page.plans.eyebrow'), t('page.plans.title'), t('page.plans.description'))}
-    <div class="plans-filters">${PLANS_FILTERS.map(([value, labelKey]) => `<button class="plans-filter ${activePlansFilter === value ? 'active' : ''}" data-plans-filter="${value}">${t(labelKey)}</button>`).join('')}</div>
-    <div class="roadmap-grid">${visible.map((plan) => `<article class="roadmap-card" data-stage="${plan.stage}">
+    <div class="roadmap-grid">${PLANS_DATA.map((plan) => `<article class="roadmap-card" data-stage="${plan.stage}">
         <div class="roadmap-icon">${icon(plan.icon)}</div>
         <h3>${t(plan.title)}</h3><p>${t(plan.body)}</p>
-        <div class="plans-progress"><div class="plans-progress-bar"><span style="width: ${Math.round(plan.progress * 100)}%"></span></div><small>${t(PLANS_STAGE_LABELS[plan.stage])} · ${Math.round(plan.progress * 100)}%</small></div>
-      </article>`).join('') || `<p class="catalog-disclaimer">${t('stats.empty')}</p>`}</div>
-    <section class="plans-overall"><div class="section-heading"><div><h2>${t('plans.progress.title')}</h2><p>${t('plans.progress.body')}</p></div></div>
-      <div class="plans-progress overall"><div class="plans-progress-bar"><span style="width: ${overall}%"></span></div><small>${overall}%</small></div></section>
-    <section class="plans-reviews"><div class="section-heading"><div><h2>${t('page.reviews.title')}</h2><p>${t('page.reviews.description')}</p></div><span class="roadmap-state">${t('reviews.soon')}</span></div>
-      <section class="review-banner"><div class="review-illustration">${icon('message', 25)}</div><div><h2>${t('reviews.title')}</h2><p>${t('reviews.body')}</p></div></section></section>`;
+        <span class="roadmap-state">${t(PLANS_STAGE_LABELS[plan.stage])}</span>
+      </article>`).join('')}</div>`;
 }
 
 function settingsTabs() {
@@ -2088,14 +2081,7 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
-  const plansFilter = target.closest('[data-plans-filter]');
-  if (plansFilter) {
-    activePlansFilter = plansFilter.dataset.plansFilter;
-    renderPage();
-    return;
-  }
-
-  const segment = target.closest('[data-pref]');
+    const segment = target.closest('[data-pref]');
   if (segment) {
     preferences[segment.dataset.pref] = segment.dataset.value;
     savePreferences();
@@ -2225,17 +2211,22 @@ function showFriendPreview(card) {
   const name = card.dataset.friendName || '?';
   const avatar = card.dataset.friendAvatar || '';
   const game = card.dataset.gameName || '';
-  const joinable = card.dataset.friendJoin ? Boolean(card.dataset.friendJoin) : false;
+  const gameThumb = card.dataset.gameThumb || '';
   const status = card.classList.contains('playing') ? t('friends.inGame') : card.classList.contains('online') ? t('friends.online') : t('friends.offline');
   friendPreviewEl = document.createElement('div');
   friendPreviewEl.className = 'friend-preview';
+  // Preview is informational only: friend avatar, game art, game name.
+  // Joining happens through the explicit button on the friend card itself.
   friendPreviewEl.innerHTML = `
     <span class="friend-preview-avatar">${avatar ? `<img src="${escapeHtml(avatar)}" alt="" />` : escapeHtml(name[0].toLocaleUpperCase())}</span>
     <div class="friend-preview-copy">
       <strong>${escapeHtml(name)}</strong>
-      <small>${game ? escapeHtml(game) : status}</small>
-      ${joinable && game ? `<button class="primary-button" data-friend-join="${escapeHtml(card.dataset.friendJoin)}" data-friend-game="${escapeHtml(card.dataset.friendGame || '')}">${icon('play', 10)} ${t('friends.join')}</button>` : ''}
-    </div>`;
+      <small>${status}</small>
+    </div>
+    ${game ? `<div class="friend-preview-game">
+      <span class="friend-preview-game-art">${gameThumb ? `<img src="${escapeHtml(gameThumb)}" alt="" />` : icon('play', 14)}</span>
+      <span class="friend-preview-game-copy"><em>${t('friends.inGame')}</em><small>${escapeHtml(game)}</small></span>
+    </div>` : ''}`;
   document.body.appendChild(friendPreviewEl);
   const rect = card.getBoundingClientRect();
   const panel = friendPreviewEl.getBoundingClientRect();

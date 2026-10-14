@@ -1070,6 +1070,10 @@ function startUiDrag(event, row) {
     list,
     started: false,
     pointerId: event.pointerId,
+    // Press point for the drag threshold (previously read but never set:
+    // the 4px guard never actually guarded).
+    pointerX: event.clientX,
+    pointerY: event.clientY,
     // Anchor between cursor and row top-left, so the ghost keeps the grab point.
     grabOffsetX: event.clientX - rect.left,
     grabOffsetY: event.clientY - rect.top,
@@ -1153,6 +1157,10 @@ document.addEventListener('pointermove', (event) => {
     // translated to follow the cursor, exactly like a desktop icon drag.
     const origin = uiDrag.row.getBoundingClientRect();
     uiDrag.rowWidth = origin.width;
+    // Refresh the grab anchor NOW: the row may have moved between the press
+    // and the drag actually starting (page entry animation, layout shifts).
+    uiDrag.grabOffsetX = uiDrag.pointerX - origin.left;
+    uiDrag.grabOffsetY = uiDrag.pointerY - origin.top;
     // Measure the list BEFORE the ghost leaves the flow: the full-height box
     // is what the height lock must preserve. (Measuring after the flow exit
     // locked the already-shrunk height and the bottom row still overflowed.)
@@ -1472,7 +1480,13 @@ function reportRecentGamesToTray() {
   const games = recentGames
     .map((id) => getGame(id))
     .filter(Boolean)
-    .map((game) => ({ id: String(game.id), title: String(game.title || '') }));
+    .map((game) => ({
+      id: String(game.id),
+      title: String(game.title || ''),
+      // Tray rows show art and a "5 min ago" stamp when available.
+      thumbnail: safeThumbnail(game.thumbnail) || '',
+      lastPlayed: Number(playStats && playStats[game.id] && playStats[game.id].lastPlayed) || 0
+    }));
   window.vortexDesktop.reportRecentGames({ games, style: trayStylePayload() });
 }
 

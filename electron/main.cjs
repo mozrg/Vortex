@@ -823,7 +823,12 @@ function showTrayWindow() {
     // Clicking anywhere outside the panel (another app, the desktop, or the
     // empty margin of this window) closes the tray; see tray.html's
     // pointerdown handler, which hides via the 'tray:dismiss' channel.
-    trayWindow.on('blur', () => { if (trayWindow && !trayWindow.isDestroyed()) trayWindow.hide(); });
+    trayWindow.on('blur', () => {
+      if (!trayWindow || trayWindow.isDestroyed() || !trayWindow.isVisible()) return;
+      // Fade out quickly, then actually hide the OS window.
+      void trayWindow.webContents.executeJavaScript(`window.__trayExit && window.__trayExit();`).catch(() => {});
+      window.setTimeout(() => { if (trayWindow && !trayWindow.isDestroyed()) trayWindow.hide(); }, 110);
+    });
     trayWindow.loadFile(path.join(__dirname, '..', 'tray.html'));
   }
   const next = trayBounds();
@@ -831,8 +836,14 @@ function showTrayWindow() {
   trayWindow.setSize(Math.round(316 * trayScale()), Math.round(436 * trayScale()), false);
   trayWindow.setPosition(next.x, next.y, false);
   trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle);
-  trayWindow.show();
-  trayWindow.focus();
+  if (!trayWindow.isVisible()) {
+    // Rise-from-taskbar entrance, like a native tray flyout.
+    trayWindow.show();
+    trayWindow.focus();
+    void trayWindow.webContents.executeJavaScript(`window.__trayEnter && window.__trayEnter();`).catch(() => {});
+  } else {
+    trayWindow.focus();
+  }
 }
 
 function createTray() {
@@ -873,7 +884,13 @@ ipcMain.on('tray:recent-games', (_event, payload = []) => {
   recentGamesForTray = (Array.isArray(request.games) ? request.games : [])
     .filter((game) => game && /^\d{5,20}$/.test(String(game.id)) && String(game.title || '').length > 0)
     .slice(0, 5)
-    .map((game) => ({ id: String(game.id), title: String(game.title).slice(0, 60) }));
+    .map((game) => ({
+      id: String(game.id),
+      title: String(game.title).slice(0, 60),
+      // Roblox CDN thumbnails for the tray rows (optional, sanitized).
+      thumbnail: /^https:\/\/tr\.rbxcdn\.com\/.+$/.test(String(game.thumbnail || '')) ? String(game.thumbnail) : '',
+      lastPlayed: Number(game.lastPlayed) > 0 ? Number(game.lastPlayed) : 0
+    }));
   if (request.style && typeof request.style === 'object') trayStyle = sanitizeTrayStyle(request.style);
   if (trayWindow && !trayWindow.isDestroyed()) trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle);
 });

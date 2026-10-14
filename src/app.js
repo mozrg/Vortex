@@ -71,7 +71,8 @@ const preferenceDefaults = {
   contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home', trayScale: 'normal', robloxUsername: '', friendsNoticeAccepted: false,
   themeText: '', themeMuted: '', themeLine: '',
   themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeVignette: false,
-  cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true
+  cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true,
+  homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: []
 };
 
 const readStored = (key, fallback) => {
@@ -221,6 +222,9 @@ function applyPreferences() {
   // Legacy per-card toggles fold into the unified card flags so old saved states survive:
   preferences.cardShowDescription = preferences.cardShowDescription && preferences.showDescriptions !== false;
   preferences.cardShowLikes = preferences.cardShowLikes && preferences.showStats !== false;
+  if (!Array.isArray(preferences.homeWidgetOrder)) preferences.homeWidgetOrder = [];
+  if (!Array.isArray(preferences.homeWidgetHidden)) preferences.homeWidgetHidden = [];
+  if (!Array.isArray(preferences.homeWidgetCollapsed)) preferences.homeWidgetCollapsed = [];
   if (!['balanced', 'spotlight', 'library'].includes(preferences.homeLayout)) preferences.homeLayout = 'balanced';
   preferences.homeMinimal = Boolean(preferences.homeMinimal);
   if (![4, 6, 8].includes(Number(preferences.homeGameCount))) preferences.homeGameCount = 4;
@@ -450,8 +454,8 @@ function renderPlayStats(limit = 3) {
     const hours = Math.floor(seconds / 3600);
     return hours >= 1 ? t('stats.hours', { time: String(hours) }) : t('stats.minutes', { time: String(Math.max(1, Math.round(seconds / 60))) });
   };
-  return `<section class="play-stats">
-    <div class="section-heading"><div><h2>${t('stats.title')}</h2><p>${t('stats.body')}</p></div></div>
+  return `<section class="play-stats home-widget" data-home-widget="playstats">
+    ${renderWidgetHeading('playstats', t('stats.title'), t('stats.body'))}
     <div class="play-stats-grid">${entries.map(([id, entry]) => { const game = getGame(id); const thumbnail = safeThumbnail(game.thumbnail); return `
       <button class="play-stat-card" data-action="play" data-id="${escapeHtml(String(game.id))}">
         <span class="play-stat-art ${thumbnail ? 'has-thumbnail' : ''}">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}</span>
@@ -459,6 +463,36 @@ function renderPlayStats(limit = 3) {
         <span class="play-stat-play">${icon('play', 12)}</span>
       </button>`; }).join('')}</div>
   </section>`;
+}
+
+// ---------- Home widgets (Stage 4) ----------
+// The home page is assembled from blocks the user can reorder, hide and collapse.
+// Order/visibility/collapsed state live in preferences; the drag machinery from
+// the sidebar (data-ui-order + ui-row) is reused for the widget list.
+const HOME_WIDGETS = [
+  { key: 'hero', titleKey: 'settings.home.hero', bodyKey: 'settings.home.heroHint', icon: 'sparkle' },
+  { key: 'picks', titleKey: 'settings.home.recommendations', bodyKey: 'settings.home.recommendationsHint', icon: 'grid' },
+  { key: 'playstats', titleKey: 'home.widgets.playstats', bodyKey: 'home.widgets.playstatsBody', icon: 'clock' },
+  { key: 'favorites', titleKey: 'home.widgets.favorites', bodyKey: 'home.widgets.favoritesBody', icon: 'heart' },
+  { key: 'recent', titleKey: 'home.widgets.recent', bodyKey: 'home.widgets.recentBody', icon: 'history' }
+];
+
+function homeWidgetOrder() {
+  const saved = Array.isArray(preferences.homeWidgetOrder) ? preferences.homeWidgetOrder.map(String) : [];
+  const known = HOME_WIDGETS.map((w) => w.key);
+  const ordered = saved.filter((k) => known.includes(k));
+  for (const k of known) if (!ordered.includes(k)) ordered.push(k);
+  return ordered;
+}
+
+function homeWidgetVisible(key) {
+  const hidden = Array.isArray(preferences.homeWidgetHidden) ? preferences.homeWidgetHidden.map(String) : [];
+  return !hidden.includes(key);
+}
+
+function homeWidgetCollapsed(key) {
+  const collapsed = Array.isArray(preferences.homeWidgetCollapsed) ? preferences.homeWidgetCollapsed.map(String) : [];
+  return collapsed.includes(key);
 }
 
 function renderHome() {
@@ -473,18 +507,70 @@ function renderHome() {
     .slice(0, Number(preferences.homeGameCount) || 4);
   const greeting = preferences.homeGreeting.trim() || t('page.home.title');
   const emptyHint = customGames.length ? '' : `<section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('sparkle', 20)}</div><h2>${t('home.empty.title')}</h2><p>${t('home.empty.body')}</p><button class="ghost-button" data-nav="settings">${icon('sliders')} ${t('home.empty.action')}</button></div></section>`;
-  const hero = preferences.homeShowHero && featured ? `<section class="hero-card" data-home-featured-banner>
+
+  // Each widget renders to a <section class="home-widget" data-home-widget="key">
+  // with a heading that carries collapse + move controls.
+  const widgetBodies = {
+    hero: preferences.homeShowHero && featured ? `<section class="hero-card home-widget" data-home-widget="hero">
       <span class="hero-avatar" aria-hidden="true">${safeThumbnail(featured.thumbnail) ? `<img src="${escapeHtml(safeThumbnail(featured.thumbnail))}" alt="" />` : `<span class="hero-avatar-fallback">${escapeHtml((featured.title || 'R')[0].toLocaleUpperCase())}</span>`}</span>
       <div class="hero-copy"><span class="hero-kicker"><span>${icon('sparkle', 13)}</span> ${t('hero.kicker')}</span><h2>${escapeHtml(featured.title)}</h2><p>${escapeHtml(featured.description || t('hero.body'))}</p>
         <div class="hero-actions"><button class="primary-button" data-action="play" data-id="${escapeHtml(featured.id)}">${icon('play')} ${t('hero.play', { title: escapeHtml(featured.title) })}</button><span class="hero-meta">${escapeHtml(featured.creator || t('hero.meta'))}</span></div>
       </div>
-    </section>` : '';
-  const recommendations = preferences.homeShowRecommendations ? `<section class="section-block"><div class="section-heading"><div><h2>${t('home.section.title')}</h2><p>${t('home.section.subtitle')}</p></div></div>
-      ${renderGrid(picks, t('home.picks.emptyTitle'), t('home.picks.emptyBody'), 'settings')}</section>` : '';
+    </section>` : '',
+    picks: `<section class="section-block home-widget" data-home-widget="picks">${renderWidgetHeading('picks', t('home.section.title'), t('home.section.subtitle'))}
+      ${renderGrid(picks, t('home.picks.emptyTitle'), t('home.picks.emptyBody'), 'settings')}</section>`,
+    playstats: renderPlayStats(),
+    favorites: homeWidgetVisible('favorites') ? renderHomeFavoritesPreview() : '',
+    recent: homeWidgetVisible('recent') ? renderHomeRecentPreview() : ''
+  };
+
+  // Legacy flags fold into the widget system: hero/recommendations toggles keep working.
+  if (preferences.homeShowHero === false) widgetBodies.hero = '';
+  if (preferences.homeShowRecommendations === false) widgetBodies.picks = '';
+
+  const widgets = homeWidgetOrder()
+    .filter((key) => homeWidgetVisible(key) && widgetBodies[key])
+    .map((key) => widgetBodies[key].replace('data-home-widget="', `data-collapsed="${homeWidgetCollapsed(key)}" data-home-widget="`));
   return `<div class="home-view" data-home-view data-home-layout="${preferences.homeLayout}">
     ${pageHeading(t('page.home.eyebrow'), `<span class="heading-inline-icon">${icon('handWave', 19)}</span>${escapeHtml(greeting)}`, t('page.home.description'))}
-    ${emptyHint}${hero}${recommendations}${renderPlayStats()}
+    ${emptyHint}${widgets.join('')}
   </div>`;
+}
+
+// Collapse/expand + reorder header injected into every home widget section.
+function renderWidgetHeading(key, title, subtitle = '') {
+  const collapsed = homeWidgetCollapsed(key);
+  return `<div class="home-widget-head" data-home-widget-head="${key}">
+    <button class="home-widget-collapse" data-widget-collapse="${key}" aria-expanded="${!collapsed}" aria-label="${t('home.widgets.collapse')}">${icon(collapsed ? 'navRight' : 'navDown', 12)}</button>
+    <div class="home-widget-copy"><h2>${escapeHtml(title)}</h2>${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}</div>
+    <span class="home-widget-grip" data-widget-drag="${key}" aria-hidden="true">${icon('grip', 13)}</span>
+  </div>`;
+}
+
+// Compact favorites/recent strips for the home page: one row of mini-cards.
+function renderHomeFavoritesPreview() {
+  const list = allGames().filter((game) => favorites.has(game.id)).slice(0, 6);
+  if (!list.length) return '';
+  return `<section class="section-block home-widget" data-home-widget="favorites">${renderWidgetHeading('favorites', t('home.widgets.favorites'), t('home.widgets.favoritesBody'))}
+    <div class="home-strip">${list.map((game) => renderHomeStripCard(game)).join('')}</div>
+  </section>`;
+}
+
+function renderHomeRecentPreview() {
+  const list = recentGames.map(getGame).filter(Boolean).slice(0, 6);
+  if (!list.length) return '';
+  return `<section class="section-block home-widget" data-home-widget="recent">${renderWidgetHeading('recent', t('home.widgets.recent'), t('home.widgets.recentBody'))}
+    <div class="home-strip">${list.map((game) => renderHomeStripCard(game)).join('')}</div>
+  </section>`;
+}
+
+function renderHomeStripCard(game) {
+  const thumbnail = safeThumbnail(game.thumbnail);
+  const isFavorite = favorites.has(game.id);
+  return `<button class="home-strip-card" data-action="play" data-id="${escapeHtml(String(game.id))}" title="${escapeHtml(game.title)}">
+    <span class="home-strip-art ${thumbnail ? 'has-thumbnail' : ''}">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}</span>
+    <span class="home-strip-copy"><strong>${escapeHtml(game.title)}</strong><small>${renderPlaytimeBadge(game.id) || (isFavorite ? t('card.favoriteAdd') : '')}</small></span>
+  </button>`;
 }
 
 function filterGames() {
@@ -719,10 +805,22 @@ function renderHomeSettings() {
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.layout')}</strong><small>${t('settings.home.layoutBody')}</small></div><div class="segmented">${[['balanced', t('settings.home.layoutBalanced')], ['spotlight', t('settings.home.layoutSpotlight')], ['library', t('settings.home.layoutLibrary')]].map(([value, label]) => `<button class="segment ${preferences.homeLayout === value ? 'active' : ''}" data-pref="homeLayout" data-value="${value}" ${previewAttr('homeLayout', value, label)}>${label}</button>`).join('')}</div></div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.home.sections')}</h2><p>${t('settings.home.sectionsBody')}</p></div>${icon('layout', 18)}</div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.hero')}</strong><small>${t('settings.home.heroHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.homeShowHero}" data-toggle="homeShowHero" aria-label="${t('settings.home.hero')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.recommendations')}</strong><small>${t('settings.home.recommendationsHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.homeShowRecommendations}" data-toggle="homeShowRecommendations" aria-label="${t('settings.home.recommendations')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.minimal')}</strong><small>${t('settings.home.minimalBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.homeMinimal}" data-toggle="homeMinimal" aria-label="${t('settings.home.minimal')}"></button></div>
-
+      <p class="ui-section-title">${t('home.widgets.orderTitle')}</p>
+      <div class="ui-list home-widget-list" data-ui-order data-home-widget-config>
+        ${homeWidgetOrder().map((key, index) => {
+          const widget = HOME_WIDGETS.find((w) => w.key === key);
+          if (!widget) return '';
+          return `<div class="ui-row" data-ui-row="widget:${key}" data-widget-row="${key}" role="listitem" tabindex="0" aria-roledescription="${t('settings.ui.dragHint')}">
+            <span class="ui-row-grip" aria-hidden="true">${icon('grip', 14)}</span>
+            <span class="ui-row-icon">${icon(widget.icon, 14)}</span>
+            <span class="ui-row-copy"><strong>${t(widget.titleKey)}</strong><small>${t(widget.bodyKey)}</small></span>
+            <button class="ui-row-handle" data-widget-move="${key}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="${t('settings.ui.moveUp')}">${icon('navUp', 12)}</button>
+            <button class="ui-row-handle" data-widget-move="${key}" data-direction="1" ${index === homeWidgetOrder().length - 1 ? 'disabled' : ''} aria-label="${t('settings.ui.moveDown')}">${icon('navDown', 12)}</button>
+            <label class="toggle" title="${t('home.widgets.visibility')}"><input type="checkbox" data-widget-visible="${key}" ${homeWidgetVisible(key) ? 'checked' : ''} /><span class="toggle-track"></span></label>
+          </div>`;
+        }).join('')}
+      </div>
+      <button class="text-button theme-reset" data-action="reset-home-widgets">${t('home.widgets.reset')}</button>
       <p class="catalog-disclaimer">${t('settings.home.hint')}</p>
     </section>`;
 }
@@ -1223,7 +1321,7 @@ const UI_DRAG_THRESHOLD = 4;
 // the browser does all layout. Release commits the DOM order as-is.
 function updateUiRowHandles(list) {
   if (!list) return;
-  const rows = [...list.querySelectorAll('.ui-row')];
+  const rows = [...list.querySelectorAll('[data-ui-row]')];
   rows.forEach((row, index) => {
     const up = row.querySelector('[data-direction="-1"]');
     const down = row.querySelector('[data-direction="1"]');
@@ -1256,7 +1354,9 @@ document.addEventListener('pointermove', (event) => {
     if (uiDrag.row.hasAttribute('draggable')) uiDrag.row.setAttribute('draggable', 'false');
   }
   // Which row is the cursor over? Insert the dragged row before it.
-  const rows = [...uiDrag.list.querySelectorAll('.ui-row:not(.ui-row-dragging)')];
+  // Rows are matched by the data attribute so widget sections (home-widget,
+  // not ui-row) ride the same machinery when dragged on the home page.
+  const rows = [...uiDrag.list.querySelectorAll('[data-ui-row]:not(.ui-row-dragging)')];
   let anchor = null;
   for (const item of rows) {
     const rect = item.getBoundingClientRect();
@@ -1278,8 +1378,14 @@ function finishUiDrag() {
   if (!started) return;
   row.classList.remove('ui-row-dragging');
   document.body.classList.remove('ui-dragging');
-  const order = [...list.querySelectorAll('.ui-row')].map((item) => item.dataset.uiRow).filter(Boolean);
-  preferences.sidebarOrder = order;
+  const order = [...list.querySelectorAll('[data-ui-row]')].map((item) => item.dataset.uiRow).filter(Boolean);
+  // Widget config rows (data-ui-row="widget:<key>") reorder home widgets,
+  // sidebar rows reorder nav items. The prefix tells them apart.
+  if (order[0] && String(order[0]).startsWith('widget:')) {
+    preferences.homeWidgetOrder = order.map((k) => String(k).slice(7)).filter(Boolean);
+  } else {
+    preferences.sidebarOrder = order;
+  }
   savePreferences();
   renderSidebar();
   updateUiRowHandles(list);
@@ -1295,7 +1401,12 @@ document.addEventListener('keydown', (event) => {
   const row = event.target.closest?.('[data-ui-row]');
   if (!row || !row.closest('[data-ui-order]')) return;
   event.preventDefault();
-  moveNavItem(row.dataset.uiRow, event.key === 'ArrowUp' ? '-1' : '1');
+  const key = String(row.dataset.uiRow);
+  if (key.startsWith('widget:')) {
+    moveHomeWidget(key.slice(7), event.key === 'ArrowUp' ? '-1' : '1');
+  } else {
+    moveNavItem(key, event.key === 'ArrowUp' ? '-1' : '1');
+  }
   window.requestAnimationFrame(() => pageContent.querySelector(`[data-ui-row="${row.dataset.uiRow}"]`)?.focus());
 });
 
@@ -1307,6 +1418,45 @@ document.addEventListener('pointerdown', (event) => {
   if (event.target.closest('button')) return;
   startUiDrag(event, row);
 });
+
+// Widget drag on the home page itself: grip in the widget heading drags a
+// placeholder row so the same in-flow reorder machinery runs.
+document.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) return;
+  const grip = event.target.closest?.('[data-widget-drag]');
+  if (!grip) return;
+  const section = grip.closest('[data-home-widget]');
+  if (!section) return;
+  const homeView = section.closest('[data-home-view]');
+  if (!homeView) return;
+  const widgetRows = [...homeView.querySelectorAll('.home-widget')];
+  const index = widgetRows.indexOf(section);
+  if (index < 0) return;
+  // Promote every widget section to a draggable row for the shared machinery.
+  widgetRows.forEach((w) => { if (!w.dataset.uiRow) w.dataset.uiRow = `widget:${w.dataset.homeWidget}`; });
+  // Tag the drag list: homeView has no [data-ui-order]; add it transiently.
+  homeView.setAttribute('data-ui-order', '');
+  uiDrag = {
+    row: section,
+    list: homeView,
+    started: false,
+    pointerId: event.pointerId,
+    pointerX: event.clientX,
+    pointerY: event.clientY
+  };
+  event.preventDefault();
+});
+
+function moveHomeWidget(key, direction) {
+  const order = homeWidgetOrder();
+  const index = order.indexOf(key);
+  const target = index + Number(direction);
+  if (index < 0 || target < 0 || target >= order.length) return;
+  [order[index], order[target]] = [order[target], order[index]];
+  preferences.homeWidgetOrder = order;
+  savePreferences();
+  renderPage();
+}
 
 function renderUpdateSettings() {
   const state = latestUpdateState || { status: 'checking', progress: 0 };
@@ -1875,6 +2025,11 @@ document.addEventListener('click', async (event) => {
     updateUiRowHandles(move.closest('[data-ui-order]'));
     return;
   }
+  const widgetMove = target.closest('[data-widget-move]');
+  if (widgetMove) {
+    moveHomeWidget(widgetMove.dataset.widgetMove, widgetMove.dataset.direction);
+    return;
+  }
   const gamePick = target.closest('[data-game-pick]');
   if (gamePick) {
     pickGameFromSearch(gamePick.dataset.gamePick);
@@ -2013,6 +2168,27 @@ document.addEventListener('click', async (event) => {
       savePreferences();
       renderPage();
     }
+    if (action.dataset.action === 'reset-home-widgets') {
+      preferences.homeWidgetOrder = [];
+      preferences.homeWidgetHidden = [];
+      preferences.homeWidgetCollapsed = [];
+      savePreferences();
+      renderPage();
+      showToast(t('home.widgets.resetDone'));
+    }
+    return;
+  }
+
+  // Home widget collapse/expand (the chevron in the widget heading).
+  const widgetCollapse = target.closest('[data-widget-collapse]');
+  if (widgetCollapse) {
+    const key = widgetCollapse.dataset.widgetCollapse;
+    const list = Array.isArray(preferences.homeWidgetCollapsed) ? preferences.homeWidgetCollapsed.map(String) : [];
+    const at = list.indexOf(key);
+    if (at >= 0) list.splice(at, 1); else list.push(key);
+    preferences.homeWidgetCollapsed = list;
+    savePreferences();
+    renderPage();
     return;
   }
 
@@ -2264,6 +2440,16 @@ document.addEventListener('change', (event) => {
       preferences[flag] = event.target.checked;
       savePreferences(); renderPage();
     }
+    return;
+  }
+  if (event.target.matches('[data-widget-visible]')) {
+    const key = event.target.dataset.widgetVisible;
+    const list = Array.isArray(preferences.homeWidgetHidden) ? preferences.homeWidgetHidden.map(String) : [];
+    const at = list.indexOf(key);
+    // checked = visible: remove from hidden; unchecked = add.
+    if (event.target.checked) { if (at >= 0) list.splice(at, 1); } else if (at < 0) list.push(key);
+    preferences.homeWidgetHidden = list;
+    savePreferences(); renderPage();
     return;
   }
   if (event.target.matches('[data-wallpaper-grain]')) {

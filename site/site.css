@@ -32,6 +32,9 @@ h1 em { color:#b79bff; font-style:normal; }
 .primary-button b { font-size:16px; }
 .secondary-link { display:inline-flex; align-items:center; gap:9px; color:#c3bdcf; font-size:11px; font-weight:600; transition:color .18s; }
 .secondary-link b { color:var(--accent); font-size:16px; }
+.download-meta { margin: 10px 0 0; color: #6f7484; font-size: 11px; }
+.download-meta a { color: #a99cf2; text-decoration: none; border-bottom: 1px dashed rgba(169,156,242,.4); }
+.download-meta a:hover { color: #c9bdf7; }
 .platform-note { display:flex; align-items:center; gap:8px; margin:22px 0 0!important; color:#787987!important; font-size:10px!important; }
 .windows-mark { color:#aca0d4; font-size:18px; }
 .hero-art { position:absolute; top:18px; right:-12px; width:48%; height:440px; }

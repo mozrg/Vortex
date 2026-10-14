@@ -53,12 +53,21 @@ function releaseDate(release) {
 
 function releaseAssets(release) {
   const version = releaseVersion(release);
-  const installerName = `Vortex Launcher Setup ${version}.exe`;
   const assets = Array.isArray(release.assets) ? release.assets : [];
+  // The installer name has shipped under both "Vortex Launcher Setup x.exe"
+  // and "Vortex-Launcher-Setup-x.exe": match any spacing variant.
+  const isInstaller = (name) => new RegExp(`^Vortex[.\s-]*Launcher[.\s-]*Setup[.\s-]*${version.replace(/\./g, '\\.')}(\\.exe)?$`, 'i').test(String(name));
+  const isChecksum = (name) => isInstaller(String(name).replace(/\.sha256$/i, '')) && /\.sha256$/i.test(String(name));
   return {
-    installer: assets.find((asset) => asset.name === installerName && /^https:\/\/github\.com\//i.test(asset.browser_download_url || '')),
-    checksum: assets.find((asset) => asset.name === `${installerName}.sha256` && /^https:\/\/github\.com\//i.test(asset.browser_download_url || ''))
+    installer: assets.find((asset) => isInstaller(asset.name) && /^https:\/\/github\.com\//i.test(asset.browser_download_url || '')),
+    checksum: assets.find((asset) => isChecksum(asset.name) && /^https:\/\/github\.com\//i.test(asset.browser_download_url || ''))
   };
+}
+
+// The latest tag sometimes ships without assets yet: pick the newest release
+// that actually carries an installer so the big button always downloads.
+function releaseWithInstaller(releases) {
+  return (releases || []).find((release) => releaseAssets(release).installer) || (releases || [])[0] || null;
 }
 
 function setLatestRelease(release) {
@@ -75,13 +84,26 @@ function setLatestRelease(release) {
     return;
   }
   const version = releaseVersion(release);
-  const { installer } = releaseAssets(release);
+  const { installer, checksum } = releaseAssets(release);
   versionNode.textContent = `v${version}`;
   dateNode.textContent = releaseDate(release);
   link.href = release.html_url;
+  // Direct file download when the installer asset exists  no release page hop.
   download.href = installer ? installer.browser_download_url : release.html_url;
   download.setAttribute('aria-disabled', installer ? 'false' : 'true');
   download.title = installer ? t('download') : t('noInstaller');
+  // File size + checksum inline, so the download is verifiable at a glance.
+  const sizeNode = document.getElementById('download-size');
+  const checksumLink = document.getElementById('download-checksum');
+  if (sizeNode) {
+    sizeNode.textContent = installer && installer.size
+      ? (installer.size / (1024 * 1024)).toFixed(1) + ' MB  .exe'
+      : '';
+  }
+  if (checksumLink) {
+    if (checksum) { checksumLink.href = checksum.browser_download_url; checksumLink.hidden = false; }
+    else checksumLink.hidden = true;
+  }
 }
 
 function renderReleases(releases) {
@@ -97,7 +119,10 @@ function renderReleases(releases) {
     return;
   }
 
-  const latestStable = releases.find((release) => !release.prerelease) || releases[0];
+  // Prefer the newest stable release that actually has an installer asset:
+  // the button then always deep-links the file instead of a release page.
+  const withInstaller = releases.filter((release) => releaseAssets(release).installer);
+  const latestStable = withInstaller.find((release) => !release.prerelease) || withInstaller[0] || releases.find((release) => !release.prerelease) || releases[0];
   setLatestRelease(latestStable);
   const shown = releases.slice(0, 20);
   shown.forEach((release, index) => {

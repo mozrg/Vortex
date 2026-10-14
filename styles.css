@@ -780,7 +780,11 @@ body.light-theme .plans-progress-bar { background: rgba(38,32,56,.08); }
 .friend-preview > .friend-preview-copy > strong { font-size: 12.5px; }
 .friend-preview-game { margin-top: 10px; }
 /* Join button directly on playing friend cards. */
-.friend-card .friend-join { border: 1px solid var(--accent-border); border-radius: 8px; cursor: pointer; }
+.friend-card .friend-join { border: 1px solid var(--accent-border); border-radius: 8px; cursor: pointer; color: var(--accent-text); }
+.friend-card .friend-join svg { width: 13px; height: 13px; stroke-width: 2.2; }
+/* Steam-style playtime badge on game cards. */
+.card-playtime { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 9px; font-weight: 600; }
+.card-playtime svg { color: var(--accent-text); opacity: .8; }
 .friend-card .friend-join:hover { background: var(--accent-fill); color: var(--accent-contrast); }
 
 /* legacy list (kept for back-compat) */

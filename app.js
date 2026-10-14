@@ -330,6 +330,23 @@ function safeThumbnail(value) {
   } catch { return ''; }
 }
 
+// Steam-style playtime label: "45 мин", "12,5 ч.", "3 д. 4 ч.".
+function formatPlaytime(totalSeconds) {
+  const minutes = Math.floor(Number(totalSeconds) / 60);
+  if (!minutes) return null;
+  if (minutes < 60) return { value: minutes, unit: t('time.minutes') };
+  const hours = minutes / 60;
+  if (hours < 24) return { value: Math.round(hours * 10) / 10, unit: t('time.hours') };
+  return { value: Math.round(hours / 24 * 10) / 10, unit: t('time.days') };
+}
+function renderPlaytimeBadge(gameId) {
+  const entry = playStats && playStats[gameId];
+  const formatted = entry && entry.seconds ? formatPlaytime(entry.seconds) : null;
+  if (!formatted) return '';
+  const label = formatted.value.toLocaleString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { maximumFractionDigits: 1 });
+  return `<span class="card-playtime">${icon('clock', 11)} ${label}${formatted.unit}</span>`;
+}
+
 function renderGameCard(game) {
   game = localizeGame(game);
   const isFavorite = favorites.has(game.id);
@@ -356,7 +373,7 @@ function renderGameCard(game) {
       <p class="game-description ${expandedDescription ? 'expanded' : ''}" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
       ${canExpandDescription ? `<button class="description-more" data-action="toggle-description" data-id="${id}" aria-expanded="${expandedDescription}">${t(expandedDescription ? 'card.readLess' : 'card.readMore')}</button>` : ''}
       ${liveStats}
-      <div class="game-card-footer">${category}<button class="card-play" data-action="play" data-id="${id}">${icon('play', 11)} ${t('card.play')}</button></div>
+      <div class="game-card-footer">${category}${renderPlaytimeBadge(game.id)}<button class="card-play" data-action="play" data-id="${id}">${icon('play', 11)} ${t('card.play')}</button></div>
     </div>
   </article>`;
 }

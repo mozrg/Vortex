@@ -500,13 +500,30 @@ function renderFavorites() {
 }
 
 let friendsCache = { at: 0, data: null };
+let friendsAutoDetectStarted = false;
+// First visit to the Friends page with no username: detect the local Roblox
+// account automatically, so the user never has to type anything.
+async function autoDetectRobloxAccountOnce() {
+  if (friendsAutoDetectStarted || preferences.robloxUsername) return;
+  friendsAutoDetectStarted = true;
+  try {
+    const result = await window.vortexDesktop?.detectRobloxAccount();
+    if (result && result.ok && result.account && result.account.name) {
+      preferences.robloxUsername = result.account.name;
+      friendsCache = { at: 0, data: null };
+      savePreferences();
+      renderPage();
+    }
+  } catch { /* stay on the setup screen */ }
+}
 const FRIENDS_TTL = 30 * 1000;
 
 function renderFriends() {
   const username = String(preferences.robloxUsername || '').trim();
   if (!username) {
+    autoDetectRobloxAccountOnce();
     return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
-      <section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${t('friends.setup.title')}</h2><p>${t('friends.setup.body')}</p><button class="ghost-button" data-nav="settings">${icon('sliders')} ${t('friends.setup.action')}</button></div></section>`;
+      <section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${t('friends.setup.title')}</h2><p>${t('friends.setup.body')}</p><button class="primary-button" data-detect-username-home>${icon('users')} ${t('friends.detect')}</button> <button class="ghost-button" data-nav="settings">${icon('sliders')} ${t('friends.setup.action')}</button></div></section>`;
   }
   if (!friendsCache.data || Date.now() - friendsCache.at > FRIENDS_TTL) {
     loadFriends(username);
@@ -1216,7 +1233,7 @@ function renderGeneralSettings() {
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.friends.title')}</h2><p>${t('settings.friends.body')}</p></div>${icon('users', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.friends.username')}</strong><small>${t('settings.friends.usernameHint')}</small></div>
-        <span class="roblox-username-field"><input type="text" maxlength="20" autocomplete="off" placeholder="Roblox" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username /><button class="primary-button" data-save-username>${t('common.save')}</button></span></div>
+        <span class="roblox-username-field"><input type="text" maxlength="20" autocomplete="off" placeholder="Roblox" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username /><button class="ghost-button" data-detect-username>${t('friends.detect')}</button><button class="primary-button" data-save-username>${t('common.save')}</button></span></div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.title')}</h2><p>${t('settings.tray.body')}</p></div>${icon('tray', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.scale')}</strong><small>${t('settings.tray.scaleBody')}</small></div><div class="segmented tray-scale-segmented">${[['compact', t('settings.tray.compact')], ['normal', t('settings.tray.normal')], ['large', t('settings.tray.large')]].map(([value, label]) => `<button class="segment ${preferences.trayScale === value ? 'active' : ''}" data-pref="trayScale" data-value="${value}">${label}</button>`).join('')}</div></div>
@@ -1736,7 +1753,7 @@ function setView(view) {
   window.scrollTo({ top: 0, behavior: preferences.motion ? 'smooth' : 'auto' });
 }
 
-document.addEventListener('click', (event) => {
+document.addEventListener('click', async (event) => {
   const target = event.target instanceof Element ? event.target : event.target?.parentElement;
   if (!target) return;
   const move = target.closest('[data-ui-move]');
@@ -1957,6 +1974,32 @@ document.addEventListener('click', (event) => {
     return;
   }
 
+  // Auto-detect the local Roblox account: no typing needed at all.
+  if (target.closest('[data-detect-username]')) {
+    const input = pageContent.querySelector('[data-roblox-username]');
+    if (input) { input.placeholder = t('friends.detecting'); input.value = ''; }
+    try {
+      const result = await window.vortexDesktop?.detectRobloxAccount();
+      if (result && result.ok && result.account && result.account.name) {
+        if (input) { input.value = result.account.name; input.placeholder = 'Roblox'; }
+        showToast(t('friends.detected', { user: result.account.name }));
+        if (!preferences.robloxUsername) {
+          preferences.robloxUsername = result.account.name;
+          friendsCache = { at: 0, data: null };
+          savePreferences();
+          renderPage();
+        }
+      } else {
+        if (input) input.placeholder = 'Roblox';
+        showToast(t('friends.detectFailed'));
+      }
+    } catch {
+      if (input) input.placeholder = 'Roblox';
+      showToast(t('friends.detectFailed'));
+    }
+    return;
+  }
+
   // Saving the Roblox username: show the privacy notice the first time.
   if (target.closest('[data-save-username]')) {
     const input = pageContent.querySelector('[data-roblox-username]');
@@ -1971,6 +2014,20 @@ document.addEventListener('click', (event) => {
     savePreferences();
     renderPage();
     showToast(t('settings.friends.saved'));
+    return;
+  }
+
+  if (target.closest('[data-detect-username-home]')) {
+    try {
+      const result = await window.vortexDesktop?.detectRobloxAccount();
+      if (result && result.ok && result.account && result.account.name) {
+        preferences.robloxUsername = result.account.name;
+        friendsCache = { at: 0, data: null };
+        savePreferences();
+        renderPage();
+        showToast(t('friends.detected', { user: result.account.name }));
+      } else showToast(t('friends.detectFailed'));
+    } catch { showToast(t('friends.detectFailed')); }
     return;
   }
 

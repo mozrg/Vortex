@@ -512,10 +512,15 @@ ipcMain.handle('updates:retry', () => checkForUpdates());
 
 
 async function fetchJson(url, timeout = 12000) {
-  const response = await fetch(url, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(timeout)
-  });
+  // A Request object carries its own method/headers/body: passing options
+  // alongside would override them (and once cost us a 415 on the username
+  // lookup). Only attach the timeout signal in that case.
+  const response = url instanceof Request
+    ? await fetch(url, { signal: AbortSignal.timeout(timeout) })
+    : await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(timeout)
+      });
   if (!response.ok) throw new Error(`Roblox returned ${response.status}.`);
   return response.json();
 }
@@ -785,6 +790,28 @@ async function fetchRobloxFriends(userId) {
 
 // Presence: who plays what right now. Falls back gracefully when the endpoint
 // refuses anonymous requests (some presence scopes require a session).
+// Friend entries can arrive with empty names (privacy). The batch users
+// endpoint still resolves them anonymously: fill the display names in.
+async function fetchRobloxUserNames(userIds) {
+  if (!userIds.length) return new Map();
+  const result = new Map();
+  const batches = [];
+  for (let index = 0; index < userIds.length; index += 100) batches.push(userIds.slice(index, index + 100));
+  for (const batch of batches) {
+    try {
+      const payload = await fetchJson(new Request('https://users.roblox.com/v1/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: batch, excludeBannedUsers: false })
+      }), 10000);
+      for (const user of (payload.data ?? [])) {
+        result.set(String(user.id), { name: user.name || '', displayName: user.displayName || user.name || '' });
+      }
+    } catch { /* names stay hidden for this batch */ }
+  }
+  return result;
+}
+
 async function fetchRobloxPresence(userIds) {
   if (!userIds.length) return [];
   try {
@@ -810,6 +837,55 @@ async function fetchRobloxUserThumbnails(userIds) {
   } catch { return new Map(); }
 }
 
+// ---------- Roblox account auto-detection ----------
+// The local Roblox install keeps one folder per logged-in account under
+// %LOCALAPPDATA%\Roblox\<userId> (numeric names only; '0' is the guest slot).
+// Resolve each candidate through the public users API and pick the most
+// recently active one. No files are read beyond the folder listing: no
+// cookies, no credentials, no session data.
+async function detectLocalRobloxAccount() {
+  const candidates = [];
+  try {
+    const robloxFolder = path.join(app.getPath('localData') || process.env.LOCALAPPDATA, 'Roblox');
+    for (const entry of await fs.promises.readdir(robloxFolder, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !/^\d{3,20}$/.test(entry.name) || entry.name === '0') continue;
+      // Recency signal: the newest file inside the account folder.
+      let newest = 0;
+      try {
+        const files = await fs.promises.readdir(path.join(robloxFolder, entry.name), { recursive: true });
+        for (const f of files.slice(0, 400)) {
+          try {
+            const stat = await fs.promises.stat(path.join(robloxFolder, entry.name, String(f)));
+            if (stat.isFile() && stat.mtimeMs > newest) newest = stat.mtimeMs;
+          } catch { /* broken links and long paths are fine to skip */ }
+        }
+      } catch { /* unreadable folder: fall back to folder mtime */ }
+      if (!newest) {
+        try { newest = (await fs.promises.stat(path.join(robloxFolder, entry.name))).mtimeMs; } catch { newest = 0; }
+      }
+      candidates.push({ userId: entry.name, lastActive: newest });
+    }
+  } catch { return null; }
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => b.lastActive - a.lastActive);
+  // Resolve the freshest candidate to a username; try the next one if the
+  // API rejects it (deleted account, etc.).
+  for (const candidate of candidates.slice(0, 3)) {
+    try {
+      const payload = await fetchCachedJson(new URL(`https://users.roblox.com/v1/users/${candidate.userId}`), 60000);
+      if (payload && payload.id && payload.name) {
+        return { id: String(payload.id), name: payload.name, displayName: payload.displayName || payload.name, lastActive: candidate.lastActive };
+      }
+    } catch { /* try the next candidate */ }
+  }
+  return null;
+}
+
+ipcMain.handle('friends:detect-account', async () => {
+  const account = await detectLocalRobloxAccount();
+  return { ok: Boolean(account), account };
+});
+
 ipcMain.handle('friends:list', async (_event, request = {}) => {
   const username = String(request.username ?? '');
   const user = await resolveRobloxUserId(username);
@@ -818,12 +894,19 @@ ipcMain.handle('friends:list', async (_event, request = {}) => {
   if (!friends.length) return { ok: true, user, friends: [] };
   const presence = await fetchRobloxPresence(friends.map((f) => f.id));
   const thumbs = await fetchRobloxUserThumbnails(friends.map((f) => f.id));
+  const missingNames = friends.filter((f) => !f.name && !f.displayName).map((f) => f.id);
+  const resolvedNames = missingNames.length ? await fetchRobloxUserNames(missingNames) : new Map();
   const presenceByUser = new Map(presence.map((p) => [String(p.userId), p]));
   const enriched = friends.map((friend) => {
     const p = presenceByUser.get(friend.id) || {};
+    const resolved = resolvedNames.get(friend.id) || {};
+    const name = friend.name || resolved.name || '';
+    const displayName = friend.displayName || resolved.displayName || name;
     const playing = (p.userPresenceType ?? 0) >= 2; // 0 offline, 1 online, 2+ in game
     return {
       ...friend,
+      name,
+      displayName,
       avatar: thumbs.get(friend.id) || '',
       presence: playing ? 'playing' : (p.userPresenceType === 1 ? 'online' : 'offline'),
       placeId: p.placeId ? String(p.placeId) : '',

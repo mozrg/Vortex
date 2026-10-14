@@ -915,7 +915,11 @@ async function detectLocalRobloxAccount() {
 ipcMain.handle('friends:presence-cookie', async (_event, request = {}) => {
   const cookie = String(request.cookie ?? '').trim();
   if (request.remove) { await saveRobloxCookie(''); return { ok: true, enabled: false }; }
-  if (!/^[_A-Za-z0-9%-]{100,600}$/.test(cookie)) return { ok: false, error: 'invalid' };
+  // The real .ROBLOSECURITY value: 100-2200 chars, URL-safe base64-ish with
+  // warning prefix containing ';' and '-'. Validate loosely, let Roblox judge.
+  // Loose sanity check: long, no whitespace/quotes. Roblox itself is the
+  // real judge via the authenticated-user probe below.
+  if (cookie.length < 100 || cookie.length > 2200 || /[\s"']/.test(cookie)) return { ok: false, error: 'invalid' };
   // Validate the cookie with a light authenticated call before storing.
   try {
     const headers = { Cookie: '.ROBLOSECURITY=' + cookie };

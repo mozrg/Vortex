@@ -1241,7 +1241,8 @@ function renderGeneralSettings() {
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.presence.cookie')}</strong><small>${t('settings.presence.cookieHint')}</small></div>
         <span class="presence-cookie-field">
           <textarea rows="2" autocomplete="off" spellcheck="false" placeholder=".ROBLOSECURITY" data-presence-cookie ></textarea>
-          <small class="presence-cookie-meter" data-presence-meter data-hint="${t('settings.presence.cookieHint')}</small>
+          <small class="presence-cookie-meter" data-presence-meter data-hint="${t('settings.presence.cookieHint')}"></small>
+          <span class="presence-cookie-error" data-presence-error></span>
           <button class="primary-button" data-save-presence>${t('common.save')}</button><button class="ghost-button" data-remove-presence>${t('settings.presence.disable')}</button></span></div>
       <p class="theme-color-hint">${t('settings.presence.hint')}</p>
     </section>
@@ -2029,13 +2030,26 @@ document.addEventListener('click', async (event) => {
 
   if (target.closest('[data-save-presence]')) {
     const input = pageContent.querySelector('[data-presence-cookie]');
+    const error = pageContent.querySelector('[data-presence-error]');
     const cookie = String(input?.value || '').trim();
+    if (error) error.textContent = '';
     if (!cookie) { showToast(t('settings.presence.missing')); return; }
     try {
       const result = await window.vortexDesktop?.setPresenceCookie(cookie);
-      if (result && result.ok) { friendsCache = { at: 0, data: null }; renderPage(); showToast(t('settings.presence.saved')); }
-      else showToast(t('settings.presence.invalid'));
-    } catch { showToast(t('settings.presence.invalid')); }
+      if (result && result.ok) {
+        friendsCache = { at: 0, data: null };
+        renderPage();
+        showToast(t('settings.presence.saved'));
+      } else {
+        // Inline, specific reason under the field (in addition to the toast).
+        const reason = result && result.error === 'invalid' ? t('settings.presence.tooShort') : t('settings.presence.rejected');
+        if (error) error.textContent = reason;
+        showToast(reason);
+      }
+    } catch {
+      if (error) error.textContent = t('settings.presence.rejected');
+      showToast(t('settings.presence.rejected'));
+    }
     return;
   }
   if (target.closest('[data-remove-presence]')) {

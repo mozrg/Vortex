@@ -72,7 +72,7 @@ const preferenceDefaults = {
   themeText: '', themeMuted: '', themeLine: '',
   themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeVignette: false,
   cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true,
-  homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: []
+  homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal'
 };
 
 const readStored = (key, fallback) => {
@@ -225,6 +225,7 @@ function applyPreferences() {
   if (!Array.isArray(preferences.homeWidgetOrder)) preferences.homeWidgetOrder = [];
   if (!Array.isArray(preferences.homeWidgetHidden)) preferences.homeWidgetHidden = [];
   if (!Array.isArray(preferences.homeWidgetCollapsed)) preferences.homeWidgetCollapsed = [];
+  if (!['slow', 'normal', 'fast'].includes(preferences.animationSpeed)) preferences.animationSpeed = 'normal';
   if (!['balanced', 'spotlight', 'library'].includes(preferences.homeLayout)) preferences.homeLayout = 'balanced';
   preferences.homeMinimal = Boolean(preferences.homeMinimal);
   if (![4, 6, 8].includes(Number(preferences.homeGameCount))) preferences.homeGameCount = 4;
@@ -320,6 +321,8 @@ function applyPreferences() {
   // Home page look, managed in Settings → Home.
   document.body.dataset.homeLayout = preferences.homeLayout;
   document.body.classList.toggle('home-minimal', preferences.homeMinimal);
+  // Animation speed: a single multiplier var drives every duration in the UI.
+  root.setProperty('--speed', { slow: 1.6, normal: 1, fast: 0.55 }[preferences.animationSpeed] || 1);
   // Interface parts the user can switch off in Settings → Interface.
   document.body.classList.toggle('ui-no-sidebar-tip', !preferences.uiSidebarTip);
   document.body.classList.toggle('ui-no-profile', !preferences.uiProfileCard);
@@ -474,7 +477,7 @@ const HOME_WIDGETS = [
   { key: 'picks', titleKey: 'settings.home.recommendations', bodyKey: 'settings.home.recommendationsHint', icon: 'grid' },
   { key: 'playstats', titleKey: 'home.widgets.playstats', bodyKey: 'home.widgets.playstatsBody', icon: 'clock' },
   { key: 'favorites', titleKey: 'home.widgets.favorites', bodyKey: 'home.widgets.favoritesBody', icon: 'heart' },
-  { key: 'recent', titleKey: 'home.widgets.recent', bodyKey: 'home.widgets.recentBody', icon: 'history' }
+  { key: 'recent', titleKey: 'home.widgets.recent', bodyKey: 'home.widgets.recentBody', icon: 'clock' }
 ];
 
 function homeWidgetOrder() {
@@ -541,7 +544,7 @@ function renderHome() {
 function renderWidgetHeading(key, title, subtitle = '') {
   const collapsed = homeWidgetCollapsed(key);
   return `<div class="home-widget-head" data-home-widget-head="${key}">
-    <button class="home-widget-collapse" data-widget-collapse="${key}" aria-expanded="${!collapsed}" aria-label="${t('home.widgets.collapse')}">${icon(collapsed ? 'navRight' : 'navDown', 12)}</button>
+    <button class="home-widget-collapse" data-widget-collapse="${key}" aria-expanded="${!collapsed}" aria-label="${t('home.widgets.collapse')}">${icon(collapsed ? 'arrow' : 'navDown', 12)}</button>
     <div class="home-widget-copy"><h2>${escapeHtml(title)}</h2>${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}</div>
     <span class="home-widget-grip" data-widget-drag="${key}" aria-hidden="true">${icon('grip', 13)}</span>
   </div>`;
@@ -1254,6 +1257,7 @@ function renderEffectSettings() {
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.transitionStyle')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('pageTransition', 'fade', t('settings.transition.fade'), preferences.pageTransition === 'fade')}${renderAnimationOption('pageTransition', 'slide', t('settings.transition.slide'), preferences.pageTransition === 'slide')}${renderAnimationOption('pageTransition', 'zoom', t('settings.transition.zoom'), preferences.pageTransition === 'zoom')}${renderAnimationOption('pageTransition', 'none', t('settings.transition.none'), preferences.pageTransition === 'none')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardAnimation')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('cardAnimation', 'rise', t('settings.cards.rise'), preferences.cardAnimation === 'rise')}${renderAnimationOption('cardAnimation', 'fade', t('settings.cards.fade'), preferences.cardAnimation === 'fade')}${renderAnimationOption('cardAnimation', 'pop', t('settings.cards.pop'), preferences.cardAnimation === 'pop')}${renderAnimationOption('cardAnimation', 'none', t('settings.cards.none'), preferences.cardAnimation === 'none')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.contrast.title')}</strong><small>${t('settings.contrast.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.contrast}" data-toggle="contrast" aria-label="${t('settings.contrast.title')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.animationSpeed.title')}</strong><small>${t('settings.animationSpeed.body')}</small></div><div class="segmented">${[['slow', t('settings.animationSpeed.slow')], ['normal', t('settings.animationSpeed.normal')], ['fast', t('settings.animationSpeed.fast')]].map(([value, label]) => `<button class="segment ${preferences.animationSpeed === value ? 'active' : ''}" data-pref="animationSpeed" data-value="${value}">${label}</button>`).join('')}</div></div>
     </section><p class="catalog-disclaimer">${t('settings.savedLocally')}</p>`;
 }
 
@@ -2612,7 +2616,14 @@ document.addEventListener('keydown', (event) => {
     trigger.focus();
     return;
   }
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' || (event.key === '/' && !isTyping)) {
+  // Ctrl+K / Ctrl+Shift+P: the command palette. "/" (plain, not typing) focuses search.
+  if (((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 'k' || (event.shiftKey && event.key.toLowerCase() === 'p')))) {
+    event.preventDefault();
+    if (paletteOpen()) closeCommandPalette();
+    else openCommandPalette();
+    return;
+  }
+  if (event.key === '/' && !isTyping) {
     event.preventDefault();
     searchInput.focus();
   }
@@ -2621,7 +2632,124 @@ document.addEventListener('keydown', (event) => {
     scheduleLiveSearch('');
     searchInput.blur();
   }
+  if (event.key === 'Escape' && paletteOpen()) {
+    event.preventDefault();
+    closeCommandPalette();
+  }
 });
+
+// ---------- Command palette (Stage 5) ----------
+// Ctrl+K opens a palette that searches EVERYTHING: navigation views, settings
+// tabs, theme presets, accent colors, toggles and quick actions. Arrow keys
+// move, Enter runs, Escape closes. Typing filters by title and hint text.
+let paletteState = { open: false, index: 0, items: [] };
+
+function paletteOpen() { return paletteState.open; }
+
+function paletteCommands() {
+  const commands = [];
+  // Navigation
+  NAV_ITEMS.forEach((item) => commands.push({
+    icon: item.icon, title: t(`nav.${item.key}`), hint: t('palette.go'), run: () => setView(item.key)
+  }));
+  // Settings tabs
+  const tabs = [
+    ['home', 'settings.home.title', 'home'], ['cards', 'settings.cardTuning.title', 'grid'], ['effects', 'settings.effects.title', 'wand'],
+    ['interface', 'settings.ui.navTitle', 'layout'], ['general', 'settings.language.title', 'message'], ['version', 'updates.settingsTitle', 'download'], ['accent', 'settings.theme.title', 'palette']
+  ];
+  tabs.forEach(([tab, key, ic]) => commands.push({
+    icon: ic, title: t(key), hint: t('palette.openSettings'), run: () => { preferences.settingsTab = tab; savePreferences(); setView('settings'); }
+  }));
+  // Theme presets
+  [['dark', 'moon'], ['light', 'sun'], ['oled', 'contrast']].forEach(([theme, ic]) => commands.push({
+    icon: ic, title: t(`settings.${theme}`), hint: t('palette.theme'), run: () => { preferences.theme = theme; savePreferences(); applyPreferences(); renderPage(); }
+  }));
+  // Motion toggle
+  commands.push({ icon: 'motion', title: t('settings.motion.title'), hint: t('palette.toggle'), run: () => { preferences.motion = !preferences.motion; savePreferences(); applyPreferences(); renderPage(); showToast(preferences.motion ? t('settings.motion.title') + ': on' : t('settings.motion.title') + ': off'); } });
+  // Descriptions toggle (card element)
+  commands.push({ icon: 'grid', title: t('settings.cardTuning.description'), hint: t('palette.toggle'), run: () => { preferences.cardShowDescription = !preferences.cardShowDescription; savePreferences(); renderPage(); } });
+  return commands;
+}
+
+function openCommandPalette() {
+  paletteState = { open: true, index: 0, items: paletteCommands() };
+  let root = document.getElementById('command-palette');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'command-palette';
+    root.innerHTML = `<div class="palette-backdrop" data-palette-close></div>
+      <div class="palette-panel" role="dialog" aria-modal="true" aria-label="${t('palette.title')}">
+        <div class="palette-input-row"><span class="palette-input-icon"></span><input type="text" class="palette-input" placeholder="${t('palette.placeholder')}" autocomplete="off" spellcheck="false" /></div>
+        <div class="palette-list" role="listbox"></div>
+        <div class="palette-foot"><span>${t('palette.navigate')}</span><span>${t('palette.run')}</span><span>${t('palette.close')}</span></div>
+      </div>`;
+    document.body.appendChild(root);
+    root.querySelector('.palette-input').addEventListener('input', renderPaletteList);
+    root.querySelector('.palette-input').addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const delta = event.key === 'ArrowDown' ? 1 : -1;
+        paletteState.index = Math.max(0, Math.min(paletteState.filtered.length - 1, paletteState.index + delta));
+        renderPaletteSelection();
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        runPaletteIndex(paletteState.index);
+      }
+    });
+    root.addEventListener('click', (event) => {
+      if (event.target.closest('[data-palette-close]')) { closeCommandPalette(); return; }
+      const row = event.target.closest('[data-palette-index]');
+      if (row) runPaletteIndex(Number(row.dataset.paletteIndex));
+    });
+  }
+  root.hidden = false;
+  renderPaletteList();
+  const input = root.querySelector('.palette-input');
+  input.value = '';
+  input.focus();
+}
+
+function closeCommandPalette() {
+  const root = document.getElementById('command-palette');
+  if (root) root.hidden = true;
+  paletteState.open = false;
+}
+
+function renderPaletteList() {
+  const root = document.getElementById('command-palette');
+  if (!root) return;
+  const query = root.querySelector('.palette-input').value.trim().toLocaleLowerCase(preferences.language);
+  paletteState.filtered = paletteState.items.filter((item) => {
+    const haystack = `${item.title} ${item.hint}`.toLocaleLowerCase(preferences.language);
+    return !query || haystack.includes(query);
+  });
+  paletteState.index = Math.min(paletteState.index, Math.max(0, paletteState.filtered.length - 1));
+  const list = root.querySelector('.palette-list');
+  list.innerHTML = paletteState.filtered.map((item, index) => `
+    <button class="palette-row ${index === paletteState.index ? 'active' : ''}" data-palette-index="${index}" role="option" aria-selected="${index === paletteState.index}">
+      <span class="palette-row-icon">${icon(item.icon, 14)}</span>
+      <span class="palette-row-title">${escapeHtml(item.title)}</span>
+      <span class="palette-row-hint">${escapeHtml(item.hint)}</span>
+    </button>`).join('') || `<p class="palette-empty">${t('palette.noResults')}</p>`;
+}
+
+function renderPaletteSelection() {
+  const root = document.getElementById('command-palette');
+  if (!root) return;
+  root.querySelectorAll('.palette-row').forEach((row) => {
+    const active = Number(row.dataset.paletteIndex) === paletteState.index;
+    row.classList.toggle('active', active);
+    row.setAttribute('aria-selected', String(active));
+  });
+  root.querySelector('.palette-row.active')?.scrollIntoView({ block: 'nearest' });
+}
+
+function runPaletteIndex(index) {
+  const item = paletteState.filtered && paletteState.filtered[index];
+  closeCommandPalette();
+  if (item) item.run();
+}
 
 // Classic scripts run before ES modules: wait for the module bundle to be
 // published on window, then boot. If it never arrives (module error), boot

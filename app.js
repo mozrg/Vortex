@@ -36,6 +36,7 @@ const NAV_ITEMS = [
   { key: 'catalog', icon: 'compass', group: 'menu' },
   { key: 'favorites', icon: 'heart', group: 'menu' },
   { key: 'recent', icon: 'clock', group: 'menu' },
+  { key: 'friends', icon: 'users', group: 'menu' },
   { key: 'plans', icon: 'flag', group: 'space' },
   { key: 'settings', icon: 'sliders', group: 'space' }
 ];
@@ -67,7 +68,7 @@ const preferenceDefaults = {
   sidebarOrder: [], uiSidebarTip: true, uiProfileCard: true, uiTopbarSearch: true,
   uiBreadcrumb: true, uiNotifications: true, uiSidebarFoot: true, uiUpdateBanner: true,
   pageTransition: 'fade', cardAnimation: 'rise', glow: 72, ambient: true, motion: true,
-  contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home', trayScale: 'normal'
+  contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home', trayScale: 'normal', robloxUsername: '', friendsNoticeAccepted: false
 };
 
 const readStored = (key, fallback) => {
@@ -496,6 +497,59 @@ function renderFavorites() {
   const list = allGames().filter((game) => favorites.has(game.id));
   return `${pageHeading(t('page.favorites.eyebrow'), t('page.favorites.title'), t('page.favorites.description'))}
     ${renderGrid(list, t('empty.favorites.title'), t('empty.favorites.body'), 'catalog')}`;
+}
+
+let friendsCache = { at: 0, data: null };
+const FRIENDS_TTL = 30 * 1000;
+
+function renderFriends() {
+  const username = String(preferences.robloxUsername || '').trim();
+  if (!username) {
+    return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
+      <section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${t('friends.setup.title')}</h2><p>${t('friends.setup.body')}</p><button class="ghost-button" data-nav="settings">${icon('sliders')} ${t('friends.setup.action')}</button></div></section>`;
+  }
+  if (!friendsCache.data || Date.now() - friendsCache.at > FRIENDS_TTL) {
+    loadFriends(username);
+    if (!friendsCache.data) {
+      return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
+        <section class="section-block"><div class="friends-loading">${icon('users', 18)}<p>${t('friends.loading')}</p></div></section>`;
+    }
+  }
+  const data = friendsCache.data;
+  if (!data.ok) {
+    return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
+      <section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${t('friends.notFound.title')}</h2><p>${t('friends.notFound.body')}</p></div></section>`;
+  }
+  const friends = data.friends || [];
+  const playing = friends.filter((f) => f.presence === 'playing');
+  const online = friends.filter((f) => f.presence === 'online');
+  const offline = friends.filter((f) => f.presence === 'offline');
+  const row = (friend) => `<button class="friend-row ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" ${friend.placeId ? `data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}"` : ''}>
+      <span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="lazy" />` : escapeHtml((friend.displayName || friend.name || '?')[0].toLocaleUpperCase())}</span>
+      <span class="friend-copy"><strong>${escapeHtml(friend.displayName || friend.name)}</strong><small>${friend.presence === 'playing' ? escapeHtml(friend.gameName || t('friends.inGame')) : friend.presence === 'online' ? t('friends.online') : t('friends.offline')}</small></span>
+      ${friend.presence === 'playing' ? `<span class="friend-join">${icon('play', 11)} ${t('friends.join')}</span>` : ''}
+    </button>`;
+  const group = (titleKey, list, emptyNote) => !list.length && !emptyNote ? '' : `<p class="friends-group-title">${t(titleKey)} · ${list.length}</p>
+    <div class="friends-list">${list.map(row).join('')}</div>`;
+  return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
+    <section class="section-block">
+      ${group('friends.groupPlaying', playing, playing.length ? '' : 'keep')}
+      ${group('friends.groupOnline', online, online.length ? '' : '')}
+      ${group('friends.groupOffline', offline, offline.length ? '' : '')}
+      ${friends.length ? '' : `<div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${t('friends.empty.title')}</h2><p>${t('friends.empty.body')}</p></div>`}
+      <p class="catalog-disclaimer">${t('friends.disclaimer')}</p>
+    </section>`;
+}
+
+async function loadFriends(username) {
+  try {
+    const data = await window.vortexDesktop?.listFriends(username);
+    friendsCache = { at: Date.now(), data };
+    if (currentView === 'friends') renderPage();
+  } catch {
+    friendsCache = { at: Date.now(), data: { ok: false, error: 'network' } };
+    if (currentView === 'friends') renderPage();
+  }
 }
 
 function renderRecent() {
@@ -1160,6 +1214,10 @@ function renderGeneralSettings() {
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.language.title')}</h2><p>${t('settings.language.body')}</p></div>${icon('message', 18)}</div>
       <div class="segmented language-segmented"><button class="segment ${preferences.language === 'ru' ? 'active' : ''}" data-pref="language" data-value="ru">${t('settings.language.ru')}</button><button class="segment ${preferences.language === 'en' ? 'active' : ''}" data-pref="language" data-value="en">${t('settings.language.en')}</button></div>
     </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.friends.title')}</h2><p>${t('settings.friends.body')}</p></div>${icon('users', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.friends.username')}</strong><small>${t('settings.friends.usernameHint')}</small></div>
+        <span class="roblox-username-field"><input type="text" maxlength="20" autocomplete="off" placeholder="Roblox" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username /><button class="primary-button" data-save-username>${t('common.save')}</button></span></div>
+    </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.title')}</h2><p>${t('settings.tray.body')}</p></div>${icon('tray', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.scale')}</strong><small>${t('settings.tray.scaleBody')}</small></div><div class="segmented tray-scale-segmented">${[['compact', t('settings.tray.compact')], ['normal', t('settings.tray.normal')], ['large', t('settings.tray.large')]].map(([value, label]) => `<button class="segment ${preferences.trayScale === value ? 'active' : ''}" data-pref="trayScale" data-value="${value}">${label}</button>`).join('')}</div></div>
     </section>
@@ -1186,7 +1244,7 @@ function renderSettings() {
     <div class="settings-layout">${settingsTabs()}<div class="settings-panel">${panel}</div></div>`;
 }
 
-const viewNames = { home: 'nav.home', catalog: 'nav.catalog', favorites: 'nav.favorites', recent: 'nav.recent', plans: 'nav.plans', settings: 'nav.settings' };
+const viewNames = { home: 'nav.home', catalog: 'nav.catalog', favorites: 'nav.favorites', recent: 'nav.recent', friends: 'nav.friends', plans: 'nav.plans', settings: 'nav.settings' };
 
 function renderSidebar() {
   const groups = renderSidebarNav();
@@ -1206,7 +1264,7 @@ function renderPage() {
   applyPreferences();
   updateSidebar();
   renderUpdateBanner();
-  const pages = { home: renderHome, catalog: renderCatalog, favorites: renderFavorites, recent: renderRecent, plans: renderPlans, settings: renderSettings };
+  const pages = { home: renderHome, catalog: renderCatalog, favorites: renderFavorites, recent: renderRecent, friends: renderFriends, plans: renderPlans, settings: renderSettings };
   pageContent.innerHTML = (pages[currentView] || renderHome)();
   mountIcons(pageContent);
   if (pageContent.dataset.renderedView !== currentView) {
@@ -1287,6 +1345,36 @@ function applyDataImport(payload) {
   renderPage();
   reportRecentGamesToTray();
   return true;
+}
+
+// Privacy notice before the first friends fetch: spells out that only public
+// data is requested (no password, no cookies) and asks for explicit consent.
+function showFriendsWarning(pendingUsername) {
+  document.querySelector('.friends-warn-layer')?.remove();
+  const layer = document.createElement('div');
+  layer.className = 'friends-warn-layer';
+  layer.innerHTML = `<div class="friends-warn" role="dialog" aria-modal="true" aria-labelledby="friends-warn-title">
+    <div class="friends-warn-icon">${icon('users', 22)}</div>
+    <h2 id="friends-warn-title">${t('friends.warn.title')}</h2>
+    <p>${t('friends.warn.body')}</p>
+    <div class="friends-warn-actions">
+      <button class="ghost-button" data-warn-decline>${t('friends.warn.decline')}</button>
+      <button class="primary-button" data-warn-accept>${t('friends.warn.accept')}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(layer);
+  layer.addEventListener('click', (event) => {
+    if (event.target === layer || event.target.closest('[data-warn-decline]')) { layer.remove(); return; }
+    if (event.target.closest('[data-warn-accept]')) {
+      preferences.friendsNoticeAccepted = true;
+      preferences.robloxUsername = pendingUsername;
+      friendsCache = { at: 0, data: null };
+      savePreferences();
+      layer.remove();
+      renderPage();
+      showToast(t('settings.friends.saved'));
+    }
+  });
 }
 
 function showToast(message, action) {
@@ -1376,9 +1464,11 @@ function bankPlaySession(resetSession = true) {
 function closePlaySession() { bankPlaySession(true); }
 function checkpointPlaySession() { bankPlaySession(false); }
 
-function openGame(id) {
-  const game = getGame(id);
+function openGame(id, gameId = '') {
+  const game = getGame(id) || (String(id).match(/^\d{5,20}$/) ? { id: String(id), title: t('friends.joinGameTitle') } : null);
   if (!game) return;
+  // A specific server instance (joining a friend) rides along to the main process.
+  const joinGameId = /^\d{5,40}$/.test(String(gameId)) ? String(gameId) : '';
   // A new launch closes the previous session: it is the natural end marker.
   closePlaySession();
   if (preferences.saveHistory) {
@@ -1397,7 +1487,7 @@ function openGame(id) {
   playStats[playSessionGameId] = currentEntry;
   savePlayStats();
   if (window.vortexDesktop?.openGame) {
-    window.vortexDesktop.openGame(game.id).then(() => showToast(t('toast.opening', { game: game.title }))).catch(() => showToast(t('toast.launchError')));
+    window.vortexDesktop.openGame(game.id, joinGameId).then(() => showToast(t('toast.opening', { game: game.title }))).catch(() => showToast(t('toast.launchError')));
   } else {
     window.open(`https://www.roblox.com/games/start?placeId=${encodeURIComponent(game.id)}`, '_blank', 'noopener,noreferrer');
     showToast(t('toast.opening', { game: game.title }));
@@ -1803,7 +1893,16 @@ document.addEventListener('click', (event) => {
   if (tab) { preferences.settingsTab = tab.dataset.settingsTab; savePreferences(); renderPage(); return; }
 
   const accent = target.closest('[data-accent]');
-  if (accent) { preferences.accent = accent.dataset.accent; savePreferences(); renderPage(); return; }
+  if (accent) {
+    // A preset is a complete look: applying it also drops any custom theme
+    // colors, otherwise they override the theme and the preset looks inert.
+    preferences.accent = accent.dataset.accent;
+    preferences.themeBackground = '';
+    preferences.themeSurface = '';
+    savePreferences();
+    renderPage();
+    return;
+  }
 
   if (target.closest('[data-add-custom]')) { addCustomGame(); return; }
 
@@ -1855,6 +1954,31 @@ document.addEventListener('click', (event) => {
     if (preferences.homePicks.includes(id) && preferences.homeFeaturedGame === id) preferences.homeFeaturedGame = '';
     savePreferences();
     renderPage();
+    return;
+  }
+
+  // Saving the Roblox username: show the privacy notice the first time.
+  if (target.closest('[data-save-username]')) {
+    const input = pageContent.querySelector('[data-roblox-username]');
+    const username = String(input?.value || '').trim();
+    if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) { showToast(t('friends.notFound.body')); return; }
+    if (!preferences.robloxUsername && !preferences.friendsNoticeAccepted) {
+      showFriendsWarning(username);
+      return;
+    }
+    preferences.robloxUsername = username;
+    friendsCache = { at: 0, data: null };
+    savePreferences();
+    renderPage();
+    showToast(t('settings.friends.saved'));
+    return;
+  }
+
+  const friendJoin = target.closest('[data-friend-join]');
+  if (friendJoin) {
+    const placeId = friendJoin.dataset.friendJoin;
+    const gameId = friendJoin.dataset.friendGame || '';
+    openGame(placeId, gameId);
     return;
   }
 

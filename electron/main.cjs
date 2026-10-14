@@ -592,12 +592,14 @@ async function getGameDetailsByUniverse(universeIds) {
   return rows.map((row) => mapGame(row, thumbnails.get(String(row.id))));
 }
 
-ipcMain.handle('game:open', async (_event, placeId) => {
+ipcMain.handle('game:open', async (_event, placeId, gameId) => {
   const normalizedId = String(placeId ?? '');
   if (!/^\d{5,20}$/.test(normalizedId)) throw new Error('Некорректный идентификатор игры.');
 
+  // gameId = a specific server instance: joining a friend's server needs it.
+  const normalizedGameId = /^\d{5,40}$/.test(String(gameId ?? '')) ? String(gameId) : '';
   try {
-    await shell.openExternal(`roblox://placeId=${normalizedId}`);
+    await shell.openExternal(`roblox://placeId=${normalizedId}${normalizedGameId ? `&gameInstanceId=${normalizedGameId}` : ''}`);
     return 'player';
   } catch {
     await shell.openExternal(`https://www.roblox.com/games/start?placeId=${normalizedId}`);
@@ -748,6 +750,90 @@ ipcMain.handle('games:clear-cache', async () => {
   responseCache.clear();
   await session.defaultSession.clearCache();
   return true;
+});
+
+// ---------- Roblox friends (public endpoints, no account link needed) ----------
+// username -> userId via the public user lookup; friends + presence via the
+// public friends/presence APIs. No .ROBLOSECURITY cookie is ever requested:
+// everything here is readable anonymously, exactly like on the public site.
+async function resolveRobloxUserId(username) {
+  const clean = String(username ?? '').trim().slice(0, 25);
+  if (!/^[A-Za-z0-9_]{3,20}$/.test(clean)) return null;
+  try {
+    const payload = await fetchJson(new Request('https://users.roblox.com/v1/usernames/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usernames: [clean], excludeBannedUsers: true })
+    }), 10000);
+    const hit = (payload && payload.data && payload.data[0]) || null;
+    return hit ? { id: String(hit.id), name: hit.name, displayName: hit.displayName || hit.name } : null;
+  } catch { return null; }
+}
+
+async function fetchRobloxFriends(userId) {
+  try {
+    const payload = await fetchCachedJson(new URL(`https://friends.roblox.com/v1/users/${userId}/friends`), 20000);
+    const list = Array.isArray(payload && payload.data) ? payload.data : [];
+    return list.map((friend) => ({
+      id: String(friend.id),
+      name: friend.name,
+      displayName: friend.displayName || friend.name,
+      isOnline: Boolean(friend.isOnline)
+    })).slice(0, 200);
+  } catch { return []; }
+}
+
+// Presence: who plays what right now. Falls back gracefully when the endpoint
+// refuses anonymous requests (some presence scopes require a session).
+async function fetchRobloxPresence(userIds) {
+  if (!userIds.length) return [];
+  try {
+    const payload = await fetchJson(new Request('https://presence.roblox.com/v1/presence/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userIds: userIds.slice(0, 100) })
+    }), 10000);
+    return Array.isArray(payload && payload.userPresences) ? payload.userPresences : [];
+  } catch { return []; }
+}
+
+async function fetchRobloxUserThumbnails(userIds) {
+  if (!userIds.length) return new Map();
+  try {
+    const url = new URL('https://thumbnails.roblox.com/v1/users/avatar-headshot');
+    url.searchParams.set('userIds', userIds.slice(0, 100).join(','));
+    url.searchParams.set('size', '150x150');
+    url.searchParams.set('format', 'Png');
+    url.searchParams.set('isCircular', 'false');
+    const payload = await fetchCachedJson(url, 30000);
+    return new Map((payload.data ?? []).map((item) => [String(item.targetId), cleanThumbnail(item.imageUrl)]));
+  } catch { return new Map(); }
+}
+
+ipcMain.handle('friends:list', async (_event, request = {}) => {
+  const username = String(request.username ?? '');
+  const user = await resolveRobloxUserId(username);
+  if (!user) return { ok: false, error: 'user-not-found', friends: [] };
+  const friends = await fetchRobloxFriends(user.id);
+  if (!friends.length) return { ok: true, user, friends: [] };
+  const presence = await fetchRobloxPresence(friends.map((f) => f.id));
+  const thumbs = await fetchRobloxUserThumbnails(friends.map((f) => f.id));
+  const presenceByUser = new Map(presence.map((p) => [String(p.userId), p]));
+  const enriched = friends.map((friend) => {
+    const p = presenceByUser.get(friend.id) || {};
+    const playing = (p.userPresenceType ?? 0) >= 2; // 0 offline, 1 online, 2+ in game
+    return {
+      ...friend,
+      avatar: thumbs.get(friend.id) || '',
+      presence: playing ? 'playing' : (p.userPresenceType === 1 ? 'online' : 'offline'),
+      placeId: p.placeId ? String(p.placeId) : '',
+      gameId: p.gameId ? String(p.gameId) : '',
+      gameName: p.lastLocation ? String(p.lastLocation).slice(0, 80) : ''
+    };
+  });
+  const rank = { playing: 0, online: 1, offline: 2 };
+  enriched.sort((a, b) => (rank[a.presence] ?? 2) - (rank[b.presence] ?? 2));
+  return { ok: true, user, friends: enriched };
 });
 
 // ---------- Tray ----------

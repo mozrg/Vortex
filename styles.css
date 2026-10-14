@@ -749,3 +749,33 @@ body.light-theme .plans-progress-bar { background: rgba(38,32,56,.08); }
 
 /* ---------- Data migration card ---------- */
 .data-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* ---------- Friends page ---------- */
+.friends-list { display: grid; gap: 7px; }
+.friends-group-title { margin: 18px 0 8px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.friends-group-title:first-child { margin-top: 0; }
+.friend-row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: color-mix(in srgb, var(--surface-2) 62%, transparent); color: var(--text); text-align: left; cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
+.friend-row:hover { border-color: var(--accent-border); background: var(--accent-wash); transform: translateY(-1px); }
+.friend-row.offline { opacity: .55; }
+.friend-row.offline:hover { opacity: .85; }
+.friend-avatar { display: grid; width: 38px; height: 38px; flex: 0 0 auto; overflow: hidden; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: linear-gradient(140deg, rgba(var(--accent-rgb), .3), rgba(0,0,0,.35)); color: var(--accent-text); font-weight: 700; }
+.friend-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.friend-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }
+.friend-copy strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.friend-copy small { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.friend-join { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; padding: 0 11px; min-height: 28px; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-wash); color: var(--accent-text); font-size: 9px; font-weight: 600; }
+.friend-row:hover .friend-join { background: var(--accent-fill); color: var(--accent-contrast); }
+.friends-loading { display: grid; place-items: center; gap: 10px; padding: 34px 0; color: var(--muted); font-size: 10px; }
+.friends-loading svg { color: var(--accent-text); }
+.roblox-username-field { display: inline-flex; gap: 8px; align-items: center; }
+.roblox-username-field input { width: 160px; min-height: 34px; padding: 0 11px; border: 1px solid var(--line-strong); border-radius: 9px; background: rgba(0,0,0,.16); color: var(--text); font-size: 11px; }
+.roblox-username-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent-border); }
+body.light-theme .roblox-username-field input { background: rgba(255,255,255,.6); }
+
+/* Friends privacy notice modal */
+.friends-warn-layer { position: fixed; z-index: 90; inset: 0; display: grid; place-items: center; background: rgba(5,5,9,.62); backdrop-filter: blur(6px); }
+.friends-warn { display: grid; width: min(420px, calc(100vw - 48px)); gap: 12px; padding: 22px 22px 18px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); box-shadow: 0 24px 60px rgba(0,0,0,.5); text-align: center; }
+.friends-warn-icon { display: grid; width: 44px; height: 44px; place-items: center; justify-self: center; border: 1px solid var(--accent-border); border-radius: 50%; background: var(--accent-wash); color: var(--accent-text); }
+.friends-warn h2 { margin: 0; font: 700 14px var(--font-display); }
+.friends-warn p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
+.friends-warn-actions { display: flex; justify-content: center; gap: 10px; margin-top: 6px; }

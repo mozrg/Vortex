@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
     ipcRenderer.on('window:state', listener);
     return () => ipcRenderer.removeListener('window:state', listener);
   },
-  openGame: (placeId) => ipcRenderer.invoke('game:open', placeId),
+  openGame: (placeId, gameId = '') => ipcRenderer.invoke('game:open', placeId, gameId),
   getUpdateState: () => ipcRenderer.invoke('updates:get-state'),
   retryUpdateCheck: () => ipcRenderer.invoke('updates:retry'),
   onUpdateState: (callback) => {
@@ -21,5 +21,6 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
   discoverGames: (request) => ipcRenderer.invoke('games:discover', request),
   getFeaturedGames: (placeIds) => ipcRenderer.invoke('games:featured', placeIds),
   clearSearchCache: () => ipcRenderer.invoke('games:clear-cache'),
-  reportRecentGames: (payload) => ipcRenderer.send('tray:recent-games', payload)
+  reportRecentGames: (payload) => ipcRenderer.send('tray:recent-games', payload),
+  listFriends: (username) => ipcRenderer.invoke('friends:list', { username })
 });

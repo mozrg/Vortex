@@ -1,64 +1,64 @@
-# Vortex — Roblox Place Launcher
+# Vortex — лаунчер плейсов Roblox
 
-Vortex is a Windows desktop launcher for Roblox: search places, keep favorites, track playtime, see which friends are online and jump into their servers -- all outside the browser.
+Vortex — десктопный лаунчер для Windows: поиск плейсов Roblox, избранное, учёт времени игры, статусы друзей и переход на их серверы — всё вне браузера.
 
-![Version](https://img.shields.io/badge/version-1.0.19-9b7cff) ![Platform](https://img.shields.io/badge/platform-Windows-0078D6) ![License](https://img.shields.io/badge/license-MIT-green)
+![ерсия](https://img.shields.io/badge/version-1.0.19-9b7cff) ![латформа](https://img.shields.io/badge/platform-Windows-0078D6) ![ицензия](https://img.shields.io/badge/license-MIT-green)
 
-**Download:** [the website](https://mozrg.github.io/Vortex/) — direct installer link, file size and SHA-256 checksum.
+**Скачать:** [сайт проекта](https://mozrg.github.io/Vortex/) — прямая ссылка на установщик, размер файла и контрольная сумма SHA-256.
 
-## What's inside
+## то умеет
 
-- **Game discovery** — search Roblox places by name or Place ID, browse the discovery catalog, cache results locally.
-- **Your shelf** — favorite games, a recent list, and a home page you compose yourself (featured game, picks, greeting, layout).
-- **Playtime tracking** — Steam-style hours per game ("12.5 h."), shown on cards on Home / Favorites / Recent / Catalog. Sessions are banked on launch and capped at 3 hours to avoid inflated numbers.
-- **Friends** — your Roblox friends list with avatars and statuses. The account is auto-detected from the local Roblox install (no username typing). Hover a card for the game the friend is playing; join their exact server with the play button.
-- **Join a friend's server** — launches `roblox://placeId=...&gameInstanceId=...`.
-- **Tray menu** — Steam-style compact tray flyout: recent games with thumbnails and "5 min ago" stamps, one-click launch, quit.
-- **Launcher settings** — accent palettes, custom theme colors, light/dark/OLED, corners, density, motion/transition effects, tray scale, custom sections order (drag & drop), undo for accidental removals.
-- **Data portability** — export/import all launcher data to/from a single file.
-- **Auto-update** — checks GitHub Releases, downloads and applies updates with a progress splash.
+- **оиск игр** — находи плейсы Roblox по названию или Place ID, просматривай каталог открытий, кэш хранится локально.
+- **Твоя полка** — избранные игры, список недавних и главная страница, которую ты собираешь сам (главная игра, подборка, приветствие, раскладка).
+- **чёт времени игры** — часы в стиле Steam (12,5 ч.) на карточках: главная, избранное, недавние, каталог. Сессии записываются при запуске, с потолком 3 часа, чтобы брошенное окно не накручивало счётчик.
+- **рузья** — список друзей Roblox с аватарками и статусами. ккаунт определяется автоматически из локального Roblox-клиента (ник вводить не нужно). аведи на карточку — увидишь, во что друг играет; кнопкой play заходишь на его сервер.
+- **ереход на сервер друга** — запускает `roblox://placeId=...&gameInstanceId=...`.
+- **Трей** — компактное меню в стиле Steam: недавние игры с обложками и отметками 5 мин назад, запуск в один клик, выход.
+- **астройки лаунчера** — палитры акцентов, свои цвета темы, светлая/тёмная/OLED, скругления, плотность, анимации и переходы, масштаб трея, порядок разделов перетаскиванием, отмена случайных удалений.
+- **еренос данных** — экспорт и импорт всех данных лаунчера одним файлом.
+- **втообновление** — проверка GitHub Releases, загрузка и установка обновлений с прогрессом на экране загрузки.
 
-## Where your data lives
+## де хранятся данные
 
-Everything is stored **locally on your machine**. Nothing is uploaded anywhere.
+сё хранится **локально на твоём компьютере**. икуда ничего не выгружается.
 
-| Data | Location | What |
+| анные | де | то это |
 |---|---|---|
-| Launcher preferences, favorites, recent games, playtime stats, search cache, discovery cache | `localStorage` of the app (`vortex.*` keys) in `%APPDATA%\vortex-roblox-launcher` | UI settings, your lists, hours played |
-| Roblox username (optional, auto-detected) | same `localStorage` | used to fetch the public friends list |
-| `.ROBLOSECURITY` cookie (optional, only if you enable live friend statuses) | `%APPDATA%\vortex-roblox-launcher\rbx-presence.bin` — **encrypted** with Windows DPAPI via Electron `safeStorage` | full account access, stored encrypted, sent only to `presence.roblox.com` for reading friend statuses |
-| Update logs | `%APPDATA%\vortex-roblox-launcher\updates` | update apply log |
+| астройки лаунчера, избранное, недавние, статистика времени, кэши поиска и каталога | `localStorage` приложения (ключи `vortex.*`) в `%APPDATA%\vortex-roblox-launcher` | интерфейс, твои списки, наигранные часы |
+| ик Roblox (опционально, определяется автоматически) | тот же `localStorage` | используется для публичного списка друзей |
+| Cookie `.ROBLOSECURITY` (опционально, только если включить живые статусы друзей) | `%APPDATA%\vortex-roblox-launcher\rbx-presence.bin` — **зашифрован** через DPAPI Windows (Electron `safeStorage`) | полный доступ к аккаунту; хранится зашифрованным, отправляется только на `presence.roblox.com` и только для чтения статусов |
+| оги обновлений | `%APPDATA%\vortex-roblox-launcher\updates` | журнал установки обновлений |
 
-The friends feature works **without** the cookie: the list itself comes from public Roblox endpoints. The cookie is optional and only needed for exact online/in-game statuses (Roblox hides those from anonymous requests).
+аздел друзей работает **без** cookie: сам список берётся из публичных эндпоинтов Roblox. Cookie нужен только для точных статусов в игре / онлайн — Roblox скрывает их от анонимных запросов.
 
-Removing the data = deleting the `%APPDATA%\vortex-roblox-launcher` folder. Uninstalling the app does not touch it.
+олное удаление данных = удалить папку `%APPDATA%\vortex-roblox-launcher`. еинсталляция приложения эту папку не трогает.
 
-## Network requests
+## Сетевые запросы
 
-| Endpoint | Why |
+| ндпоинт | ачем |
 |---|---|
-| `users.roblox.com`, `friends.roblox.com`, `presence.roblox.com`, `thumbnails.roblox.com`, `games.roblox.com`, `apis.roblox.com` | game search, details, icons, friends, statuses |
-| `api.github.com`, `github.com` (releases) | update checks and installer download |
-| `roblox://` protocol | launching games |
+| `users.roblox.com`, `friends.roblox.com`, `presence.roblox.com`, `thumbnails.roblox.com`, `games.roblox.com`, `apis.roblox.com` | поиск игр, детали, иконки, друзья, статусы |
+| `api.github.com`, `github.com` (releases) | проверка обновлений и загрузка установщика |
+| протокол `roblox://` | запуск игр |
 
-Roblox endpoints are unofficial and may change. The app never sends telemetry.
+ндпоинты Roblox неофициальные и могут измениться. Телеметрии приложение не отправляет.
 
-## Privacy notes
+## риватность
 
-- No account linking is required for the core app.
-- The optional `.ROBLOSECURITY` cookie is validated by Roblox, stored encrypted, and used exclusively to read friend statuses. A warning dialog explains this before it is ever saved.
-- No analytics, no telemetry, no data leaves your machine except the API calls above.
+- ля работы лаунчера привязка аккаунта не нужна.
+- пциональный cookie `.ROBLOSECURITY` проверяется Roblox, хранится зашифрованным и используется исключительно для чтения статусов друзей. еред сохранением показывается предупреждение с объяснением.
+- икакой аналитики, никакой телеметрии, никаких данных с твоего компьютера, кроме перечисленных выше API-запросов.
 
-## Development
+## азработка
 
 ```bash
 npm install
-npm run build:win   # package the installer (dist/)
-npx electron .        # run from source
+npm run build:win   # собрать установщик (dist/)
+npx electron .      # запустить из исходников
 ```
 
-Requires Node.js and Windows. Built with Electron.
+ужны Node.js и Windows. Сделано на Electron.
 
-## License
+## ицензия
 
 MIT.

@@ -846,7 +846,11 @@ async function fetchRobloxUserThumbnails(userIds) {
 async function detectLocalRobloxAccount() {
   const candidates = [];
   try {
-    const robloxFolder = path.join(app.getPath('localData') || process.env.LOCALAPPDATA, 'Roblox');
+    // localData exists in newer Electron; getPath THROWS on older keys, which
+    // would silently kill the whole detection  resolve it defensively.
+    let localData = process.env.LOCALAPPDATA;
+    try { localData = app.getPath('localData') || localData; } catch { /* keep the env value */ }
+    const robloxFolder = path.join(localData, 'Roblox');
     for (const entry of await fs.promises.readdir(robloxFolder, { withFileTypes: true })) {
       if (!entry.isDirectory() || !/^\d{3,20}$/.test(entry.name) || entry.name === '0') continue;
       // Recency signal: the newest file inside the account folder.

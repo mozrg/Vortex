@@ -67,13 +67,13 @@ const preferenceDefaults = {
   homeLayout: 'balanced', homeMinimal: false,
   sidebarOrder: [], uiSidebarTip: true, uiProfileCard: true, uiTopbarSearch: true,
   uiBreadcrumb: true, uiNotifications: true, uiSidebarFoot: true, uiUpdateBanner: true,
-  pageTransition: 'fade', cardAnimation: 'rise', glow: 72, ambient: true, motion: true,
+  pageTransition: 'fade', cardAnimation: 'rise', animationEasing: 'smooth', animationDuration: 1, glow: 72, ambient: true, motion: true,
   contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home', trayScale: 'normal', robloxUsername: '', friendsNoticeAccepted: false,
   themeText: '', themeMuted: '', themeLine: '',
-  themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeVignette: false,
+  themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeGrainStrength: 0.05, themeVignette: false, themeVignetteStrength: 1,
   cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true,
   homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal',
-  homeSectionTitles: {}, homeSectionScale: 1
+  homeSectionTitles: {}, homeSectionScale: 1, cardAspect: 'auto', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern'
 };
 
 // ---------- Customization profiles (Stage 6) ----------
@@ -84,13 +84,14 @@ const preferenceDefaults = {
 const PROFILE_KEYS = [
   'theme', 'themeBackground', 'themeSurface', 'themeText', 'themeMuted', 'themeLine',
   'accent', 'accentSecondary', 'accentMode', 'gradientAngle',
-  'themeWallpaper', 'themeWallpaperBlur', 'themeWallpaperDim', 'themeGrain', 'themeVignette',
-  'cardSize', 'cardRadius', 'customCardRadius', 'cardShowDescription', 'cardShowLikes', 'cardShowPlaytime', 'cardShowGenre',
+  'themeWallpaper', 'themeWallpaperBlur', 'themeWallpaperDim', 'themeGrain', 'themeGrainStrength', 'themeVignette', 'themeVignetteStrength',
+  'cardSize', 'cardRadius', 'customCardRadius', 'cardAspect', 'cardShowDescription', 'cardShowLikes', 'cardShowPlaytime', 'cardShowGenre',
+  'glassStrength', 'themeSchedule', 'scheduleDay', 'scheduleNight',
   'homeWidgetOrder', 'homeWidgetHidden', 'homeWidgetCollapsed',
   'homeLayout', 'homeMinimal', 'homeShowHero', 'homeShowRecommendations',
   'density', 'corners', 'showDescriptions', 'showStats',
-  'pageTransition', 'cardAnimation', 'animationSpeed', 'glow', 'ambient', 'motion', 'contrast',
-  'sidebarOrder', 'uiSidebarTip', 'uiProfileCard', 'uiTopbarSearch', 'uiBreadcrumb', 'uiNotifications', 'uiSidebarFoot', 'uiUpdateBanner'
+  'pageTransition', 'cardAnimation', 'animationSpeed', 'animationEasing', 'animationDuration', 'glow', 'ambient', 'motion', 'contrast',
+  'sidebarOrder', 'uiSidebarTip', 'uiProfileCard', 'uiTopbarSearch', 'uiBreadcrumb', 'uiNotifications', 'uiSidebarFoot', 'uiUpdateBanner', 'sidebarAutoHide', 'uiFont'
 ];
 
 function readProfiles() {
@@ -285,6 +286,21 @@ function applyPreferences() {
   if (!Array.isArray(preferences.homeWidgetHidden)) preferences.homeWidgetHidden = [];
   if (!Array.isArray(preferences.homeWidgetCollapsed)) preferences.homeWidgetCollapsed = [];
   if (!['slow', 'normal', 'fast'].includes(preferences.animationSpeed)) preferences.animationSpeed = 'normal';
+  preferences.animationDuration = Math.max(0.5, Math.min(2, Number(preferences.animationDuration) || 1));
+  if (!['smooth', 'spring', 'linear'].includes(preferences.animationEasing)) preferences.animationEasing = 'smooth';
+  if (!['auto', 'square', 'wide', 'portrait'].includes(preferences.cardAspect)) preferences.cardAspect = 'auto';
+  preferences.glassStrength = Math.max(0, Math.min(100, Number(preferences.glassStrength) || 0));
+  if (!['manual', 'system', 'clock'].includes(preferences.themeSchedule)) preferences.themeSchedule = 'manual';
+  if (!['dark', 'light', 'oled'].includes(preferences.scheduleDay)) preferences.scheduleDay = 'dark';
+  if (!['dark', 'light', 'oled'].includes(preferences.scheduleDay)) preferences.scheduleDay = 'dark';
+  if (!['dark', 'light', 'oled'].includes(preferences.scheduleNight)) preferences.scheduleNight = 'oled';
+  const clockHour = new Date().getHours();
+  if (preferences.themeSchedule === 'system' && window.matchMedia) {
+    preferences.theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  } else if (preferences.themeSchedule === 'clock') {
+    preferences.theme = clockHour >= 7 && clockHour < 19 ? preferences.scheduleDay : preferences.scheduleNight;
+  }
+  if (!['modern', 'classic'].includes(preferences.uiFont)) preferences.uiFont = 'modern';
   if (!['balanced', 'spotlight', 'library'].includes(preferences.homeLayout)) preferences.homeLayout = 'balanced';
   preferences.homeMinimal = Boolean(preferences.homeMinimal);
   if (![4, 6, 8].includes(Number(preferences.homeGameCount))) preferences.homeGameCount = 4;
@@ -364,6 +380,10 @@ function applyPreferences() {
   syncWallpaperLayer();
   root.setProperty('--card-size', preferences.cardSize);
   root.setProperty('--card-radius', preferences.cardRadius + 'px');
+  root.setProperty('--card-aspect', ({ auto: 'auto', square: '1 / 1', wide: '16 / 9', portrait: '4 / 5' }[preferences.cardAspect] || 'auto'));
+  root.setProperty('--glass-strength', String(preferences.glassStrength / 100));
+  root.setProperty('--animation-duration', String(preferences.animationDuration));
+  root.setProperty('--animation-easing', ({ smooth: 'cubic-bezier(.2,.72,.25,1)', spring: 'cubic-bezier(.16,1.2,.3,1)', linear: 'linear' }[preferences.animationEasing] || 'cubic-bezier(.2,.72,.25,1)'));
   document.documentElement.style.setProperty('--glow-strength', String(Number(preferences.glow) / 100));
   document.body.classList.toggle('custom-card-radius', preferences.customCardRadius === true);
   document.body.classList.toggle('light-theme', isLightCanvas);
@@ -373,6 +393,8 @@ function applyPreferences() {
   document.body.classList.toggle('hide-descriptions', !preferences.cardShowDescription);
   document.body.classList.toggle('hide-game-stats', !preferences.cardShowLikes);
   document.body.classList.toggle('sharp-corners', preferences.corners === 'sharp');
+  document.body.classList.toggle('font-classic', preferences.uiFont === 'classic');
+  document.body.classList.toggle('sidebar-auto-hide', preferences.sidebarAutoHide === true);
   document.body.classList.toggle('no-motion', !preferences.motion);
   document.body.classList.toggle('no-glow', !preferences.ambient);
   document.body.classList.toggle('high-contrast', preferences.contrast);
@@ -597,7 +619,11 @@ function renderHome() {
 
   const widgets = homeWidgetOrder()
     .filter((key) => homeWidgetVisible(key) && widgetBodies[key])
-    .map((key) => widgetBodies[key].replace('data-home-widget="', `data-collapsed="${homeWidgetCollapsed(key)}" data-home-widget="`));
+    .map((key) => {
+      // The hero has no widget heading/collapse control, so never mark it as collapsed.
+      if (key === 'hero') return widgetBodies[key];
+      return widgetBodies[key].replace('data-home-widget="', `data-collapsed="${homeWidgetCollapsed(key)}" data-home-widget="`);
+    });
   return `<div class="home-view" data-home-view data-home-layout="${preferences.homeLayout}">
     ${pageHeading(t('page.home.eyebrow'), `<span class="heading-inline-icon">${icon('handWave', 19)}</span>${escapeHtml(greeting)}`, t('page.home.description'))}
     ${emptyHint}${widgets.join('')}
@@ -1158,7 +1184,9 @@ function renderAccentSettings() {
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.theme.title')}</h2><p>${t('settings.theme.body')}</p></div></div><div class="segmented" style="max-width:390px">${[['dark', `${icon('moon', 13)} ${t('settings.dark')}`], ['light', `${icon('sun', 13)} ${t('settings.light')}`], ['oled', `${icon('contrast', 13)} ${t('settings.oled')}`]].map(([value, label]) => `<button class="segment ${preferences.theme === value ? 'active' : ''}" data-pref="theme" data-value="${value}" ${previewAttr('theme', value, t(`settings.${value}`))}>${label}</button>`).join('')}</div>
       <p class="theme-color-hint">${t('settings.themeColorHint')}</p><div class="theme-color-tuners">${renderColorTuner('themeBackground', displayBackground, t('settings.themeBackground'))}${renderColorTuner('themeSurface', displaySurface, t('settings.themeSurface'))}</div>
       <div class="theme-color-tuners">${renderColorTuner('themeText', displayText, t('settings.themeText'))}${renderColorTuner('themeMuted', displayMuted, t('settings.themeMuted'))}${renderColorTuner('themeLine', displayLine, t('settings.themeLine'))}</div>
-      <div class="theme-io"><button class="ghost-button" data-action="export-theme">${t('settings.themeExport')}</button><button class="ghost-button" data-action="import-theme">${t('settings.themeImport')}</button><input type="file" accept=".json,application/json" data-theme-file hidden /></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.theme.glass')}</strong><small>${t('settings.theme.glassHint')}</small></div><label class="range-control"><input type="range" min="0" max="100" value="${preferences.glassStrength}" data-glass-strength /><span class="range-value" data-glass-strength-value>${preferences.glassStrength}%</span></label></div>
+       <div class="setting-line"><div class="setting-label"><strong>${t('settings.theme.schedule')}</strong><small>${t('settings.theme.scheduleHint')}</small></div><div class="segmented">${[['manual',t('settings.theme.scheduleManual')],['system',t('settings.theme.scheduleSystem')],['clock',t('settings.theme.scheduleClock')]].map(([v,l])=>`<button class="segment ${preferences.themeSchedule===v?'active':''}" data-pref="themeSchedule" data-value="${v}">${l}</button>`).join('')}</div></div>
+       <div class="theme-io"><button class="ghost-button" data-action="export-theme">${t('settings.themeExport')}</button><button class="ghost-button" data-action="import-theme">${t('settings.themeImport')}</button><input type="file" accept=".json,application/json" data-theme-file hidden /></div>
       <button class="text-button theme-reset" data-action="reset-theme-colors">${t('settings.themeReset')}</button>
       <div class="settings-preview" style="margin-top:17px"><div class="preview-thumb"></div><div class="preview-copy"><strong>${t('settings.preview.title')}</strong><small>${t('settings.preview.body')}</small></div></div>
     </section>` + renderWallpaperCard();
@@ -1188,6 +1216,7 @@ function renderCardSettings() {
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cardTuning.title')}</h2><p>${t('settings.cardTuning.body')}</p></div>${icon('grid', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.size')}</strong><small>${t('settings.cardTuning.sizeHint')}</small></div><label class="range-control"><input type="range" min="0.7" max="1.3" step="0.05" value="${preferences.cardSize}" data-card-size /><span class="range-value" data-card-size-value>${Math.round(preferences.cardSize * 100)}%</span></label></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.radius')}</strong><small>${t('settings.cardTuning.radiusHint')}</small></div><label class="range-control"><input type="range" min="0" max="20" value="${preferences.cardRadius}" data-card-radius /><span class="range-value" data-card-radius-value>${preferences.cardRadius}px</span></label></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.aspect')}</strong><small>${t('settings.cardTuning.aspectHint')}</small></div><div class="segmented">${[['auto',t('settings.cardTuning.aspectAuto')],['square',t('settings.cardTuning.aspectSquare')],['wide',t('settings.cardTuning.aspectWide')],['portrait',t('settings.cardTuning.aspectPortrait')]].map(([value,label])=>`<button class="segment ${preferences.cardAspect === value ? 'active' : ''}" data-pref="cardAspect" data-value="${value}">${label}</button>`).join('')}</div></div>
       ${cardFlag('cardShowDescription', 'settings.cardTuning.description', 'settings.cardTuning.descriptionHint')}
       ${cardFlag('cardShowLikes', 'settings.cardTuning.likes', 'settings.cardTuning.likesHint')}
       ${cardFlag('cardShowPlaytime', 'settings.cardTuning.playtime', 'settings.cardTuning.playtimeHint')}
@@ -1359,6 +1388,7 @@ function renderEffectSettings() {
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardAnimation')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('cardAnimation', 'rise', t('settings.cards.rise'), preferences.cardAnimation === 'rise')}${renderAnimationOption('cardAnimation', 'fade', t('settings.cards.fade'), preferences.cardAnimation === 'fade')}${renderAnimationOption('cardAnimation', 'pop', t('settings.cards.pop'), preferences.cardAnimation === 'pop')}${renderAnimationOption('cardAnimation', 'none', t('settings.cards.none'), preferences.cardAnimation === 'none')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.contrast.title')}</strong><small>${t('settings.contrast.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.contrast}" data-toggle="contrast" aria-label="${t('settings.contrast.title')}"></button></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.animationSpeed.title')}</strong><small>${t('settings.animationSpeed.body')}</small></div><div class="segmented">${[['slow', t('settings.animationSpeed.slow')], ['normal', t('settings.animationSpeed.normal')], ['fast', t('settings.animationSpeed.fast')]].map(([value, label]) => `<button class="segment ${preferences.animationSpeed === value ? 'active' : ''}" data-pref="animationSpeed" data-value="${value}">${label}</button>`).join('')}</div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.effects.pageSpeed')}</strong><small>${t('settings.effects.pageSpeedHint')}</small></div><label class="range-control"><input type="range" min="50" max="200" step="10" value="${Math.round((preferences.animationDuration || 1) * 100)}" data-animation-duration /><span class="range-value" data-animation-duration-value>${Math.round((preferences.animationDuration || 1) * 100)}%</span></label></div>
     </section><p class="catalog-disclaimer">${t('settings.savedLocally')}</p>`;
 }
 
@@ -1380,7 +1410,9 @@ function renderInterfaceSettings() {
       <div class="ui-list" data-ui-order>${rows}</div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.ui.partsTitle')}</h2><p>${t('settings.ui.partsBody')}</p></div>${icon('sliders', 18)}</div>
-      <p class="ui-section-title">${t('settings.ui.sidebar')}</p>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.ui.font')}</strong><small>${t('settings.ui.fontHint')}</small></div><div class="segmented">${[['modern',t('settings.ui.fontModern')],['classic',t('settings.ui.fontClassic')]].map(([v,l])=>`<button class="segment ${preferences.uiFont===v?'active':''}" data-pref="uiFont" data-value="${v}">${l}</button>`).join('')}</div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.ui.autoHide')}</strong><small>${t('settings.ui.autoHideHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.sidebarAutoHide}" data-pref-toggle="sidebarAutoHide" aria-label="${t('settings.ui.autoHide')}"></button></div>
+
       ${partToggle('uiSidebarTip', 'settings.ui.tip', 'settings.ui.tipBody')}
       ${partToggle('uiProfileCard', 'settings.ui.profile', 'settings.ui.profileBody')}
       ${partToggle('uiSidebarFoot', 'settings.ui.foot', 'settings.ui.footBody')}
@@ -2520,7 +2552,11 @@ document.addEventListener('click', async (event) => {
       line: preferences.themeLine || '',
       accent: preferences.accent,
       accentSecondary: preferences.accentSecondary,
-      gradientAngle: preferences.gradientAngle
+      gradientAngle: preferences.gradientAngle,
+      grain: preferences.themeGrain,
+      grainStrength: preferences.themeGrainStrength,
+      vignette: preferences.themeVignette,
+      vignetteStrength: preferences.themeVignetteStrength
     };
     const blob = new Blob([JSON.stringify(theme, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
@@ -2604,6 +2640,13 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
+  const prefToggle = target.closest('[data-pref-toggle]');
+  if (prefToggle) {
+    const key = prefToggle.dataset.prefToggle;
+    preferences[key] = !preferences[key];
+    savePreferences(); applyPreferences(); renderPage();
+    return;
+  }
   const toggle = target.closest('[data-toggle]');
   if (toggle) { preferences[toggle.dataset.toggle] = !preferences[toggle.dataset.toggle]; savePreferences(); renderPage(); }
 });
@@ -2689,12 +2732,25 @@ document.addEventListener('change', (event) => {
 });
 
 document.addEventListener('input', (event) => {
+  if (event.target.matches('[data-glass-strength]')) {
+    preferences.glassStrength = Math.max(0, Math.min(100, Number(event.target.value) || 0));
+    pageContent.querySelector('[data-glass-strength-value]')?.replaceChildren(preferences.glassStrength + '%');
+    savePreferences(); applyPreferences();
+    return;
+  }
+  if (event.target.matches('[data-animation-duration]')) {
+    preferences.animationDuration = Math.max(0.5, Math.min(2, Number(event.target.value) / 100 || 1));
+    pageContent.querySelector('[data-animation-duration-value]')?.replaceChildren(Math.round(preferences.animationDuration * 100) + '%');
+    savePreferences(); applyPreferences();
+    return;
+  }
   if (event.target.matches('[data-card-size]')) {
     preferences.cardSize = Math.max(0.7, Math.min(1.3, Number(event.target.value) || 1));
     pageContent.querySelector('[data-card-size-value]')?.replaceChildren(Math.round(preferences.cardSize * 100) + '%');
     savePreferences(); applyPreferences(); refreshCardPreview();
     return;
   }
+
   if (event.target.matches('[data-card-radius]')) {
     preferences.cardRadius = Math.max(0, Math.min(20, Number(event.target.value) || 0));
     preferences.customCardRadius = true;

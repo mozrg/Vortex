@@ -233,6 +233,8 @@ function syncWallpaperLayer() {
   root.classList.toggle('has-wallpaper', Boolean(preferences.themeWallpaper));
   root.classList.toggle('has-grain', preferences.themeGrain);
   root.classList.toggle('has-vignette', preferences.themeVignette);
+  document.documentElement.style.setProperty('--grain-strength', String(Math.max(0.005, Math.min(0.25, Number(preferences.themeGrainStrength) || 0.05))));
+  document.documentElement.style.setProperty('--vignette-strength', String(Math.max(0.1, Math.min(2.5, Number(preferences.themeVignetteStrength) || 1))));
   if (!preferences.themeWallpaper) { wallpaperLayerEl?.remove(); wallpaperLayerEl = null; return; }
   if (!wallpaperLayerEl) {
     wallpaperLayerEl = document.createElement('div');
@@ -628,10 +630,9 @@ function renderHomeRecentPreview() {
 
 function renderHomeStripCard(game) {
   const thumbnail = safeThumbnail(game.thumbnail);
-  const isFavorite = favorites.has(game.id);
   return `<button class="home-strip-card" data-action="play" data-id="${escapeHtml(String(game.id))}" title="${escapeHtml(game.title)}">
     <span class="home-strip-art ${thumbnail ? 'has-thumbnail' : ''}">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}</span>
-    <span class="home-strip-copy"><strong>${escapeHtml(game.title)}</strong><small>${renderPlaytimeBadge(game.id) || (isFavorite ? t('card.favoriteAdd') : '')}</small></span>
+    <span class="home-strip-copy"><strong>${escapeHtml(game.title)}</strong><small>${renderPlaytimeBadge(game.id) || escapeHtml(game.creator || t('hero.meta'))}</small></span>
   </button>`;
 }
 
@@ -762,7 +763,7 @@ function renderFriends() {
   const card = (friend) => `<article class="friend-card ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" data-friend-name="${escapeHtml(friend.displayName || friend.name || '')}" data-friend-avatar="${escapeHtml(friend.avatar || '')}" data-game-name="${escapeHtml(friend.gameName || '')}" data-game-thumb="${escapeHtml(friend.gameThumbnail || '')}" tabindex="0">
       <span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="lazy" />` : escapeHtml((friend.displayName || friend.name || '?')[0].toLocaleUpperCase())}</span>
       <span class="friend-copy"><strong>${escapeHtml(friend.displayName || friend.name)}</strong><small>${friend.presence === 'playing' ? escapeHtml(friend.gameName || t('friends.inGame')) : friend.presence === 'online' ? t('friends.online') : t('friends.offline')}</small></span>
-      ${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}">${icon('play', 14)}</button>` : ''}
+      ${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}"><span class="friend-join-icon">${icon('arrowUpRight', 13)}</span></button>` : ''}
     </article>`;
   const section = (titleKey, list) => !list.length ? '' : `<p class="friends-group-title">${t(titleKey)} · ${list.length}</p>
     <div class="friends-grid">${list.map(card).join('')}</div>`;
@@ -1164,7 +1165,9 @@ function renderWallpaperCard() {
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.blur')}</strong><small>${t('settings.wallpaper.blurHint')}</small></div><label class="range-control"><input type="range" min="0" max="40" value="${preferences.themeWallpaperBlur}" data-wallpaper-blur ${hasWallpaper ? '' : 'disabled'} /><span class="range-value" data-wallpaper-blur-value>${preferences.themeWallpaperBlur}px</span></label></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.dim')}</strong><small>${t('settings.wallpaper.dimHint')}</small></div><label class="range-control"><input type="range" min="0" max="90" value="${preferences.themeWallpaperDim}" data-wallpaper-dim ${hasWallpaper ? '' : 'disabled'} /><span class="range-value" data-wallpaper-dim-value>${preferences.themeWallpaperDim}%</span></label></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.grain')}</strong><small>${t('settings.wallpaper.grainHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.themeGrain}" data-wallpaper-grain-toggle aria-label="${t('settings.wallpaper.grain')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.grainStrength')}</strong><small>${t('settings.wallpaper.grainStrengthHint')}</small></div><label class="range-control"><input type="range" min="1" max="25" value="${Math.round((Number(preferences.themeGrainStrength) || 0.05) * 100)}" data-wallpaper-grain-strength ${preferences.themeGrain ? '' : 'disabled'} /><span class="range-value" data-wallpaper-grain-strength-value>${Math.round((Number(preferences.themeGrainStrength) || 0.05) * 100)}%</span></label></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.vignette')}</strong><small>${t('settings.wallpaper.vignetteHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.themeVignette}" data-wallpaper-vignette-toggle aria-label="${t('settings.wallpaper.vignette')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.vignetteStrength')}</strong><small>${t('settings.wallpaper.vignetteStrengthHint')}</small></div><label class="range-control"><input type="range" min="10" max="250" value="${Math.round((Number(preferences.themeVignetteStrength) || 1) * 100)}" data-wallpaper-vignette-strength ${preferences.themeVignette ? '' : 'disabled'} /><span class="range-value" data-wallpaper-vignette-strength-value>${Math.round((Number(preferences.themeVignetteStrength) || 1) * 100)}%</span></label></div>
   </section>`;
 }
 
@@ -2698,6 +2701,18 @@ document.addEventListener('input', (event) => {
   if (event.target.matches('[data-wallpaper-dim]')) {
     preferences.themeWallpaperDim = Number(event.target.value) || 0;
     pageContent.querySelector('[data-wallpaper-dim-value]')?.replaceChildren(preferences.themeWallpaperDim + '%');
+    savePreferences(); applyPreferences();
+    return;
+  }
+  if (event.target.matches('[data-wallpaper-grain-strength]')) {
+    preferences.themeGrainStrength = Math.max(0.01, Math.min(0.25, Number(event.target.value) / 100));
+    pageContent.querySelector('[data-wallpaper-grain-strength-value]')?.replaceChildren(Math.round(preferences.themeGrainStrength * 100) + '%');
+    savePreferences(); applyPreferences();
+    return;
+  }
+  if (event.target.matches('[data-wallpaper-vignette-strength]')) {
+    preferences.themeVignetteStrength = Math.max(0.1, Math.min(2.5, Number(event.target.value) / 100));
+    pageContent.querySelector('[data-wallpaper-vignette-strength-value]')?.replaceChildren(Math.round(preferences.themeVignetteStrength * 100) + '%');
     savePreferences(); applyPreferences();
     return;
   }

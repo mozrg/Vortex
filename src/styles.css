@@ -139,7 +139,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .page-content { width: min(100%, 1520px); min-height: calc(100vh - var(--window-titlebar-height) - 76px); padding: 34px 42px 56px; margin: 0 auto; }
 .eyebrow { display: flex; align-items: center; gap: 8px; color: var(--accent-text); font-size: 9px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
 .eyebrow-mark { display: inline-block; width: 6px; height: 6px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 11px rgba(var(--accent-rgb), .8); transform: rotate(45deg); }
-.page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin: 0 0 23px; }
+.page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin: 0 0 16px; }
 .page-heading h1 { margin: 9px 0 0; font: 700 28px/1.18 var(--font-display); letter-spacing: -.045em; }
 .heading-inline-icon { display: inline-flex; align-items: center; margin-right: 8px; color: var(--accent-text); vertical-align: -2px; }
 .heading-inline-icon svg { width: 21px; height: 21px; }
@@ -151,7 +151,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .primary-button:hover { filter: brightness(1.1); box-shadow: 0 9px 28px rgba(var(--accent-rgb), .29); transform: translateY(-1px); }
 .primary-button svg, .ghost-button svg, .subtle-button svg { width: 15px; height: 15px; }
 
-.hero-card { position: relative; display: flex; min-height: 283px; overflow: hidden; align-items: stretch; margin-bottom: 34px; border: 1px solid var(--accent-border); border-radius: 21px; background: radial-gradient(ellipse at 70% 75%, var(--accent-glow), transparent 42%), linear-gradient(113deg, color-mix(in srgb, var(--accent) 22%, var(--surface)) 0%, color-mix(in srgb, var(--accent-secondary) 12%, var(--surface)) 58%, var(--surface) 100%); box-shadow: inset 0 1px rgba(255,255,255,.045), 0 18px 55px rgba(0,0,0,.18); }
+.hero-card { position: relative; display: flex; min-height: 283px; overflow: hidden; align-items: stretch; margin-bottom: 20px; border: 1px solid var(--accent-border); border-radius: 21px; background: radial-gradient(ellipse at 70% 75%, var(--accent-glow), transparent 42%), linear-gradient(113deg, color-mix(in srgb, var(--accent) 22%, var(--surface)) 0%, color-mix(in srgb, var(--accent-secondary) 12%, var(--surface)) 58%, var(--surface) 100%); box-shadow: inset 0 1px rgba(255,255,255,.045), 0 18px 55px rgba(0,0,0,.18); }
 .hero-card::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 45%, color-mix(in srgb, var(--accent-secondary) 5%, transparent) 70%, color-mix(in srgb, var(--accent-secondary) 28%, transparent)); pointer-events: none; }
 .hero-copy { position: relative; z-index: 2; display: flex; width: 51%; flex-direction: column; align-items: flex-start; justify-content: center; padding: 31px 0 31px 34px; }
 .hero-kicker { display: inline-flex; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid var(--accent-border); border-radius: 7px; background: var(--accent-wash); color: var(--accent-text); font-size: 8px; font-weight: 700; letter-spacing: .12em; }
@@ -306,7 +306,7 @@ body.ui-dragging .ui-row:not(.ui-row-dragging) { transition: transform .18s cubi
 .ui-no-breadcrumb .breadcrumb { visibility: hidden; }
 .ui-no-notifications .notification-button { display: none; }
 
-.section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin: 0 0 16px; }.section-heading h2 { margin: 0; font: 700 17px/1.3 var(--font-display); letter-spacing: -.035em; }
+.section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin: 0 0 12px; }.section-heading h2 { margin: 0; font: 700 17px/1.3 var(--font-display); letter-spacing: -.035em; }
 .section-heading p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
 .link-button { display: inline-flex; align-items: center; gap: 7px; padding: 5px 0; border: 0; background: transparent; color: var(--accent-text); font-size: 10px; font-weight: 600; cursor: pointer; }
 .link-button:hover { color: var(--text); }
@@ -759,8 +759,11 @@ body.light-theme .plans-progress-bar { background: rgba(38,32,56,.08); }
 .friend-card.offline:hover { opacity: .9; }
 .friend-card.playing { border-color: var(--accent-border); background: color-mix(in srgb, var(--accent-wash) 45%, transparent); }
 .friend-card.playing .friend-copy small { color: var(--accent-text); }
-.friend-join { display: grid; width: 30px; height: 30px; flex: 0 0 auto; margin-left: auto; place-items: center; border: 1px solid var(--accent-border); border-radius: 50%; background: var(--accent-fill); color: var(--accent-contrast); transition: filter .15s ease, transform .15s ease; }
-.friend-join:hover { filter: brightness(1.14); transform: scale(1.07); }
+.friend-join { display: grid; width: 30px; height: 30px; flex: 0 0 auto; margin-left: auto; place-items: center; border: 1px solid color-mix(in srgb, var(--accent-fill) 60%, transparent); border-radius: 50%; background: var(--accent-gradient); color: var(--accent-contrast); box-shadow: 0 4px 14px rgba(var(--accent-rgb), .35), inset 0 1px 0 rgba(255,255,255,.28); transition: filter .15s ease, transform .15s ease, box-shadow .15s ease; }
+.friend-join-icon { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: rgba(0,0,0,.24); }
+.friend-join-icon svg { width: 12px; height: 12px; }
+.friend-join:hover { filter: brightness(1.12); transform: scale(1.08); box-shadow: 0 6px 18px rgba(var(--accent-rgb), .5), inset 0 1px 0 rgba(255,255,255,.28); }
+.friend-join:active { transform: scale(.96); }le(1.07); }
 .friend-join:active { transform: scale(.94); }
 .friend-join svg { width: 15px; height: 15px; margin-left: 2px; }
 
@@ -783,15 +786,13 @@ body.light-theme .plans-progress-bar { background: rgba(38,32,56,.08); }
 .friend-preview > .friend-preview-copy > strong { font-size: 12.5px; }
 .friend-preview-game { margin-top: 10px; }
 /* Join button directly on playing friend cards. */
-/* Join button: filled accent disc with a clear play glyph. */
-.friend-card .friend-join { display: grid; width: 30px; height: 30px; flex: 0 0 auto; margin-left: auto; place-items: center; border: 1px solid var(--accent-border); border-radius: 50%; cursor: pointer; background: var(--accent-fill); color: var(--accent-contrast); }
-.friend-card .friend-join svg { width: 15px; height: 15px; margin-left: 2px; }
-.friend-card .friend-join:hover { filter: brightness(1.15); transform: scale(1.05); }
-.friend-card .friend-join:active { transform: scale(.95); }
+/* Join button: gradient disc with inner ring and arrow glyph. */
+.friend-card .friend-join { cursor: pointer; }
+.friend-card .friend-join svg { margin-left: 0; }
+.friend-card .friend-join:hover { background: var(--accent-gradient); color: var(--accent-contrast); }
 /* Steam-style playtime badge on game cards. */
 .card-playtime { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 9px; font-weight: 600; }
 .card-playtime svg { color: var(--accent-text); opacity: .8; }
-.friend-card .friend-join:hover { background: var(--accent-fill); color: var(--accent-contrast); }
 
 /* legacy list (kept for back-compat) */
 .friends-list { display: grid; gap: 7px; }
@@ -854,9 +855,9 @@ html.has-wallpaper, html.has-wallpaper body, html.has-wallpaper body .app-shell 
 html.has-wallpaper body .sidebar { background: color-mix(in srgb, var(--surface) 70%, transparent); }
 html.has-wallpaper body .main-area { background: color-mix(in srgb, var(--bg) 68%, transparent); }
 /* Film grain overlay: animated fine noise, disabled for reduced motion. */
-html.has-grain body::before { position: fixed; z-index: 50; inset: -100%; pointer-events: none; content: ""; opacity: .05; background-image: repeating-conic-gradient(#000 0% .0001%, #fff .0002% .0002%); animation: grain-shift 7s steps(6) infinite; }
+html.has-grain body::before { position: fixed; z-index: 50; inset: -100%; pointer-events: none; content: ""; opacity: var(--grain-strength, .05); background-image: repeating-conic-gradient(#000 0% .0001%, #fff .0002% .0002%); animation: grain-shift 7s steps(6) infinite; }
 @keyframes grain-shift { 0% { transform: translate(0, 0); } 20% { transform: translate(-6%, 4%); } 40% { transform: translate(4%, -7%); } 60% { transform: translate(-8%, -3%); } 80% { transform: translate(6%, 6%); } 100% { transform: translate(0, 0); } }
-html.has-vignette body::after { position: fixed; z-index: 49; inset: 0; pointer-events: none; content: ""; background: radial-gradient(ellipse 90% 90% at 50% 45%, transparent 55%, rgba(0, 0, 0, .38) 100%); }
+html.has-vignette body::after { position: fixed; z-index: 49; inset: 0; pointer-events: none; content: ""; background: radial-gradient(ellipse 90% 90% at 50% 45%, transparent calc(55% - var(--vignette-strength, 1) * 12%), rgba(0, 0, 0, calc(.38 * var(--vignette-strength, 1))) 100%); }
 @media (prefers-reduced-motion: reduce) { html.has-grain body::before { animation: none; } }
 
 /* ---------- Card tuning (Stage 3) ---------- */
@@ -884,7 +885,7 @@ body.custom-card-radius .game-card .game-cover { border-radius: calc(var(--card-
 /* ---------- Home widgets (Stage 4) ---------- */
 /* Every home block carries a heading row: chevron (collapse), title, drag grip.
    The grip reuses the sidebar drag machinery, so it only appears on hover. */
-.home-widget-head { display: flex; align-items: center; gap: 10px; margin: 0 0 13px; }
+.home-widget-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
 .home-widget-head .home-widget-collapse { display: grid; place-items: center; width: 22px; height: 22px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; transition: border-color .15s ease, color .15s ease; }
 .home-widget-head .home-widget-collapse:hover { border-color: var(--accent-border); color: var(--text); }
 .home-widget-copy { display: grid; gap: 1px; min-width: 0; flex: 1; }

@@ -1168,11 +1168,36 @@ function renderCardSettings() {
       ${cardFlag('cardShowPlaytime', 'settings.cardTuning.playtime', 'settings.cardTuning.playtimeHint')}
       ${cardFlag('cardShowGenre', 'settings.cardTuning.genre', 'settings.cardTuning.genreHint')}
   </section>
-  <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.density.title')}</h2><p>${t('settings.density.body')}</p></div>${icon('grid', 18)}</div>
-      <div class="segmented density-segmented">${[['spacious', t('settings.spacious')], ['comfortable', t('settings.comfortable')], ['compact', t('settings.compact')]].map(([value, label]) => `<button class="segment ${preferences.density === value ? 'active' : ''}" data-pref="density" data-value="${value}" ${previewAttr('density', value, label)}>${label}</button>`).join('')}</div>
-      <div class="setting-line" style="margin-top:13px"><div class="setting-label"><strong>${t('settings.corners.title')}</strong><small>${t('settings.corners.body')}</small></div><div class="segmented">${[['soft', t('settings.soft')], ['sharp', t('settings.sharp')]].map(([value, label]) => `<button class="segment ${preferences.corners === value ? 'active' : ''}" data-pref="corners" data-value="${value}" ${previewAttr('corners', value, label)}>${label}</button>`).join('')}</div></div>
-      <div class="settings-preview"><div class="density-preview-art" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><div class="preview-copy"><strong>${t('settings.anyScreen')}</strong><small>${t('settings.appliesToCatalog')}</small></div></div>
-    </section>`;
+  <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cardPreview.title')}</h2><p>${t('settings.cardPreview.body')}</p></div>${icon('gamepad', 18)}</div>
+      <div class="card-tuning-preview">
+        <article class="game-card preview-card" style="--game-color: var(--accent)">
+          <div class="game-cover art-live"><span class="cover-shine"></span></div>
+          <div class="game-info">
+            <div class="game-title-row"><h3 class="game-title">${t('settings.cardPreview.name')}</h3></div>
+            ${preferences.cardShowDescription ? `<p class="game-description">${t('settings.cardPreview.description')}</p>` : ''}
+            ${preferences.cardShowLikes ? `<div class="game-live-stats"><span>${icon('users', 12)} ${t('search.players', { count: '2.4K' })}</span><span>${icon('thumb', 12)} ${t('search.likes', { percent: 96 })}</span></div>` : ''}
+            <div class="game-card-footer">${preferences.cardShowGenre ? `<span class="game-category"><i></i>${t('settings.cardPreview.genre')}</span>` : '<span></span>'}${preferences.cardShowPlaytime ? `<span class="card-playtime">${icon('clock', 11)} ${t('settings.cardPreview.playtime')}</span>` : ''}</div>
+          </div>
+        </article>
+        <p class="preview-note"><strong>${t('settings.cardPreview.liveTitle')}</strong><small>${t('settings.cardPreview.liveBody')}</small></p>
+      </div>
+  </section>`;
+}
+
+function refreshCardPreview() {
+  // Live-update the preview card in place: size, radius and flag-dependent rows.
+  const card = pageContent.querySelector('.card-tuning-preview .preview-card');
+  if (!card) return;
+  const cover = card.querySelector('.game-cover');
+  if (cover) {
+    const radius = preferences.customCardRadius ? preferences.cardRadius : 12;
+    cover.style.height = `${Math.round(110 * preferences.cardSize)}px`;
+    cover.style.borderRadius = `calc(${radius}px - 3px) calc(${radius}px - 3px) 0 0`;
+  }
+  card.querySelector('.game-live-stats')?.toggleAttribute('hidden', !preferences.cardShowLikes);
+  card.querySelector('.game-description')?.toggleAttribute('hidden', !preferences.cardShowDescription);
+  card.querySelector('.game-category')?.toggleAttribute('hidden', !preferences.cardShowGenre);
+  card.querySelector('.card-playtime')?.toggleAttribute('hidden', !preferences.cardShowPlaytime);
 }
 
 function renderAnimationOption(preference, value, label, active) {
@@ -2531,7 +2556,9 @@ document.addEventListener('click', async (event) => {
     const flag = cardFlagToggle.dataset.cardFlagToggle;
     if (['cardShowDescription', 'cardShowLikes', 'cardShowPlaytime', 'cardShowGenre'].includes(flag)) {
       preferences[flag] = !preferences[flag];
-      savePreferences(); renderPage();
+      savePreferences(); refreshCardPreview();
+      // Update the switch's aria state in place (renderPage would drop slider focus).
+      cardFlagToggle.setAttribute('aria-checked', String(preferences[flag]));
     }
     return;
   }
@@ -2634,14 +2661,14 @@ document.addEventListener('input', (event) => {
   if (event.target.matches('[data-card-size]')) {
     preferences.cardSize = Math.max(0.7, Math.min(1.3, Number(event.target.value) || 1));
     pageContent.querySelector('[data-card-size-value]')?.replaceChildren(Math.round(preferences.cardSize * 100) + '%');
-    savePreferences(); applyPreferences();
+    savePreferences(); applyPreferences(); refreshCardPreview();
     return;
   }
   if (event.target.matches('[data-card-radius]')) {
     preferences.cardRadius = Math.max(0, Math.min(20, Number(event.target.value) || 0));
     preferences.customCardRadius = true;
     pageContent.querySelector('[data-card-radius-value]')?.replaceChildren(preferences.cardRadius + 'px');
-    savePreferences(); applyPreferences();
+    savePreferences(); applyPreferences(); refreshCardPreview();
     return;
   }
   if (event.target.matches('[data-wallpaper-blur]')) {
@@ -2692,10 +2719,22 @@ document.addEventListener('input', (event) => {
     const name = event.target.dataset.colorTarget;
     const tuner = pageContent.querySelector(`[data-color-tuner="${name}"]`);
     const value = (axis) => Number(tuner.querySelector(`[data-color-axis="${axis}"]`).value);
-    preferences[name] = hslToHex(value('hue'), value('saturation'), value('lightness'));
+    const draggedAxis = event.target.dataset.colorAxis;
+    // hslToHex at lightness/saturation extremes loses hue (grey has none), so the
+    // hex roundtrip would reset untouched sliders. Remember the slider values and
+    // restore them: the sliders stay the source of truth while the user drags.
+    const sliderHsl = { hue: value('hue'), saturation: value('saturation'), lightness: value('lightness') };
+    preferences[name] = hslToHex(sliderHsl.hue, sliderHsl.saturation, sliderHsl.lightness);
     savePreferences();
     applyPreferences();
-    syncColorTuner(name, preferences[name]);
+    syncColorTuner(name, preferences[name], ['hue', 'saturation', 'lightness']);
+    // Re-assert every slider from the values the user set (not from the hex).
+    for (const axis of ['hue', 'saturation', 'lightness']) {
+      const input = tuner.querySelector(`[data-color-axis="${axis}"]`);
+      const output = tuner.querySelector(`[data-color-value="${axis}"]`);
+      if (input) input.value = sliderHsl[axis];
+      if (output) output.value = `${sliderHsl[axis]}${axis === 'hue' ? '°' : '%'}`;
+    }
     if (name === 'accent') document.querySelectorAll('.palette-option').forEach((button) => button.classList.toggle('active', button.dataset.accent === preferences.accent));
     return;
   }
@@ -2721,7 +2760,7 @@ document.addEventListener('input', (event) => {
   }
 });
 
-function syncColorTuner(name, color) {
+function syncColorTuner(name, color, axesToSkip = []) {
   const tuner = pageContent.querySelector(`[data-color-tuner="${name}"]`);
   if (!tuner) return;
   const hsl = rgbToHsl(color);
@@ -2731,7 +2770,10 @@ function syncColorTuner(name, color) {
   for (const [axis, suffix] of [['hue', '°'], ['saturation', '%'], ['lightness', '%']]) {
     const input = tuner.querySelector(`[data-color-axis="${axis}"]`);
     const output = tuner.querySelector(`[data-color-value="${axis}"]`);
-    if (input) input.value = hsl[axis];
+    // The sliders ARE the source of truth while the user drags one of them.
+    // Rewriting them from the hex roundtrip loses hue at lightness/saturation
+    // extremes (grey has no hue), which reset the untouched sliders to 0.
+    if (input && !axesToSkip.includes(axis)) input.value = hsl[axis];
     if (output) output.value = `${hsl[axis]}${suffix}`;
   }
 }

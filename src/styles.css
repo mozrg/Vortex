@@ -412,7 +412,8 @@ body.ui-dragging .ui-row:not(.ui-row-dragging) { transition: transform .18s cubi
 .language-segmented { max-width: 300px; }
 .palette-row { display: flex; flex-wrap: wrap; gap: 9px; }
 .palette-option { display: flex; min-width: 93px; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.02); color: #afb0b9; font-size: 10px; cursor: pointer; transition: .18s ease; }
-.palette-option:hover, .palette-option.active { border-color: var(--accent-border); background: var(--accent-wash); color: var(--text); }
+.palette-option:hover { border-color: var(--line-strong); background: rgba(255,255,255,.04); color: var(--text); }
+.palette-option.active { border-color: var(--accent-border); background: var(--accent-wash); color: var(--text); }
 .palette-swatch { width: 13px; height: 13px; border-radius: 5px; box-shadow: 0 0 10px currentColor; }
 .color-tuner { display: grid; gap: 10px; padding: 14px 0 4px; margin-top: 14px; border-top: 1px solid var(--line); }
 .color-tuner-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -845,7 +846,13 @@ body.light-theme .roblox-username-field input { background: rgba(255,255,255,.6)
 .friend-row.playing .friend-copy small { color: var(--accent-text); }
 
 /* ---------- Wallpaper layer (Stage 2 customization) ---------- */
+/* The layer is a negative-z child of body, so it would paint BEHIND body's own
+   opaque background. When a wallpaper is active, the root backgrounds become
+   transparent to let the layer show through. */
 .wallpaper-layer { position: fixed; z-index: -2; inset: -44px; background-image: var(--wallpaper-image); background-position: center; background-size: cover; filter: blur(var(--wallpaper-blur, 14px)); opacity: calc(1 - var(--wallpaper-dim, .45)); pointer-events: none; }
+html.has-wallpaper, html.has-wallpaper body, html.has-wallpaper body .app-shell { background: transparent; }
+html.has-wallpaper body .sidebar { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+html.has-wallpaper body .main-area { background: color-mix(in srgb, var(--bg) 68%, transparent); }
 /* Film grain overlay: animated fine noise, disabled for reduced motion. */
 html.has-grain body::before { position: fixed; z-index: 50; inset: -100%; pointer-events: none; content: ""; opacity: .05; background-image: repeating-conic-gradient(#000 0% .0001%, #fff .0002% .0002%); animation: grain-shift 7s steps(6) infinite; }
 @keyframes grain-shift { 0% { transform: translate(0, 0); } 20% { transform: translate(-6%, 4%); } 40% { transform: translate(4%, -7%); } 60% { transform: translate(-8%, -3%); } 80% { transform: translate(6%, 6%); } 100% { transform: translate(0, 0); } }
@@ -856,6 +863,13 @@ html.has-vignette body::after { position: fixed; z-index: 49; inset: 0; pointer-
 /* Size scales via column width (not transform, which fights hover/entrance animations):
    --card-size widens the auto-fill track so the whole grid reflows. */
 .game-grid:not(.fixed-grid) { grid-template-columns: repeat(auto-fill, minmax(calc(190px * var(--card-size, 1)), 1fr)); }
+/* Live preview card in the "Карточки игр" settings section. */
+.card-tuning-preview { display: flex; align-items: center; gap: 18px; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--accent-wash); flex-wrap: wrap; }
+.preview-card { width: auto; max-width: 210px; margin: 0; border-radius: 14px; }
+.preview-card .game-cover { height: 110px; border-radius: calc(12px - 3px) calc(12px - 3px) 0 0; transition: height .15s ease, border-radius .15s ease; }
+.preview-card:hover { transform: none; border-color: var(--line); box-shadow: none; }
+.preview-note { display: grid; gap: 3px; margin: 0; color: var(--muted); font-size: 9px; }
+.preview-note strong { color: var(--text); font-size: 10px; }
 .game-card .game-cover { height: calc(132px * var(--card-size, 1)); }
 body.spacious .game-card .game-cover { height: calc(164px * var(--card-size, 1)); }
 body.compact .game-card .game-cover { height: calc(101px * var(--card-size, 1)); }

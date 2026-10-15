@@ -836,6 +836,11 @@ async function loadFriends(username) {
   }
 }
 
+function maybeLoadMoreCatalog() {
+  if (currentView !== 'catalog' || searchQuery.length >= 2 || discoveryStatus === 'loading' || isLoadingMore) return;
+  const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - Math.max(500, window.innerHeight * 0.8);
+  if (nearBottom) { const list = filterGames(); if (catalogVisibleCount < list.length) { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); } }
+}
 function renderRecent() {
   const list = recentGames.map(getGame).filter(Boolean);
   return `${pageHeading(t('page.recent.eyebrow'), t('page.recent.title'), t('page.recent.description'))}
@@ -1705,7 +1710,7 @@ function updateSidebar() {
 
 function renderPage() {
   applyPreferences();
-  document.body.classList.toggle('sidebar-manually-hidden', readStored('vortex.sidebarHidden', false));
+  document.body.classList.toggle('sidebar-compact', readStored('vortex.sidebarCompact', false));
   updateSidebar();
   renderUpdateBanner();
   const pages = { home: renderHome, catalog: renderCatalog, favorites: renderFavorites, recent: renderRecent, friends: renderFriends, plans: renderPlans, settings: renderSettings };
@@ -2402,7 +2407,7 @@ document.addEventListener('click', async (event) => {
   }
 
   const sidebarHide = target.closest('[data-sidebar-hide]');
-  if (sidebarHide) { const hidden = !document.body.classList.contains('sidebar-manually-hidden'); document.body.classList.toggle('sidebar-manually-hidden', hidden); localStorage.setItem('vortex.sidebarHidden', JSON.stringify(hidden)); sidebarHide.setAttribute('aria-label', hidden ? t('sidebar.showMenu') : t('sidebar.hideMenu')); return; }
+  if (sidebarHide) { const compact = !document.body.classList.contains('sidebar-compact'); document.body.classList.toggle('sidebar-compact', compact); localStorage.setItem('vortex.sidebarCompact', JSON.stringify(compact)); sidebarHide.setAttribute('aria-label', compact ? t('sidebar.expandMenu') : t('sidebar.hideMenu')); renderPage(); return; }
   const catalogView = target.closest('[data-catalog-view]');
   if (catalogView) { preferences.catalogView = catalogView.dataset.catalogView === 'list' ? 'list' : 'grid'; savePreferences(); renderPage(); return; }
 
@@ -3118,6 +3123,7 @@ document.addEventListener('mouseout', (event) => {
   if (event.target.closest?.('.friend-card') && !event.relatedTarget?.closest?.('.friend-card')) hideFriendPreview();
 });
 document.addEventListener('scroll', hideFriendPreview, true);
+document.addEventListener('scroll', maybeLoadMoreCatalog, { passive: true, capture: true });
 
 function bootVortex() {
 restorePlaySession();

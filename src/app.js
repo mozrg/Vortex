@@ -73,7 +73,7 @@ const preferenceDefaults = {
   themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeGrainStrength: 0.05, themeVignette: false, themeVignetteStrength: 1,
   cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true,
   homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal',
-  homeSectionTitles: {}, homeSectionScale: 1, cardAspect: 'auto', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern'
+  homeSectionTitles: {}, homeSectionScale: 1, catalogView: 'grid', catalogGenre: 'all', cardAspect: 'auto', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern'
 };
 
 // ---------- Customization profiles (Stage 6) ----------
@@ -88,6 +88,7 @@ const PROFILE_KEYS = [
   'cardSize', 'cardRadius', 'customCardRadius', 'cardAspect', 'cardShowDescription', 'cardShowLikes', 'cardShowPlaytime', 'cardShowGenre',
   'glassStrength', 'themeSchedule', 'scheduleDay', 'scheduleNight',
   'homeWidgetOrder', 'homeWidgetHidden', 'homeWidgetCollapsed',
+  'catalogView', 'catalogGenre',
   'homeLayout', 'homeMinimal', 'homeShowHero', 'homeShowRecommendations',
   'density', 'corners', 'showDescriptions', 'showStats',
   'pageTransition', 'cardAnimation', 'animationSpeed', 'animationEasing', 'animationDuration', 'glow', 'ambient', 'motion', 'contrast',
@@ -285,13 +286,13 @@ function applyPreferences() {
   if (!Array.isArray(preferences.homeWidgetOrder)) preferences.homeWidgetOrder = [];
   if (!Array.isArray(preferences.homeWidgetHidden)) preferences.homeWidgetHidden = [];
   if (!Array.isArray(preferences.homeWidgetCollapsed)) preferences.homeWidgetCollapsed = [];
-  if (!['slow', 'normal', 'fast'].includes(preferences.animationSpeed)) preferences.animationSpeed = 'normal';
+  if (!['grid', 'list'].includes(preferences.catalogView)) preferences.catalogView = 'grid';
+  if (!['all', 'adventure', 'horror', 'roleplay', 'fashion', 'parkour', 'action', 'simulator', 'survival'].includes(preferences.catalogGenre)) preferences.catalogGenre = 'all';
   preferences.animationDuration = Math.max(0.5, Math.min(2, Number(preferences.animationDuration) || 1));
   if (!['smooth', 'spring', 'linear'].includes(preferences.animationEasing)) preferences.animationEasing = 'smooth';
   if (!['auto', 'square', 'wide', 'portrait'].includes(preferences.cardAspect)) preferences.cardAspect = 'auto';
   preferences.glassStrength = Math.max(0, Math.min(100, Number(preferences.glassStrength) || 0));
   if (!['manual', 'system', 'clock'].includes(preferences.themeSchedule)) preferences.themeSchedule = 'manual';
-  if (!['dark', 'light', 'oled'].includes(preferences.scheduleDay)) preferences.scheduleDay = 'dark';
   if (!['dark', 'light', 'oled'].includes(preferences.scheduleDay)) preferences.scheduleDay = 'dark';
   if (!['dark', 'light', 'oled'].includes(preferences.scheduleNight)) preferences.scheduleNight = 'oled';
   const clockHour = new Date().getHours();
@@ -518,7 +519,7 @@ function renderGrid(list, emptyTitle, emptyText, emptyAction = 'catalog') {
   if (!list.length) {
     return `<div class="empty-state"><div class="empty-icon">${icon(emptyAction === 'favorites' ? 'heart' : 'search', 20)}</div><h2>${emptyTitle}</h2><p>${emptyText}</p><button class="ghost-button" data-nav="${emptyAction}">${t('empty.openCatalog')} ${icon('arrow', 13)}</button></div>`;
   }
-  return `<div class="game-grid">${list.map(renderGameCard).join('')}</div>`;
+  return `<div class="game-grid ${preferences.catalogView === 'list' ? 'catalog-list-view' : ''}">${list.map(renderGameCard).join('')}</div>`;
 }
 
 function pageHeading(eyebrow, title, description, action = '') {
@@ -679,7 +680,7 @@ function filterGames() {
   let list = sourceGames.filter((game) => {
     const localized = localizeGame(game);
     const matchesQuery = !query || String(game.id).includes(query) || `${game.title} ${localized.genre} ${localized.description} ${game.search || ''}`.toLocaleLowerCase(preferences.language).includes(query);
-    const matchesCategory = searchQuery || activeCategory === 'all' || game.genreKey === activeCategory;
+    const matchesCategory = activeCategory === 'all' || game.genreKey === activeCategory;
     return matchesQuery && matchesCategory;
   });
   if (sortMode === 'alpha') list = list.slice().sort((first, second) => first.title.localeCompare(second.title, preferences.language));
@@ -712,6 +713,13 @@ function renderCustomSortSelect(isLiveSearch) {
   </div>`;
 }
 
+function renderGenreFilters() {
+  const genres = ['all', 'adventure', 'horror', 'roleplay', 'fashion', 'parkour', 'action', 'simulator', 'survival'];
+  return `<div class="catalog-filter-group"><span class="catalog-filter-label">${t('search.genre')}</span><div class="filter-row genre-filter-row">${genres.map((genre) => `<button class="filter-chip ${activeCategory === genre ? 'active' : ''}" data-category="${genre}">${t(`genre.${genre}`)}</button>`).join('')}</div></div>`;
+}
+function renderCatalogViewToggle() {
+  return `<div class="catalog-view-toggle" role="group" aria-label="${t('catalog.view')}"><button class="icon-button ${preferences.catalogView === 'grid' ? 'active' : ''}" data-catalog-view="grid" title="${t('catalog.gridView')}">${icon('grid', 14)}</button><button class="icon-button ${preferences.catalogView === 'list' ? 'active' : ''}" data-catalog-view="list" title="${t('catalog.listView')}">${icon('layout', 14)}</button></div>`;
+}
 function renderCatalog() {
   const list = filterGames();
   const availableSorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
@@ -720,8 +728,8 @@ function renderCatalog() {
   const isLiveSearch = searchQuery.length >= 2;
   const isPlaceId = /^\d{5,20}$/.test(searchQuery.trim());
   const controls = isLiveSearch
-    ? `<div class="live-search-caption"><span class="live-search-dot"></span>${isPlaceId ? t('search.placeId') : t('search.live')}</div>${renderCustomSortSelect(true)}`
-    : `<div class="filter-row discovery-sort-row" role="tablist" aria-label="${t('page.catalog.title')}">${availableSorts.map((sort) => `<button class="filter-chip ${activeDiscoverySort === sort.id ? 'active' : ''}" role="tab" aria-selected="${activeDiscoverySort === sort.id}" data-discovery-sort="${escapeHtml(sort.id)}">${escapeHtml(discoverySortLabel(sort))}</button>`).join('')}</div>${renderCustomSortSelect(false)}`;
+    ? `<div class="live-search-caption"><span class="live-search-dot"></span>${isPlaceId ? t('search.placeId') : t('search.live')}</div>${renderCustomSortSelect(true)}${renderGenreFilters()}${renderCatalogViewToggle()}`
+    : `<div class="filter-row discovery-sort-row" role="tablist" aria-label="${t('page.catalog.title')}">${availableSorts.map((sort) => `<button class="filter-chip ${activeDiscoverySort === sort.id ? 'active' : ''}" role="tab" aria-selected="${activeDiscoverySort === sort.id}" data-discovery-sort="${escapeHtml(sort.id)}">${escapeHtml(discoverySortLabel(sort))}</button>`).join('')}</div>${renderCustomSortSelect(false)}${renderGenreFilters()}${renderCatalogViewToggle()}`;
   let resultsBody = '';
   if (searchQuery.length === 1) {
     resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('search', 20)}</div><h2>${t('search.shortTitle')}</h2><p>${t('search.shortBody')}</p></div>`;
@@ -740,7 +748,7 @@ function renderCatalog() {
     const note = cachedItems.length ? `<p class="result-note">${formatResultCount(list.length)} · ${escapeHtml(discoverySortLabel(selectedSort))}</p>` : '';
     resultsBody = `${offlineNote}${note}${renderGrid(list.slice(0, catalogVisibleCount), t('empty.noResults'), t('empty.filterHint'))}${loadMore}`;
   }
-  return `${pageHeading(searchQuery ? t('page.search.eyebrow') : t('page.catalog.eyebrow'), searchQuery ? t('page.search.title') : t('page.catalog.title'), queryLabel, `<button class="ghost-button" data-nav="settings">${icon('sliders')} ${t('catalog.customize')}</button>`)}
+  return `${pageHeading(searchQuery ? t('page.search.eyebrow') : t('page.catalog.eyebrow'), searchQuery ? t('page.search.title') : t('page.catalog.title'), queryLabel, `<button class="ghost-button" data-catalog-customize>${icon('sliders')} ${t('catalog.customize')}</button>`)}
     <div class="catalog-controls">${controls}</div>${resultsBody}
     ${isLiveSearch ? '' : discoveryStatus === 'loading' ? '' : `<p class="catalog-disclaimer"><strong>${t('catalog.disclaimerTitle')}</strong> ${t('catalog.disclaimer')}</p>`}`;
 }
@@ -2380,8 +2388,16 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
+  const sidebarHide = target.closest('[data-sidebar-hide]');
+  if (sidebarHide) { document.body.classList.toggle('sidebar-manually-hidden'); sidebarHide.setAttribute('aria-label', document.body.classList.contains('sidebar-manually-hidden') ? t('sidebar.showMenu') : t('sidebar.hideMenu')); return; }
+  const catalogView = target.closest('[data-catalog-view]');
+  if (catalogView) { preferences.catalogView = catalogView.dataset.catalogView === 'list' ? 'list' : 'grid'; savePreferences(); renderPage(); return; }
+
   const category = target.closest('[data-category]');
-  if (category) { activeCategory = category.dataset.category; renderPage(); return; }
+  if (category) { activeCategory = category.dataset.category; preferences.catalogGenre = activeCategory; savePreferences(); renderPage(); return; }
+
+  const catalogCustomize = target.closest('[data-catalog-customize]');
+  if (catalogCustomize) { currentView = 'settings'; preferences.settingsTab = 'cards'; savePreferences(); renderPage(); return; }
 
   const discoverySort = target.closest('[data-discovery-sort]');
   if (discoverySort) { loadDiscoveryCatalog(discoverySort.dataset.discoverySort); return; }

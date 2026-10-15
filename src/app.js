@@ -2405,9 +2405,8 @@ document.addEventListener('click', async (event) => {
     renderPage();
     return;
   }
-
-
-  if (sidebarHide) { const compact = !document.body.classList.contains('sidebar-compact'); document.body.classList.toggle('sidebar-compact', compact); localStorage.setItem('vortex.sidebarCompact', JSON.stringify(compact)); sidebarHide.setAttribute('aria-label', compact ? t('sidebar.expandMenu') : t('sidebar.hideMenu')); renderPage(); return; }
+  const sidebarHide = target.closest('[data-sidebar-hide]');
+  if (sidebarHide) { const compact = !document.body.classList.contains('sidebar-compact'); localStorage.setItem('vortex.sidebarCompact', JSON.stringify(compact)); renderPage(); return; }
   const catalogView = target.closest('[data-catalog-view]');
   if (catalogView) { preferences.catalogView = catalogView.dataset.catalogView === 'list' ? 'list' : 'grid'; savePreferences(); renderPage(); return; }
 

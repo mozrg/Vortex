@@ -154,7 +154,7 @@ let dynamicGames = readStored('vortex.discovered', []);
 const expandedDescriptions = new Set();
 let currentView = 'home';
 let searchQuery = '';
-let activeCategory = 'all';
+let activeCategory = preferences.catalogGenre || 'all';
 let sortMode = 'default';
 let searchStatus = 'idle';
 let searchResults = [];
@@ -2138,7 +2138,7 @@ async function fetchLiveSearch(append = false) {
 function scheduleLiveSearch(value) {
   searchQuery = value;
   currentView = 'catalog';
-  activeCategory = 'all';
+  activeCategory = preferences.catalogGenre || 'all';
   sortMode = 'default';
   searchStatus = value.trim().length >= 2 ? 'loading' : value.trim().length ? 'short' : 'idle';
   searchResults = [];
@@ -2170,7 +2170,7 @@ function setView(view) {
   if (view !== 'catalog') {
     searchQuery = '';
     searchInput.value = '';
-    activeCategory = 'all';
+    activeCategory = preferences.catalogGenre || 'all';
     if (searchTimer) window.clearTimeout(searchTimer);
     searchRequestId += 1;
   }

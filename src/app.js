@@ -1705,6 +1705,7 @@ function updateSidebar() {
 
 function renderPage() {
   applyPreferences();
+  document.body.classList.toggle('sidebar-manually-hidden', readStored('vortex.sidebarHidden', false));
   updateSidebar();
   renderUpdateBanner();
   const pages = { home: renderHome, catalog: renderCatalog, favorites: renderFavorites, recent: renderRecent, friends: renderFriends, plans: renderPlans, settings: renderSettings };
@@ -1989,6 +1990,17 @@ async function hydrateFeaturedGames() {
   }
 }
 
+function inferGenreKey(game) {
+  const text = `${game.genre || ''} ${game.title || ''} ${game.description || ''}`.toLocaleLowerCase();
+  const rules = [
+    ['horror', /horror|хоррор|ужас|страш|scary|doors/], ['roleplay', /role.?play|ролевая|ролев|rp\b|brookhaven/],
+    ['fashion', /fashion|мод|dress to impress|одежд/], ['parkour', /parkour|паркур|obby|обби|tower of hell/],
+    ['action', /action|экшен|шутер|fps|бой|combat/], ['simulator', /simulator|симулятор|tycoon|pet sim/],
+    ['survival', /survival|выжив|escape|evade/], ['adventure', /adventure|приключ|quest|explore/]
+  ];
+  return rules.find(([, pattern]) => pattern.test(text))?.[0] || 'other';
+}
+
 function normalizeDiscoveredGame(game, query = '') {
   const creator = String(game.creator || '');
   return {
@@ -1997,6 +2009,7 @@ function normalizeDiscoveredGame(game, query = '') {
     title: String(game.title || t('game.fallbackDescription')),
     creator,
     genre: String(game.genre || '').toLocaleLowerCase() === 'roblox' ? '' : String(game.genre || ''),
+    genreKey: inferGenreKey(game),
     tagKey: 'roblox',
     art: 'live',
     iconKey: 'gamepad',
@@ -2389,7 +2402,7 @@ document.addEventListener('click', async (event) => {
   }
 
   const sidebarHide = target.closest('[data-sidebar-hide]');
-  if (sidebarHide) { document.body.classList.toggle('sidebar-manually-hidden'); sidebarHide.setAttribute('aria-label', document.body.classList.contains('sidebar-manually-hidden') ? t('sidebar.showMenu') : t('sidebar.hideMenu')); return; }
+  if (sidebarHide) { const hidden = !document.body.classList.contains('sidebar-manually-hidden'); document.body.classList.toggle('sidebar-manually-hidden', hidden); localStorage.setItem('vortex.sidebarHidden', JSON.stringify(hidden)); sidebarHide.setAttribute('aria-label', hidden ? t('sidebar.showMenu') : t('sidebar.hideMenu')); return; }
   const catalogView = target.closest('[data-catalog-view]');
   if (catalogView) { preferences.catalogView = catalogView.dataset.catalogView === 'list' ? 'list' : 'grid'; savePreferences(); renderPage(); return; }
 

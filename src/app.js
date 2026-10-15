@@ -514,12 +514,19 @@ function renderPlayStats(limit = 3) {
     const hours = Math.floor(seconds / 3600);
     return hours >= 1 ? t('stats.hours', { time: String(hours) }) : t('stats.minutes', { time: String(Math.max(1, Math.round(seconds / 60))) });
   };
+  const formatLaunches = (count) => {
+    const n = Number(count) || 1;
+    if (preferences.language === 'en') return `${n} ${n === 1 ? 'launch' : 'launches'}`;
+    const mod10 = n % 10; const mod100 = n % 100;
+    const word = mod10 === 1 && mod100 !== 11 ? 'запуск' : (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'запуска' : 'запусков');
+    return `${n} ${word}`;
+  };
   return `<section class="play-stats home-widget" data-home-widget="playstats">
     ${renderWidgetHeading('playstats', t('stats.title'), t('stats.body'))}
     <div class="play-stats-grid">${entries.map(([id, entry]) => { const game = getGame(id); const thumbnail = safeThumbnail(game.thumbnail); return `
       <button class="play-stat-card" data-action="play" data-id="${escapeHtml(String(game.id))}">
         <span class="play-stat-art ${thumbnail ? 'has-thumbnail' : ''}">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}</span>
-        <span class="play-stat-copy"><strong>${escapeHtml(game.title)}</strong><small>${formatTime(Number(entry.seconds))} · ${t('stats.launches', { count: String(entry.launches || 1) })}</small></span>
+        <span class="play-stat-copy"><strong>${escapeHtml(game.title)}</strong><small>${formatTime(Number(entry.seconds))} · ${formatLaunches(entry.launches || 1)}</small></span>
         <span class="play-stat-play">${icon('play', 12)}</span>
       </button>`; }).join('')}</div>
   </section>`;
@@ -630,9 +637,12 @@ function renderHomeRecentPreview() {
 
 function renderHomeStripCard(game) {
   const thumbnail = safeThumbnail(game.thumbnail);
+  const local = localizeGame(game);
+  // Playtime first; genre or creator as fallback — never an action-style hint.
+  const sub = renderPlaytimeBadge(game.id) || `<span class="strip-no-playtime">${t('stats.noData')}</span>`;
   return `<button class="home-strip-card" data-action="play" data-id="${escapeHtml(String(game.id))}" title="${escapeHtml(game.title)}">
     <span class="home-strip-art ${thumbnail ? 'has-thumbnail' : ''}">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}</span>
-    <span class="home-strip-copy"><strong>${escapeHtml(game.title)}</strong><small>${renderPlaytimeBadge(game.id) || escapeHtml(game.creator || t('hero.meta'))}</small></span>
+    <span class="home-strip-copy"><strong>${escapeHtml(game.title)}</strong><small>${sub}</small></span>
   </button>`;
 }
 
@@ -763,7 +773,7 @@ function renderFriends() {
   const card = (friend) => `<article class="friend-card ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" data-friend-name="${escapeHtml(friend.displayName || friend.name || '')}" data-friend-avatar="${escapeHtml(friend.avatar || '')}" data-game-name="${escapeHtml(friend.gameName || '')}" data-game-thumb="${escapeHtml(friend.gameThumbnail || '')}" tabindex="0">
       <span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="lazy" />` : escapeHtml((friend.displayName || friend.name || '?')[0].toLocaleUpperCase())}</span>
       <span class="friend-copy"><strong>${escapeHtml(friend.displayName || friend.name)}</strong><small>${friend.presence === 'playing' ? escapeHtml(friend.gameName || t('friends.inGame')) : friend.presence === 'online' ? t('friends.online') : t('friends.offline')}</small></span>
-      ${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}"><span class="friend-join-icon">${icon('arrowUpRight', 13)}</span></button>` : ''}
+      ${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}">${icon('play', 12)}</button>` : ''}
     </article>`;
   const section = (titleKey, list) => !list.length ? '' : `<p class="friends-group-title">${t(titleKey)} · ${list.length}</p>
     <div class="friends-grid">${list.map(card).join('')}</div>`;

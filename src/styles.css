@@ -760,12 +760,9 @@ body.light-theme .plans-progress-bar { background: rgba(38,32,56,.08); }
 .friend-card.playing { border-color: var(--accent-border); background: color-mix(in srgb, var(--accent-wash) 45%, transparent); }
 .friend-card.playing .friend-copy small { color: var(--accent-text); }
 .friend-join { display: grid; width: 30px; height: 30px; flex: 0 0 auto; margin-left: auto; place-items: center; border: 1px solid color-mix(in srgb, var(--accent-fill) 60%, transparent); border-radius: 50%; background: var(--accent-gradient); color: var(--accent-contrast); box-shadow: 0 4px 14px rgba(var(--accent-rgb), .35), inset 0 1px 0 rgba(255,255,255,.28); transition: filter .15s ease, transform .15s ease, box-shadow .15s ease; }
-.friend-join-icon { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: rgba(0,0,0,.24); }
-.friend-join-icon svg { width: 12px; height: 12px; }
+.friend-join svg { width: 13px; height: 13px; margin: 0; }
 .friend-join:hover { filter: brightness(1.12); transform: scale(1.08); box-shadow: 0 6px 18px rgba(var(--accent-rgb), .5), inset 0 1px 0 rgba(255,255,255,.28); }
-.friend-join:active { transform: scale(.96); }le(1.07); }
-.friend-join:active { transform: scale(.94); }
-.friend-join svg { width: 15px; height: 15px; margin-left: 2px; }
+.friend-join:active { transform: scale(.96); }
 
 /* Hover preview: floating panel with the friend's game. */
 .friend-preview { position: fixed; z-index: 70; display: flex; align-items: center; gap: 13px; width: max-content; max-width: 300px; padding: 13px 15px; border: 1px solid var(--accent-border); border-radius: 13px; background: var(--surface); box-shadow: 0 18px 44px rgba(0,0,0,.5); pointer-events: auto; animation: toast-in .16s ease-out; }
@@ -905,14 +902,15 @@ body.custom-card-radius .game-card .game-cover { border-radius: calc(var(--card-
 .home-widget .section-heading { display: none; }
 .home-widget:not([data-home-widget="picks"]) .home-widget-head { margin: 0; }
 .play-stats.home-widget { padding: 0; }
-.play-stats.home-widget .home-widget-head { margin: 0 0 13px; }
+.play-stats.home-widget .home-widget-head { margin: 0 0 10px; }
+.strip-no-playtime { color: var(--muted); font-style: normal; }
 /* Hero keeps its own layout; the widget head would clash with the hero design,
    so the hero never renders one — dragging the hero uses the grip overlay. */
 .hero-card.home-widget { position: relative; }
 .hero-card.home-widget .home-widget-head { position: absolute; top: 10px; right: 12px; margin: 0; z-index: 3; }
 .hero-card.home-widget .home-widget-copy { display: none; }
 /* Compact strip of mini-cards for favorites/recent widgets. */
-.home-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
+.home-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 10px; }
 .home-strip-card { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius-card); background: color-mix(in srgb, var(--surface) 92%, transparent); color: var(--text); cursor: pointer; text-align: left; transition: transform .16s ease, border-color .16s ease; }
 .home-strip-card:hover { border-color: rgba(var(--accent-rgb), .33); transform: translateY(-2px); }
 .home-strip-art { position: relative; width: 44px; height: 44px; flex: 0 0 auto; border-radius: calc(var(--radius-card) - 8px); overflow: hidden; background: #28243d; }

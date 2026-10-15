@@ -439,9 +439,11 @@ function allGames() {
 function getGame(id) { return allGames().find((game) => game.id === String(id)); }
 
 function localizeGame(game) {
+  const rawGenre = game.genre && String(game.genre).toLocaleLowerCase() !== 'roblox' ? String(game.genre).trim() : '';
+  const localizedGenre = game.genreKey ? t(`genre.${game.genreKey}`) : rawGenre;
   return {
     ...game,
-    genre: game.genreKey ? t(`genre.${game.genreKey}`) : game.genre && game.genre.toLocaleLowerCase() !== 'roblox' ? game.genre : '',
+    genre: (localizedGenre && localizedGenre !== `genre.${game.genreKey}`) ? localizedGenre : (rawGenre || t('genre.other')),
     tag: game.tagKey ? t(`tag.${game.tagKey}`) : game.tag || t('tag.roblox'),
     description: game.descriptionKey ? t(`game.${game.descriptionKey}`) : game.description
   };
@@ -673,8 +675,74 @@ function renderHomeStripCard(game) {
   </button>`;
 }
 
+const GENRE_SEARCH_TERMS = {
+  adventure: 'adventure', horror: 'horror', roleplay: 'roleplay', fashion: 'fashion',
+  parkour: 'obby parkour', action: 'action', simulator: 'simulator', survival: 'survival'
+};
+let genreResults = [];
+let genrePageToken = null;
+let genreStatus = 'idle';
+let genreLoadingMore = false;
+let activeGenreRequestId = 0;
+
+function isGenreSearchActive() { return !searchQuery && activeCategory !== 'all'; }
+
+async function fetchGenreGames(append = false) {
+  const genre = activeCategory;
+  if (!GENRE_SEARCH_TERMS[genre]) return;
+  const requestId = ++activeGenreRequestId;
+  if (append) genreLoadingMore = true;
+  else { genreStatus = 'loading'; genreResults = []; genrePageToken = null; }
+  renderPage();
+  try {
+    if (!window.vortexDesktop?.searchGames) throw new Error('desktop only');
+    const response = await window.vortexDesktop.searchGames({
+      query: GENRE_SEARCH_TERMS[genre],
+      pageToken: append ? genrePageToken : null
+    });
+    if (requestId !== activeGenreRequestId || activeCategory !== genre) return;
+    const received = (response.items || []).map((game) => ({
+      ...game,
+      id: String(game.id),
+      title: String(game.title || t('game.fallbackDescription')),
+      creator: String(game.creator || ''),
+      genre: String(game.genre || ''),
+      genreKey: game.genreKey || inferGenreKey(game),
+      tagKey: 'roblox',
+      art: 'live',
+      iconKey: 'gamepad',
+      description: String(game.description || t('game.fallbackDescription')),
+      live: true,
+      search: GENRE_SEARCH_TERMS[genre]
+    }));
+    const knownIds = new Set(genreResults.map((game) => game.id));
+    const newItems = received.filter((game) => !knownIds.has(game.id));
+    genreResults = append ? [...genreResults, ...newItems] : newItems;
+    genrePageToken = response.nextPageToken || null;
+    genreStatus = 'success';
+    genreLoadingMore = false;
+    renderPage();
+  } catch {
+    if (requestId !== activeGenreRequestId) return;
+    genreStatus = 'error';
+    genreLoadingMore = false;
+    renderPage();
+  }
+}
+
 function filterGames() {
   const query = searchQuery.trim().toLocaleLowerCase(preferences.language);
+  if (isGenreSearchActive()) {
+    let list = genreResults.filter((game) => game.genreKey === activeCategory || inferGenreKey(game) === activeCategory);
+    if (!list.length) list = genreResults;
+    if (sortMode === 'alpha') list = list.slice().sort((first, second) => first.title.localeCompare(second.title, preferences.language));
+    if (sortMode === 'players') list = list.slice().sort((first, second) => (second.playerCount || 0) - (first.playerCount || 0));
+    if (sortMode === 'likes') list = list.slice().sort((first, second) => {
+      const score = (game) => (Number(game.upVotes) + Number(game.downVotes)) ? Number(game.upVotes) / (Number(game.upVotes) + Number(game.downVotes)) : 0;
+      return score(second) - score(first);
+    });
+    return list;
+  }
   const discovered = discoveryCatalog[activeDiscoverySort]?.items;
   let sourceGames = searchQuery ? searchResults : currentView === 'catalog' && Array.isArray(discovered) ? [...discovered, ...games.filter((game) => !discovered.some((item) => String(item.id) === String(game.id)))] : games;
   let list = sourceGames.filter((game) => {
@@ -739,6 +807,15 @@ function renderCatalog() {
     resultsBody = `<p class="catalog-disclaimer"><strong>${t('search.errorTitle')}</strong> ${t('search.errorBody')}</p>${renderGrid(list, t('search.noMatches'), t('search.tryAnother'))}`;
   } else if (isLiveSearch && searchStatus === 'success') {
     resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list, t('search.noResults'), t('search.tryShorter'))}${isLoadingMore ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : searchPageToken ? `<button class="ghost-button load-more-button" data-action="load-more">${t('search.loadMore')} ${icon('arrow', 13)}</button>` : ''}`;
+  } else if (isGenreSearchActive()) {
+    if (genreStatus === 'loading') {
+      resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.loading')}</strong><small>${t('catalog.loadingNote')}</small></div>`;
+    } else if (genreStatus === 'error') {
+      resultsBody = `<p class="catalog-disclaimer"><strong>${t('catalog.errorTitle')}</strong> ${t('catalog.errorBody')}</p>${renderGrid(list, t('empty.noResults'), t('empty.filterHint'))}`;
+    } else {
+      const loadMoreGenre = genreLoadingMore ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : genrePageToken ? `<button class="ghost-button load-more-button" data-action="load-more-genre">${t('search.loadMore')} ${icon('arrow', 13)}</button>` : '';
+      resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list, t('empty.noResults'), t('empty.filterHint'))}${loadMoreGenre}`;
+    }
   } else if (!searchQuery && discoveryStatus === 'loading') {
     resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.loading')}</strong><small>${t('catalog.loadingNote')}</small></div>`;
   } else {
@@ -2168,7 +2245,10 @@ function scheduleLiveSearch(value) {
   searchInput.focus();
   searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
   if (value.trim().length >= 2) searchTimer = window.setTimeout(() => fetchLiveSearch(false), 420);
-  else if (!value.trim() && !discoveryCatalog[activeDiscoverySort]?.items) loadDiscoveryCatalog(activeDiscoverySort);
+  else if (!value.trim()) {
+    if (!discoveryCatalog[activeDiscoverySort]?.items) loadDiscoveryCatalog(activeDiscoverySort);
+    if (isGenreSearchActive() && (genreStatus === 'idle' || !genreResults.length)) fetchGenreGames(false);
+  }
 }
 
 function toggleFavorite(id) {
@@ -2193,7 +2273,10 @@ function setView(view) {
     searchRequestId += 1;
   }
   renderPage();
-  if (view === 'catalog' && !searchQuery) loadDiscoveryCatalog(activeDiscoverySort);
+  if (view === 'catalog' && !searchQuery) {
+    loadDiscoveryCatalog(activeDiscoverySort);
+    if (isGenreSearchActive() && (genreStatus === 'idle' || !genreResults.length)) fetchGenreGames(false);
+  }
   window.scrollTo({ top: 0, behavior: preferences.motion ? 'smooth' : 'auto' });
 }
 
@@ -2304,6 +2387,9 @@ document.addEventListener('click', async (event) => {
       if (searchQuery.length >= 2) fetchLiveSearch(true);
       else { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); }
     }
+    if (action.dataset.action === 'load-more-genre') {
+      if (isGenreSearchActive()) fetchGenreGames(true);
+    }
     if (action.dataset.action === 'notifications') showToast(t('toast.notifications'));
     if (action.dataset.action === 'retry-update') {
       renderUpdateBanner({ status: 'checking', progress: 0 });
@@ -2411,7 +2497,14 @@ document.addEventListener('click', async (event) => {
   if (catalogView) { preferences.catalogView = catalogView.dataset.catalogView === 'list' ? 'list' : 'grid'; savePreferences(); renderPage(); return; }
 
   const category = target.closest('[data-category]');
-  if (category) { activeCategory = category.dataset.category; preferences.catalogGenre = activeCategory; savePreferences(); renderPage(); return; }
+  if (category) {
+    activeCategory = category.dataset.category;
+    preferences.catalogGenre = activeCategory;
+    savePreferences();
+    if (isGenreSearchActive()) fetchGenreGames(false);
+    else { genreStatus = 'idle'; renderPage(); }
+    return;
+  }
 
   const catalogCustomize = target.closest('[data-catalog-customize]');
   if (catalogCustomize) { currentView = 'settings'; preferences.settingsTab = 'cards'; savePreferences(); renderPage(); return; }

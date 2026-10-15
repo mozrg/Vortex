@@ -72,7 +72,8 @@ const preferenceDefaults = {
   themeText: '', themeMuted: '', themeLine: '',
   themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeVignette: false,
   cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true,
-  homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal'
+  homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal',
+  homeSectionTitles: {}, homeSectionScale: 1
 };
 
 // ---------- Customization profiles (Stage 6) ----------
@@ -597,9 +598,13 @@ function renderHome() {
 // Collapse/expand + reorder header injected into every home widget section.
 function renderWidgetHeading(key, title, subtitle = '') {
   const collapsed = homeWidgetCollapsed(key);
-  return `<div class="home-widget-head" data-home-widget-head="${key}">
+  // Custom section titles (settings) override the defaults; --section-scale
+  // scales every home section heading.
+  const custom = preferences.homeSectionTitles && preferences.homeSectionTitles[key];
+  const shownTitle = custom || title;
+  return `<div class="home-widget-head" data-home-widget-head="${key}" style="--section-scale: ${preferences.homeSectionScale || 1}">
     <button class="home-widget-collapse" data-widget-collapse="${key}" aria-expanded="${!collapsed}" aria-label="${t('home.widgets.collapse')}">${icon(collapsed ? 'arrow' : 'navDown', 12)}</button>
-    <div class="home-widget-copy"><h2>${escapeHtml(title)}</h2>${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}</div>
+    <div class="home-widget-copy"><h2>${escapeHtml(shownTitle)}</h2>${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}</div>
     <span class="home-widget-grip" data-widget-drag="${key}" aria-hidden="true">${icon('grip', 13)}</span>
   </div>`;
 }
@@ -879,6 +884,13 @@ function renderHomeSettings() {
       </div>
       <button class="text-button theme-reset" data-action="reset-home-widgets">${t('home.widgets.reset')}</button>
       <p class="catalog-disclaimer">${t('settings.home.hint')}</p>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.home.textTitle')}</h2><p>${t('settings.home.textBody')}</p></div>${icon('tag', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.textScale')}</strong><small>${t('settings.home.textScaleHint')}</small></div><label class="range-control"><input type="range" min="0.8" max="1.6" step="0.05" value="${preferences.homeSectionScale || 1}" data-home-section-scale /><span class="range-value" data-home-section-scale-value>${Math.round((preferences.homeSectionScale || 1) * 100)}%</span></label></div>
+      <div class="section-title-fields">
+        ${HOME_WIDGETS.filter((widget) => widget.key !== 'hero').map((widget) => `<label class="home-greeting-field section-title-field"><span>${t(widget.titleKey)}</span><input type="text" maxlength="36" value="${escapeHtml((preferences.homeSectionTitles && preferences.homeSectionTitles[widget.key]) || '')}" placeholder="${t(widget.titleKey)}" data-widget-title="${widget.key}" /></label>`).join('')}
+      </div>
+      <button class="text-button theme-reset" data-action="reset-section-titles">${t('settings.home.resetTitles')}</button>
     </section>`;
 }
 
@@ -1174,9 +1186,9 @@ function renderCardSettings() {
           <div class="game-cover art-live"><span class="cover-shine"></span></div>
           <div class="game-info">
             <div class="game-title-row"><h3 class="game-title">${t('settings.cardPreview.name')}</h3></div>
-            ${preferences.cardShowDescription ? `<p class="game-description">${t('settings.cardPreview.description')}</p>` : ''}
-            ${preferences.cardShowLikes ? `<div class="game-live-stats"><span>${icon('users', 12)} ${t('search.players', { count: '2.4K' })}</span><span>${icon('thumb', 12)} ${t('search.likes', { percent: 96 })}</span></div>` : ''}
-            <div class="game-card-footer">${preferences.cardShowGenre ? `<span class="game-category"><i></i>${t('settings.cardPreview.genre')}</span>` : '<span></span>'}${preferences.cardShowPlaytime ? `<span class="card-playtime">${icon('clock', 11)} ${t('settings.cardPreview.playtime')}</span>` : ''}</div>
+            <p class="game-description" ${preferences.cardShowDescription ? '' : 'hidden'}>${t('settings.cardPreview.description')}</p>
+            <div class="game-live-stats" ${preferences.cardShowLikes ? '' : 'hidden'}><span>${icon('users', 12)} ${t('search.players', { count: '2.4K' })}</span><span>${icon('thumb', 12)} ${t('search.likes', { percent: 96 })}</span></div>
+            <div class="game-card-footer"><span class="game-category" ${preferences.cardShowGenre ? '' : 'hidden'}><i></i>${t('settings.cardPreview.genre')}</span><span class="card-playtime" ${preferences.cardShowPlaytime ? '' : 'hidden'}>${icon('clock', 11)} ${t('settings.cardPreview.playtime')}</span></div>
           </div>
         </article>
         <p class="preview-note"><strong>${t('settings.cardPreview.liveTitle')}</strong><small>${t('settings.cardPreview.liveBody')}</small></p>
@@ -2288,6 +2300,12 @@ document.addEventListener('click', async (event) => {
       link.click();
       URL.revokeObjectURL(link.href);
     }
+    if (action.dataset.action === 'reset-section-titles') {
+      preferences.homeSectionTitles = {};
+      savePreferences();
+      renderPage();
+      showToast(t('settings.home.titlesReset'));
+    }
     if (action.dataset.action === 'import-profiles') {
       pageContent.querySelector('[data-profiles-file]')?.click();
     }
@@ -2741,6 +2759,18 @@ document.addEventListener('input', (event) => {
   if (event.target.matches('[data-home-greeting]')) {
     preferences.homeGreeting = event.target.value.slice(0, 48);
     savePreferences();
+    return;
+  }
+  if (event.target.hasAttribute('data-widget-title')) {
+    const key = event.target.dataset.widgetTitle;
+    preferences.homeSectionTitles = { ...(preferences.homeSectionTitles || {}), [key]: event.target.value.slice(0, 36) };
+    savePreferences();
+    return;
+  }
+  if (event.target.matches('[data-home-section-scale]')) {
+    preferences.homeSectionScale = Math.max(0.8, Math.min(1.6, Number(event.target.value) || 1));
+    pageContent.querySelector('[data-home-section-scale-value]')?.replaceChildren(Math.round(preferences.homeSectionScale * 100) + '%');
+    savePreferences(); applyPreferences(); renderSidebar();
     return;
   }
   if (event.target.matches('[data-setting="glow"]')) {

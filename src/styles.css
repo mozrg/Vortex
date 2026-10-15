@@ -412,7 +412,7 @@ body.ui-dragging .ui-row:not(.ui-row-dragging) { transition: transform .18s cubi
 .language-segmented { max-width: 300px; }
 .palette-row { display: flex; flex-wrap: wrap; gap: 9px; }
 .palette-option { display: flex; min-width: 93px; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.02); color: #afb0b9; font-size: 10px; cursor: pointer; transition: .18s ease; }
-.palette-option:hover { border-color: var(--line-strong); background: rgba(255,255,255,.04); color: var(--text); }
+.palette-option:hover { border-color: var(--line); color: var(--text); }
 .palette-option.active { border-color: var(--accent-border); background: var(--accent-wash); color: var(--text); }
 .palette-swatch { width: 13px; height: 13px; border-radius: 5px; box-shadow: 0 0 10px currentColor; }
 .color-tuner { display: grid; gap: 10px; padding: 14px 0 4px; margin-top: 14px; border-top: 1px solid var(--line); }
@@ -860,6 +860,8 @@ html.has-vignette body::after { position: fixed; z-index: 49; inset: 0; pointer-
 @media (prefers-reduced-motion: reduce) { html.has-grain body::before { animation: none; } }
 
 /* ---------- Card tuning (Stage 3) ---------- */
+/* Author display rules (flex/grid) beat the UA [hidden]; enforce it. */
+.card-tuning-preview [hidden] { display: none !important; }
 /* Size scales via column width (not transform, which fights hover/entrance animations):
    --card-size widens the auto-fill track so the whole grid reflows. */
 .game-grid:not(.fixed-grid) { grid-template-columns: repeat(auto-fill, minmax(calc(190px * var(--card-size, 1)), 1fr)); }
@@ -886,8 +888,11 @@ body.custom-card-radius .game-card .game-cover { border-radius: calc(var(--card-
 .home-widget-head .home-widget-collapse { display: grid; place-items: center; width: 22px; height: 22px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; transition: border-color .15s ease, color .15s ease; }
 .home-widget-head .home-widget-collapse:hover { border-color: var(--accent-border); color: var(--text); }
 .home-widget-copy { display: grid; gap: 1px; min-width: 0; flex: 1; }
-.home-widget-copy h2 { font-size: 15px; color: var(--text); }
-.home-widget-copy p { font-size: 10.5px; color: var(--muted); }
+.home-widget-copy h2 { font-size: calc(15px * var(--section-scale, 1)); color: var(--text); }
+.home-widget-copy p { font-size: calc(10.5px * var(--section-scale, 1)); color: var(--muted); }
+/* Custom section titles on the Home settings tab. */
+.section-title-fields { display: grid; gap: 10px; margin-top: 13px; }
+.section-title-field span { color: var(--muted); font-size: 9px; }
 .home-widget-grip { display: grid; place-items: center; width: 22px; height: 22px; flex: 0 0 auto; border-radius: 7px; color: var(--muted); opacity: 0; cursor: grab; transition: opacity .15s ease; }
 .home-widget:hover .home-widget-grip { opacity: .7; }
 .home-widget-grip:active { cursor: grabbing; }

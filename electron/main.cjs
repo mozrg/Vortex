@@ -555,7 +555,7 @@ function cleanThumbnail(value) {
 }
 
 async function getThumbnails(universeIds) {
-  const ids = [...new Set(universeIds.map(String).filter((id) => /^\d{1,20}$/.test(id)))].slice(0, 150);
+  const ids = [...new Set(universeIds.map(String).filter((id) => /^\d{1,20}$/.test(id)))];
   if (!ids.length) return new Map();
 
   const batches = [];
@@ -592,14 +592,21 @@ function mapGame(game, thumbnail = '', launchPlaceId = game.rootPlaceId) {
 }
 
 async function getGameDetailsByUniverse(universeIds) {
-  const ids = [...new Set(universeIds.map(String).filter((id) => /^\d{1,20}$/.test(id)))].slice(0, 50);
+  const ids = [...new Set(universeIds.map(String).filter((id) => /^\d{1,20}$/.test(id)))];
   if (!ids.length) return [];
-  const url = new URL('https://games.roblox.com/v1/games');
-  url.searchParams.set('universeIds', ids.join(','));
-  const payload = await fetchCachedJson(url);
-  const rows = Array.isArray(payload.data) ? payload.data : [];
-  const thumbnails = await getThumbnails(rows.map((row) => row.id));
-  return rows.map((row) => mapGame(row, thumbnails.get(String(row.id))));
+  const batches = [];
+  for (let index = 0; index < ids.length; index += 50) batches.push(ids.slice(index, index + 50));
+  const results = await Promise.all(batches.map(async (batch) => {
+    try {
+      const url = new URL('https://games.roblox.com/v1/games');
+      url.searchParams.set('universeIds', batch.join(','));
+      const payload = await fetchCachedJson(url);
+      const rows = Array.isArray(payload.data) ? payload.data : [];
+      const thumbnails = await getThumbnails(rows.map((row) => row.id));
+      return rows.map((row) => mapGame(row, thumbnails.get(String(row.id))));
+    } catch { return []; }
+  }));
+  return results.flat();
 }
 
 ipcMain.handle('game:open', async (_event, placeId, gameId) => {
@@ -789,7 +796,7 @@ async function fetchRobloxFriends(userId) {
       name: friend.name,
       displayName: friend.displayName || friend.name,
       isOnline: Boolean(friend.isOnline)
-    })).slice(0, 200);
+    })).slice(0, 500);
   } catch { return []; }
 }
 
@@ -858,15 +865,19 @@ async function fetchRobloxPresence(userIds) {
 
 async function fetchRobloxUserThumbnails(userIds) {
   if (!userIds.length) return new Map();
-  try {
-    const url = new URL('https://thumbnails.roblox.com/v1/users/avatar-headshot');
-    url.searchParams.set('userIds', userIds.slice(0, 100).join(','));
-    url.searchParams.set('size', '150x150');
-    url.searchParams.set('format', 'Png');
-    url.searchParams.set('isCircular', 'false');
-    const payload = await fetchCachedJson(url, 30000);
-    return new Map((payload.data ?? []).map((item) => [String(item.targetId), cleanThumbnail(item.imageUrl)]));
-  } catch { return new Map(); }
+  const result = new Map();
+  for (let index = 0; index < userIds.length; index += 100) {
+    try {
+      const url = new URL('https://thumbnails.roblox.com/v1/users/avatar-headshot');
+      url.searchParams.set('userIds', userIds.slice(index, index + 100).join(','));
+      url.searchParams.set('size', '150x150');
+      url.searchParams.set('format', 'Png');
+      url.searchParams.set('isCircular', 'false');
+      const payload = await fetchCachedJson(url, 30000);
+      for (const item of (payload.data ?? [])) result.set(String(item.targetId), cleanThumbnail(item.imageUrl));
+    } catch { /* continue with the remaining batches */ }
+  }
+  return result;
 }
 
 // ---------- Roblox account auto-detection ----------

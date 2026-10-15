@@ -68,7 +68,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .sidebar-compact .sidebar .nav-item { justify-content: center; padding: 0; }
 .sidebar-compact .sidebar .sidebar-bottom { align-items: center; }
 .sidebar-compact .sidebar .profile-row { justify-content: center; padding: 10px 0; }
-.sidebar-compact .sidebar-hide-button { right: 24px; }
+.sidebar-compact .sidebar-hide-button { right: 8px; top: 16px; opacity: 1; visibility: visible; display: grid; }
+.sidebar-compact .sidebar-hide-button svg { transform: rotate(180deg); }
+.sidebar-compact .sidebar-hide-button::after { content: ''; position: absolute; inset: -3px; border-radius: 9px; }
 .catalog-filter-group { display: flex; align-items: center; gap: 12px; grid-column: 1 / -1; min-width: 0; }
 .catalog-filter-label { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
 .genre-filter-row { display: flex; gap: 6px; min-width: 0; overflow-x: auto; padding-bottom: 2px; }

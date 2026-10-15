@@ -676,28 +676,48 @@ function renderHomeStripCard(game) {
 }
 
 const GENRE_SEARCH_TERMS = {
-  adventure: 'adventure', horror: 'horror', roleplay: 'roleplay', fashion: 'fashion',
-  parkour: 'obby parkour', action: 'action', simulator: 'simulator', survival: 'survival'
+  adventure: ['adventure', 'adventure game', 'story adventure', 'open world adventure'],
+  horror: ['horror', 'horror game', 'scary', 'creepy horror'],
+  roleplay: ['roleplay', 'rp game', 'life roleplay', 'town roleplay'],
+  fashion: ['fashion', 'dress up', 'fashion show', 'styling'],
+  parkour: ['obby parkour', 'obby', 'parkour', 'tower obby'],
+  action: ['action', 'action game', 'fighting action', 'battle action'],
+  simulator: ['simulator', 'simulator game', 'clicker simulator', 'tycoon'],
+  survival: ['survival', 'survival game', 'zombie survival', 'island survival']
 };
 let genreResults = [];
 let genrePageToken = null;
 let genreStatus = 'idle';
 let genreLoadingMore = false;
 let activeGenreRequestId = 0;
+let genreTermIndex = 0;
 
 function isGenreSearchActive() { return !searchQuery && activeCategory !== 'all'; }
 
 async function fetchGenreGames(append = false) {
   const genre = activeCategory;
-  if (!GENRE_SEARCH_TERMS[genre]) return;
+  const terms = GENRE_SEARCH_TERMS[genre];
+  if (!terms) return;
   const requestId = ++activeGenreRequestId;
-  if (append) genreLoadingMore = true;
-  else { genreStatus = 'loading'; genreResults = []; genrePageToken = null; }
-  renderPage();
+  if (append && !genrePageToken) {
+    // Current search term exhausted: try the next phrasing for fresh results.
+    const nextIndex = genreTermIndex + 1;
+    if (nextIndex >= terms.length) { genreLoadingMore = false; renderPage(); return; }
+    genreTermIndex = nextIndex;
+    const knownIds = new Set(genreResults.map((game) => game.id));
+    await fetchGenreTerm(terms[nextIndex], requestId, genre, knownIds, true);
+    return;
+  }
+  if (append) { genreLoadingMore = true; renderPage(); }
+  else { genreStatus = 'loading'; genreResults = []; genrePageToken = null; genreTermIndex = 0; renderPage(); }  const knownIds = append ? new Set(genreResults.map((game) => game.id)) : new Set();
+  await fetchGenreTerm(terms[genreTermIndex], requestId, genre, knownIds, append);
+}
+
+async function fetchGenreTerm(term, requestId, genre, knownIds, append) {
   try {
     if (!window.vortexDesktop?.searchGames) throw new Error('desktop only');
     const response = await window.vortexDesktop.searchGames({
-      query: GENRE_SEARCH_TERMS[genre],
+      query: term,
       pageToken: append ? genrePageToken : null
     });
     if (requestId !== activeGenreRequestId || activeCategory !== genre) return;
@@ -713,10 +733,25 @@ async function fetchGenreGames(append = false) {
       iconKey: 'gamepad',
       description: String(game.description || t('game.fallbackDescription')),
       live: true,
-      search: GENRE_SEARCH_TERMS[genre]
+      search: term
     }));
-    const knownIds = new Set(genreResults.map((game) => game.id));
     const newItems = received.filter((game) => !knownIds.has(game.id));
+    // Token still present but the page repeated itself: advance to the next
+    // search phrasing automatically so the list keeps growing.
+    if (append && !newItems.length) {
+      genreLoadingMore = false;
+      const terms = GENRE_SEARCH_TERMS[genre] || [];
+      const nextIndex = genreTermIndex + 1;
+      if (nextIndex < terms.length) {
+        genreTermIndex = nextIndex;
+        genrePageToken = null;
+        fetchGenreTerm(terms[nextIndex], requestId, genre, knownIds, true);
+        return;
+      }
+      genrePageToken = null;
+      renderPage();
+      return;
+    }
     genreResults = append ? [...genreResults, ...newItems] : newItems;
     genrePageToken = response.nextPageToken || null;
     genreStatus = 'success';
@@ -813,7 +848,9 @@ function renderCatalog() {
     } else if (genreStatus === 'error') {
       resultsBody = `<p class="catalog-disclaimer"><strong>${t('catalog.errorTitle')}</strong> ${t('catalog.errorBody')}</p>${renderGrid(list, t('empty.noResults'), t('empty.filterHint'))}`;
     } else {
-      const loadMoreGenre = genreLoadingMore ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : genrePageToken ? `<button class="ghost-button load-more-button" data-action="load-more-genre">${t('search.loadMore')} ${icon('arrow', 13)}</button>` : '';
+      const terms = GENRE_SEARCH_TERMS[activeCategory] || [];
+      const canLoadMore = genrePageToken || genreTermIndex < terms.length - 1;
+      const loadMoreGenre = genreLoadingMore ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : canLoadMore ? `<button class="ghost-button load-more-button" data-action="load-more-genre">${t('search.loadMore')} ${icon('arrow', 13)}</button>` : '';
       resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list, t('empty.noResults'), t('empty.filterHint'))}${loadMoreGenre}`;
     }
   } else if (!searchQuery && discoveryStatus === 'loading') {
@@ -821,7 +858,9 @@ function renderCatalog() {
   } else {
     const cachedItems = discoveryCatalog[activeDiscoverySort]?.items || [];
     const offlineNote = discoveryStatus === 'error' ? `<p class="catalog-disclaimer"><strong>${t('catalog.errorTitle')}</strong> ${t('catalog.errorBody')}</p>` : '';
-    const loadMore = catalogVisibleCount < list.length ? `<button class="ghost-button load-more-button" data-action="load-more">${t('catalog.loadMore')} ${icon('arrow', 13)}</button>` : '';
+    const sortsForMore = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
+    const hasNextSort = sortsForMore.length > 1;
+    const loadMore = (catalogVisibleCount < list.length || hasNextSort) ? `<button class="ghost-button load-more-button" data-action="load-more">${t('catalog.loadMore')} ${icon('arrow', 13)}</button>` : '';
     const note = cachedItems.length ? `<p class="result-note">${formatResultCount(list.length)} · ${escapeHtml(discoverySortLabel(selectedSort))}</p>` : '';
     resultsBody = `${offlineNote}${note}${renderGrid(list.slice(0, catalogVisibleCount), t('empty.noResults'), t('empty.filterHint'))}${loadMore}`;
   }
@@ -914,9 +953,18 @@ async function loadFriends(username) {
 }
 
 function maybeLoadMoreCatalog() {
-  if (currentView !== 'catalog' || searchQuery.length >= 2 || discoveryStatus === 'loading' || isLoadingMore) return;
+  if (currentView !== 'catalog' || discoveryStatus === 'loading' || isLoadingMore) return;
   const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - Math.max(500, window.innerHeight * 0.8);
-  if (nearBottom) { const list = filterGames(); if (catalogVisibleCount < list.length) { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); } }
+  if (!nearBottom) return;
+  // Genre view: auto-fetch the next page when the token is available.
+  if (isGenreSearchActive()) {
+    if (genrePageToken && !genreLoadingMore) fetchGenreGames(true);
+    return;
+  }
+  if (searchQuery.length >= 2) return;
+  const list = filterGames();
+  if (catalogVisibleCount < list.length) { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); }
+  else if (document.querySelector('[data-action="load-more"]')) document.querySelector('[data-action="load-more"]').click();
 }
 function renderRecent() {
   const list = recentGames.map(getGame).filter(Boolean);
@@ -2385,7 +2433,22 @@ document.addEventListener('click', async (event) => {
     }
     if (action.dataset.action === 'load-more') {
       if (searchQuery.length >= 2) fetchLiveSearch(true);
-      else { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); }
+      else if (isGenreSearchActive()) fetchGenreGames(true);
+      else {
+        const list = filterGames();
+        if (catalogVisibleCount < list.length) { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); }
+        else {
+          // All locally available items are shown: fetch the next Discover
+          // category so the catalog keeps growing instead of stalling.
+          const sorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
+          const index = sorts.findIndex((sort) => sort.id === activeDiscoverySort);
+          const next = sorts[(index + 1) % sorts.length];
+          if (next && next.id !== activeDiscoverySort) {
+            catalogVisibleCount = CATALOG_PAGE_SIZE;
+            loadDiscoveryCatalog(next.id);
+          }
+        }
+      }
     }
     if (action.dataset.action === 'load-more-genre') {
       if (isGenreSearchActive()) fetchGenreGames(true);
@@ -2501,8 +2564,10 @@ document.addEventListener('click', async (event) => {
     activeCategory = category.dataset.category;
     preferences.catalogGenre = activeCategory;
     savePreferences();
+    // Full reset of genre pagination when the user switches filters.
+    genreResults = []; genrePageToken = null; genreStatus = 'idle'; genreLoadingMore = false; genreTermIndex = 0;
     if (isGenreSearchActive()) fetchGenreGames(false);
-    else { genreStatus = 'idle'; renderPage(); }
+    else renderPage();
     return;
   }
 

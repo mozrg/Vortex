@@ -501,7 +501,7 @@ function renderGameCard(game) {
   const canExpandDescription = description.length > 100;
   return `<article class="game-card" style="--game-color: var(--accent)" data-game="${id}">
     <div class="game-cover art-${art} ${thumbnail ? 'has-thumbnail' : ''}">
-      ${thumbnail ? `<img class="game-thumbnail" src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}
+      ${thumbnail ? `<img class="game-thumbnail" src="${escapeHtml(thumbnail)}" alt="" loading="eager" decoding="async" />` : ''}
       <span class="cover-shine"></span>
       <button class="favorite-button ${isFavorite ? 'is-favorite' : ''}" data-action="favorite" data-id="${id}" aria-label="${isFavorite ? t('card.favoriteRemove') : t('card.favoriteAdd')}" aria-pressed="${isFavorite}">${icon('heart', 15)}</button>
     </div>
@@ -676,7 +676,7 @@ function renderHomeStripCard(game) {
 function filterGames() {
   const query = searchQuery.trim().toLocaleLowerCase(preferences.language);
   const discovered = discoveryCatalog[activeDiscoverySort]?.items;
-  let sourceGames = searchQuery ? searchResults : currentView === 'catalog' && Array.isArray(discovered) ? discovered : games;
+  let sourceGames = searchQuery ? searchResults : currentView === 'catalog' && Array.isArray(discovered) ? [...discovered, ...games.filter((game) => !discovered.some((item) => String(item.id) === String(game.id)))] : games;
   let list = sourceGames.filter((game) => {
     const localized = localizeGame(game);
     const matchesQuery = !query || String(game.id).includes(query) || `${game.title} ${localized.genre} ${localized.description} ${game.search || ''}`.toLocaleLowerCase(preferences.language).includes(query);
@@ -805,7 +805,7 @@ function renderFriends() {
   const offline = friends.filter((f) => f.presence === 'offline');
   const presenceNote = data.livePresence ? '' : `<div class="friends-presence-note">${icon('bell', 12)} ${t('friends.presenceOff')}</div>`;
   const card = (friend) => `<article class="friend-card ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" data-friend-name="${escapeHtml(friend.displayName || friend.name || '')}" data-friend-avatar="${escapeHtml(friend.avatar || '')}" data-game-name="${escapeHtml(friend.gameName || '')}" data-game-thumb="${escapeHtml(friend.gameThumbnail || '')}" tabindex="0">
-      <span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="lazy" />` : escapeHtml((friend.displayName || friend.name || '?')[0].toLocaleUpperCase())}</span>
+      <span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="eager" decoding="async" />` : escapeHtml((friend.displayName || friend.name || '?')[0].toLocaleUpperCase())}</span>
       <span class="friend-copy"><strong>${escapeHtml(friend.displayName || friend.name)}</strong><small>${friend.presence === 'playing' ? escapeHtml(friend.gameName || t('friends.inGame')) : friend.presence === 'online' ? t('friends.online') : t('friends.offline')}</small></span>
       ${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}">${icon('play', 12)}</button>` : ''}
     </article>`;

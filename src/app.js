@@ -778,7 +778,8 @@ function filterGames() {
     });
     return list;
   }
-  const discovered = discoveryCatalog[activeDiscoverySort]?.items;
+  const accumulated = discoveryCatalog.__accumulated?.items;
+  const discovered = Array.isArray(accumulated) && accumulated.length ? accumulated : discoveryCatalog[activeDiscoverySort]?.items;
   let sourceGames = searchQuery ? searchResults : currentView === 'catalog' && Array.isArray(discovered) ? [...discovered, ...games.filter((game) => !discovered.some((item) => String(item.id) === String(game.id)))] : games;
   let list = sourceGames.filter((game) => {
     const localized = localizeGame(game);
@@ -853,8 +854,15 @@ function renderCatalog() {
       const loadMoreGenre = genreLoadingMore ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : canLoadMore ? `<button class="ghost-button load-more-button" data-action="load-more-genre">${t('search.loadMore')} ${icon('arrow', 13)}</button>` : '';
       resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list, t('empty.noResults'), t('empty.filterHint'))}${loadMoreGenre}`;
     }
-  } else if (!searchQuery && discoveryStatus === 'loading') {
-    resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.loading')}</strong><small>${t('catalog.loadingNote')}</small></div>`;
+  } else if (!searchQuery && (discoveryStatus === 'loading' || discoveryStatus === 'loading-more')) {
+    if (discoveryStatus === 'loading-more' && list.length) {
+      const sortsForMore = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
+      const hasNextSort = sortsForMore.length > 1;
+      const loadMore = hasNextSort ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : '';
+      resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list.slice(0, catalogVisibleCount), t('empty.noResults'), t('empty.filterHint'))}${loadMore}`;
+    } else {
+      resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.loading')}</strong><small>${t('catalog.loadingNote')}</small></div>`;
+    }
   } else {
     const cachedItems = discoveryCatalog[activeDiscoverySort]?.items || [];
     const offlineNote = discoveryStatus === 'error' ? `<p class="catalog-disclaimer"><strong>${t('catalog.errorTitle')}</strong> ${t('catalog.errorBody')}</p>` : '';
@@ -952,19 +960,38 @@ async function loadFriends(username) {
   }
 }
 
+let autoLoadPending = false;
+let lastAutoLoadAt = 0;
 function maybeLoadMoreCatalog() {
-  if (currentView !== 'catalog' || discoveryStatus === 'loading' || isLoadingMore) return;
+  if (currentView !== 'catalog' || autoLoadPending || Date.now() - lastAutoLoadAt < 800) return;
   const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - Math.max(500, window.innerHeight * 0.8);
   if (!nearBottom) return;
+  autoLoadPending = true;
+  lastAutoLoadAt = Date.now();
+  const finish = () => { autoLoadPending = false; lastAutoLoadAt = Date.now(); };
   // Genre view: auto-fetch the next page when the token is available.
   if (isGenreSearchActive()) {
-    if (genrePageToken && !genreLoadingMore) fetchGenreGames(true);
+    if (genrePageToken && !genreLoadingMore) fetchGenreGames(true).finally(finish);
+    else finish();
     return;
   }
-  if (searchQuery.length >= 2) return;
+  if (searchQuery.length >= 2) { finish(); return; }
   const list = filterGames();
-  if (catalogVisibleCount < list.length) { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); }
-  else if (document.querySelector('[data-action="load-more"]')) document.querySelector('[data-action="load-more"]').click();
+  if (catalogVisibleCount < list.length) {
+    const scrollY = window.scrollY;
+    catalogVisibleCount += CATALOG_PAGE_SIZE;
+    renderPage();
+    window.scrollTo({ top: scrollY, behavior: 'auto' });
+    finish();
+  } else {
+    const btn = document.querySelector('[data-action="load-more"]');
+    if (btn) {
+      const scrollY = window.scrollY;
+      btn.click();
+      // Restore scroll position after the re-render wipes it.
+      window.requestAnimationFrame(() => { window.scrollTo({ top: scrollY, behavior: 'auto' }); finish(); });
+    } else finish();
+  }
 }
 function renderRecent() {
   const list = recentGames.map(getGame).filter(Boolean);
@@ -2149,19 +2176,30 @@ function normalizeDiscoveredGame(game, query = '') {
   };
 }
 
-async function loadDiscoveryCatalog(sortId = activeDiscoverySort, { force = false } = {}) {
+async function loadDiscoveryCatalog(sortId = activeDiscoverySort, { force = false, append = false } = {}) {
   activeDiscoverySort = sortId;
   localStorage.setItem('vortex.activeDiscoverySort', JSON.stringify(activeDiscoverySort));
   const cached = discoveryCatalog[sortId];
-  if (!force && cached?.savedAt && Date.now() - cached.savedAt < DISCOVERY_CACHE_TTL && Array.isArray(cached.items)) {
+  if (!force && !append && cached?.savedAt && Date.now() - cached.savedAt < DISCOVERY_CACHE_TTL && Array.isArray(cached.items)) {
+    discoveryStatus = 'success';
+    renderPage();
+    return;
+  }
+  if (append && cached?.savedAt && Date.now() - cached.savedAt < DISCOVERY_CACHE_TTL && Array.isArray(cached.items)) {
+    // Cached next category: merge into the accumulated list without a request.
+    const previous = discoveryCatalog.__accumulated?.items || [];
+    const knownIds = new Set(previous.map((game) => String(game.id)));
+    const merged = [...previous, ...cached.items.filter((game) => !knownIds.has(String(game.id)))];
+    discoveryCatalog = { ...discoveryCatalog, __accumulated: { savedAt: Date.now(), items: merged } };
+    activeDiscoverySort = sortId;
     discoveryStatus = 'success';
     renderPage();
     return;
   }
 
   const requestId = ++discoveryRequestId;
-  discoveryStatus = 'loading';
-  catalogVisibleCount = CATALOG_PAGE_SIZE;
+  discoveryStatus = append ? 'loading-more' : 'loading';
+  if (!append) catalogVisibleCount = CATALOG_PAGE_SIZE;
   renderPage();
   try {
     if (!window.vortexDesktop?.discoverGames) throw new Error('Roblox Discover is available in the desktop app.');
@@ -2172,10 +2210,24 @@ async function loadDiscoveryCatalog(sortId = activeDiscoverySort, { force = fals
     discoverySorts = Array.isArray(response.sorts) && response.sorts.length ? response.sorts : fallbackDiscoverySorts;
     activeDiscoverySort = response.selectedSortId || sortId;
     const items = (response.items || []).map((game) => normalizeDiscoveredGame(game));
-    discoveryCatalog = {
-      ...discoveryCatalog,
-      [activeDiscoverySort]: { savedAt: Date.now(), items }
-    };
+    if (append) {
+      // Append mode: merge the new category's games into the shown list
+      // instead of replacing it, so the catalog only ever grows.
+      const previous = discoveryCatalog.__accumulated?.items || [];
+      const knownIds = new Set(previous.map((game) => String(game.id)));
+      const merged = [...previous, ...items.filter((game) => !knownIds.has(String(game.id)))];
+      discoveryCatalog = {
+        ...discoveryCatalog,
+        __accumulated: { savedAt: Date.now(), items: merged },
+        [activeDiscoverySort]: { savedAt: Date.now(), items }
+      };
+    } else {
+      discoveryCatalog = {
+        ...discoveryCatalog,
+        __accumulated: { savedAt: Date.now(), items },
+        [activeDiscoverySort]: { savedAt: Date.now(), items }
+      };
+    }
 
     const knownIds = new Set(dynamicGames.map((game) => String(game.id)));
     const newGames = items.filter((game) => !knownIds.has(game.id));
@@ -2439,14 +2491,11 @@ document.addEventListener('click', async (event) => {
         if (catalogVisibleCount < list.length) { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); }
         else {
           // All locally available items are shown: fetch the next Discover
-          // category so the catalog keeps growing instead of stalling.
+          // category in append mode so the catalog only ever grows.
           const sorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
           const index = sorts.findIndex((sort) => sort.id === activeDiscoverySort);
           const next = sorts[(index + 1) % sorts.length];
-          if (next && next.id !== activeDiscoverySort) {
-            catalogVisibleCount = CATALOG_PAGE_SIZE;
-            loadDiscoveryCatalog(next.id);
-          }
+          if (next && next.id !== activeDiscoverySort) loadDiscoveryCatalog(next.id, { append: true });
         }
       }
     }

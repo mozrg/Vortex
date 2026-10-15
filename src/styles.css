@@ -341,7 +341,6 @@ body.ui-dragging .ui-row:not(.ui-row-dragging) { transition: transform .18s cubi
 .game-thumbnail { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .game-cover.has-thumbnail .cover-shine { background: linear-gradient(180deg, rgba(9,10,14,.16), transparent 36%, rgba(9,10,14,.3)); }
 .cover-shine { position: absolute; inset: 0; z-index: 1; background: linear-gradient(120deg, rgba(255,255,255,.16), transparent 38% 72%, rgba(0,0,0,.08)); pointer-events: none; }
-.cover-tag { position: absolute; z-index: 2; top: 10px; left: 10px; padding: 5px 7px; border: 1px solid rgba(255,255,255,.17); border-radius: 6px; background: rgba(17,16,23,.39); backdrop-filter: blur(10px); color: rgba(255,255,255,.94); font-size: 8px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .favorite-button { position: absolute; z-index: 3; top: 9px; right: 9px; display: grid; width: 29px; height: 29px; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.21); border-radius: 8px; background: rgba(13,14,19,.38); color: #fff; cursor: pointer; backdrop-filter: blur(8px); transition: .17s ease; }
 .favorite-button:hover { background: rgba(13,14,19,.65); transform: scale(1.06); }
 .favorite-button.is-favorite { border-color: rgba(255,128,175,.44); color: #ff8cad; }
@@ -759,8 +758,10 @@ body.light-theme .plans-progress-bar { background: rgba(38,32,56,.08); }
 .friend-card.offline:hover { opacity: .9; }
 .friend-card.playing { border-color: var(--accent-border); background: color-mix(in srgb, var(--accent-wash) 45%, transparent); }
 .friend-card.playing .friend-copy small { color: var(--accent-text); }
-.friend-join { display: grid; width: 26px; height: 26px; flex: 0 0 auto; margin-left: auto; place-items: center; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-wash); color: var(--accent-text); }
-.friend-join svg { width: 11px; height: 11px; }
+.friend-join { display: grid; width: 30px; height: 30px; flex: 0 0 auto; margin-left: auto; place-items: center; border: 1px solid var(--accent-border); border-radius: 50%; background: var(--accent-fill); color: var(--accent-contrast); transition: filter .15s ease, transform .15s ease; }
+.friend-join:hover { filter: brightness(1.14); transform: scale(1.07); }
+.friend-join:active { transform: scale(.94); }
+.friend-join svg { width: 15px; height: 15px; margin-left: 2px; }
 
 /* Hover preview: floating panel with the friend's game. */
 .friend-preview { position: fixed; z-index: 70; display: flex; align-items: center; gap: 13px; width: max-content; max-width: 300px; padding: 13px 15px; border: 1px solid var(--accent-border); border-radius: 13px; background: var(--surface); box-shadow: 0 18px 44px rgba(0,0,0,.5); pointer-events: auto; animation: toast-in .16s ease-out; }
@@ -783,7 +784,7 @@ body.light-theme .plans-progress-bar { background: rgba(38,32,56,.08); }
 /* Join button directly on playing friend cards. */
 /* Join button: filled accent disc with a clear play glyph. */
 .friend-card .friend-join { display: grid; width: 30px; height: 30px; flex: 0 0 auto; margin-left: auto; place-items: center; border: 1px solid var(--accent-border); border-radius: 50%; cursor: pointer; background: var(--accent-fill); color: var(--accent-contrast); }
-.friend-card .friend-join svg { width: 14px; height: 14px; }
+.friend-card .friend-join svg { width: 15px; height: 15px; margin-left: 2px; }
 .friend-card .friend-join:hover { filter: brightness(1.15); transform: scale(1.05); }
 .friend-card .friend-join:active { transform: scale(.95); }
 /* Steam-style playtime badge on game cards. */
@@ -845,20 +846,7 @@ body.light-theme .roblox-username-field input { background: rgba(255,255,255,.6)
 
 /* ---------- Wallpaper layer (Stage 2 customization) ---------- */
 .wallpaper-layer { position: fixed; z-index: -2; inset: -44px; background-image: var(--wallpaper-image); background-position: center; background-size: cover; filter: blur(var(--wallpaper-blur, 14px)); opacity: calc(1 - var(--wallpaper-dim, .45)); pointer-events: none; }
-.wallpaper-controls { display: grid; gap: 13px; }
-.wallpaper-pickers { display: flex; gap: 10px; }
-.range-line { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; color: var(--text); font-size: 10.5px; }
-.range-line input[type="range"] { width: 100%; accent-color: var(--accent); }
-.range-line b { min-width: 38px; color: var(--muted); font-size: 9.5px; text-align: right; }
-.toggle-row { display: flex; gap: 22px; flex-wrap: wrap; }
-.toggle { display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-size: 10.5px; cursor: pointer; }
-.toggle input { position: absolute; opacity: 0; pointer-events: none; }
-.toggle-track { position: relative; width: 30px; height: 17px; flex: 0 0 auto; border: 1px solid var(--line-strong); border-radius: 10px; background: color-mix(in srgb, var(--surface-3) 70%, transparent); transition: background .16s ease, border-color .16s ease; }
-.toggle-track::after { position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--muted); content: ""; transition: left .16s ease, background .16s ease; }
-.toggle input:checked + .toggle-track { border-color: var(--accent-border); background: var(--accent-wash); }
-.toggle input:checked + .toggle-track::after { left: 15px; background: var(--accent); }
 /* Film grain overlay: animated fine noise, disabled for reduced motion. */
-.has-grain .wallpaper-layer ~ * { }
 html.has-grain body::before { position: fixed; z-index: 50; inset: -100%; pointer-events: none; content: ""; opacity: .05; background-image: repeating-conic-gradient(#000 0% .0001%, #fff .0002% .0002%); animation: grain-shift 7s steps(6) infinite; }
 @keyframes grain-shift { 0% { transform: translate(0, 0); } 20% { transform: translate(-6%, 4%); } 40% { transform: translate(4%, -7%); } 60% { transform: translate(-8%, -3%); } 80% { transform: translate(6%, 6%); } 100% { transform: translate(0, 0); } }
 html.has-vignette body::after { position: fixed; z-index: 49; inset: 0; pointer-events: none; content: ""; background: radial-gradient(ellipse 90% 90% at 50% 45%, transparent 55%, rgba(0, 0, 0, .38) 100%); }

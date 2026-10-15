@@ -473,12 +473,10 @@ function renderGameCard(game) {
   const category = game.genre ? `<span class="game-category"><i></i>${escapeHtml(game.genre)}</span>` : '<span></span>';
   const expandedDescription = expandedDescriptions.has(String(game.id));
   const canExpandDescription = description.length > 100;
-  const coverTag = game.tag && game.tag.toLocaleLowerCase() !== t('tag.roblox').toLocaleLowerCase()
-    ? `<span class="cover-tag">${escapeHtml(game.tag)}</span>` : '';
   return `<article class="game-card" style="--game-color: var(--accent)" data-game="${id}">
     <div class="game-cover art-${art} ${thumbnail ? 'has-thumbnail' : ''}">
       ${thumbnail ? `<img class="game-thumbnail" src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}
-      <span class="cover-shine"></span>${coverTag}
+      <span class="cover-shine"></span>
       <button class="favorite-button ${isFavorite ? 'is-favorite' : ''}" data-action="favorite" data-id="${id}" aria-label="${isFavorite ? t('card.favoriteRemove') : t('card.favoriteAdd')}" aria-pressed="${isFavorite}">${icon('heart', 15)}</button>
     </div>
     <div class="game-info">
@@ -565,14 +563,14 @@ function renderHome() {
     : customGames.filter((game) => String(game.id) !== String(featured?.id)))
     .slice(0, Number(preferences.homeGameCount) || 4);
   const greeting = preferences.homeGreeting.trim() || t('page.home.title');
-  const emptyHint = customGames.length ? '' : `<section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('sparkle', 20)}</div><h2>${t('home.empty.title')}</h2><p>${t('home.empty.body')}</p><button class="ghost-button" data-nav="settings">${icon('sliders')} ${t('home.empty.action')}</button></div></section>`;
+  const emptyHint = customGames.length ? '' : `<section class="section-block"><div class="empty-state"><h2>${t('home.empty.title')}</h2><p>${t('home.empty.body')}</p><button class="ghost-button" data-nav="settings">${icon('sliders')} ${t('home.empty.action')}</button></div></section>`;
 
   // Each widget renders to a <section class="home-widget" data-home-widget="key">
   // with a heading that carries collapse + move controls.
   const widgetBodies = {
     hero: preferences.homeShowHero && featured ? `<section class="hero-card home-widget" data-home-widget="hero">
       <span class="hero-avatar" aria-hidden="true">${safeThumbnail(featured.thumbnail) ? `<img src="${escapeHtml(safeThumbnail(featured.thumbnail))}" alt="" />` : `<span class="hero-avatar-fallback">${escapeHtml((featured.title || 'R')[0].toLocaleUpperCase())}</span>`}</span>
-      <div class="hero-copy"><span class="hero-kicker"><span>${icon('sparkle', 13)}</span> ${t('hero.kicker')}</span><h2>${escapeHtml(featured.title)}</h2><p>${escapeHtml(featured.description || t('hero.body'))}</p>
+      <div class="hero-copy"><span class="hero-kicker">${t('hero.kicker')}</span><h2>${escapeHtml(featured.title)}</h2><p>${escapeHtml(featured.description || t('hero.body'))}</p>
         <div class="hero-actions"><button class="primary-button" data-action="play" data-id="${escapeHtml(featured.id)}">${icon('play')} ${t('hero.play', { title: escapeHtml(featured.title) })}</button><span class="hero-meta">${escapeHtml(featured.creator || t('hero.meta'))}</span></div>
       </div>
     </section>` : '',
@@ -875,7 +873,7 @@ function renderHomeSettings() {
             <span class="ui-row-copy"><strong>${t(widget.titleKey)}</strong><small>${t(widget.bodyKey)}</small></span>
             <button class="ui-row-handle" data-widget-move="${key}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="${t('settings.ui.moveUp')}">${icon('navUp', 12)}</button>
             <button class="ui-row-handle" data-widget-move="${key}" data-direction="1" ${index === homeWidgetOrder().length - 1 ? 'disabled' : ''} aria-label="${t('settings.ui.moveDown')}">${icon('navDown', 12)}</button>
-            <label class="toggle" title="${t('home.widgets.visibility')}"><input type="checkbox" data-widget-visible="${key}" ${homeWidgetVisible(key) ? 'checked' : ''} /><span class="toggle-track"></span></label>
+            <button class="toggle" role="switch" aria-checked="${homeWidgetVisible(key)}" data-widget-visible-toggle="${key}" aria-label="${t('home.widgets.visibility')}" title="${t('home.widgets.visibility')}"></button>
           </div>`;
         }).join('')}
       </div>
@@ -1144,34 +1142,31 @@ function renderAccentSettings() {
 }
 
 function renderWallpaperCard() {
+  // Native components throughout: setting-line rows, range-control sliders,
+  // button.toggle switches — identical to every other settings section.
   const hasWallpaper = Boolean(preferences.themeWallpaper);
-  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.wallpaper.title')}</h2><p>${t('settings.wallpaper.body')}</p></div></div>
-    <div class="wallpaper-controls">
-      <div class="wallpaper-pickers">
-        <button class="ghost-button" data-action="pick-wallpaper">${t('settings.wallpaper.pick')}</button>
-        ${hasWallpaper ? `<button class="ghost-button" data-action="remove-wallpaper">${t('settings.wallpaper.remove')}</button>` : ''}
-        <input type="file" accept="image/*" data-wallpaper-file hidden />
-      </div>
-      <label class="range-line"><span>${t('settings.wallpaper.blur')}</span><input type="range" min="0" max="40" value="${preferences.themeWallpaperBlur}" data-wallpaper-blur ${hasWallpaper ? '' : 'disabled'} /><b>${preferences.themeWallpaperBlur}px</b></label>
-      <label class="range-line"><span>${t('settings.wallpaper.dim')}</span><input type="range" min="0" max="90" value="${preferences.themeWallpaperDim}" data-wallpaper-dim ${hasWallpaper ? '' : 'disabled'} /><b>${preferences.themeWallpaperDim}%</b></label>
-      <div class="toggle-row"><label class="toggle"><input type="checkbox" data-wallpaper-grain ${preferences.themeGrain ? 'checked' : ''} /><span class="toggle-track"></span>${t('settings.wallpaper.grain')}</label>
-      <label class="toggle"><input type="checkbox" data-wallpaper-vignette ${preferences.themeVignette ? 'checked' : ''} /><span class="toggle-track"></span>${t('settings.wallpaper.vignette')}</label></div>
-    </div>
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.wallpaper.title')}</h2><p>${t('settings.wallpaper.body')}</p></div>${icon('palette', 18)}</div>
+      <input type="file" accept="image/*" data-wallpaper-file hidden />
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.pick')}</strong><small>${hasWallpaper ? t('settings.wallpaper.removeHint') : t('settings.wallpaper.pickHint')}</small></div>
+        <span class="data-actions"><button class="ghost-button" data-action="pick-wallpaper">${icon('upload', 13)} ${t('settings.wallpaper.pick')}</button>${hasWallpaper ? ` <button class="ghost-button" data-action="remove-wallpaper">${icon('close', 13)} ${t('settings.wallpaper.remove')}</button>` : ''}</span></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.blur')}</strong><small>${t('settings.wallpaper.blurHint')}</small></div><label class="range-control"><input type="range" min="0" max="40" value="${preferences.themeWallpaperBlur}" data-wallpaper-blur ${hasWallpaper ? '' : 'disabled'} /><span class="range-value" data-wallpaper-blur-value>${preferences.themeWallpaperBlur}px</span></label></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.dim')}</strong><small>${t('settings.wallpaper.dimHint')}</small></div><label class="range-control"><input type="range" min="0" max="90" value="${preferences.themeWallpaperDim}" data-wallpaper-dim ${hasWallpaper ? '' : 'disabled'} /><span class="range-value" data-wallpaper-dim-value>${preferences.themeWallpaperDim}%</span></label></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.grain')}</strong><small>${t('settings.wallpaper.grainHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.themeGrain}" data-wallpaper-grain-toggle aria-label="${t('settings.wallpaper.grain')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.vignette')}</strong><small>${t('settings.wallpaper.vignetteHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.themeVignette}" data-wallpaper-vignette-toggle aria-label="${t('settings.wallpaper.vignette')}"></button></div>
   </section>`;
 }
 
 function renderCardSettings() {
-  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cardTuning.title')}</h2><p>${t('settings.cardTuning.body')}</p></div>${icon('sliders', 18)}</div>
-    <div class="wallpaper-controls">
-      <label class="range-line"><span>${t('settings.cardTuning.size')}</span><input type="range" min="0.7" max="1.3" step="0.05" value="${preferences.cardSize}" data-card-size /><b>${Math.round(preferences.cardSize * 100)}%</b></label>
-      <label class="range-line"><span>${t('settings.cardTuning.radius')}</span><input type="range" min="0" max="20" value="${preferences.cardRadius}" data-card-radius /><b>${preferences.cardRadius}px</b></label>
-      <div class="toggle-row">
-        <label class="toggle"><input type="checkbox" data-card-flag="cardShowDescription" ${preferences.cardShowDescription ? 'checked' : ''} /><span class="toggle-track"></span>${t('settings.cardTuning.description')}</label>
-        <label class="toggle"><input type="checkbox" data-card-flag="cardShowLikes" ${preferences.cardShowLikes ? 'checked' : ''} /><span class="toggle-track"></span>${t('settings.cardTuning.likes')}</label>
-        <label class="toggle"><input type="checkbox" data-card-flag="cardShowPlaytime" ${preferences.cardShowPlaytime ? 'checked' : ''} /><span class="toggle-track"></span>${t('settings.cardTuning.playtime')}</label>
-        <label class="toggle"><input type="checkbox" data-card-flag="cardShowGenre" ${preferences.cardShowGenre ? 'checked' : ''} /><span class="toggle-track"></span>${t('settings.cardTuning.genre')}</label>
-      </div>
-    </div>
+  // Native components: setting-line rows, range-control sliders, button.toggle
+  // switches — matches every other settings card exactly.
+  const cardFlag = (flagKey, titleKey, bodyKey) => `<div class="setting-line"><div class="setting-label"><strong>${t(titleKey)}</strong><small>${t(bodyKey)}</small></div><button class="toggle" role="switch" aria-checked="${preferences[flagKey]}" data-card-flag-toggle="${flagKey}" aria-label="${t(titleKey)}"></button></div>`;
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cardTuning.title')}</h2><p>${t('settings.cardTuning.body')}</p></div>${icon('grid', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.size')}</strong><small>${t('settings.cardTuning.sizeHint')}</small></div><label class="range-control"><input type="range" min="0.7" max="1.3" step="0.05" value="${preferences.cardSize}" data-card-size /><span class="range-value" data-card-size-value>${Math.round(preferences.cardSize * 100)}%</span></label></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.radius')}</strong><small>${t('settings.cardTuning.radiusHint')}</small></div><label class="range-control"><input type="range" min="0" max="20" value="${preferences.cardRadius}" data-card-radius /><span class="range-value" data-card-radius-value>${preferences.cardRadius}px</span></label></div>
+      ${cardFlag('cardShowDescription', 'settings.cardTuning.description', 'settings.cardTuning.descriptionHint')}
+      ${cardFlag('cardShowLikes', 'settings.cardTuning.likes', 'settings.cardTuning.likesHint')}
+      ${cardFlag('cardShowPlaytime', 'settings.cardTuning.playtime', 'settings.cardTuning.playtimeHint')}
+      ${cardFlag('cardShowGenre', 'settings.cardTuning.genre', 'settings.cardTuning.genreHint')}
   </section>
   <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.density.title')}</h2><p>${t('settings.density.body')}</p></div>${icon('grid', 18)}</div>
       <div class="segmented density-segmented">${[['spacious', t('settings.spacious')], ['comfortable', t('settings.comfortable')], ['compact', t('settings.compact')]].map(([value, label]) => `<button class="segment ${preferences.density === value ? 'active' : ''}" data-pref="density" data-value="${value}" ${previewAttr('density', value, label)}>${label}</button>`).join('')}</div>
@@ -1743,7 +1738,7 @@ function showToast(message, action) {
   toast.className = 'toast';
   const label = typeof message === 'object' ? message.message : message;
   const act = typeof message === 'object' ? message : null;
-  toast.innerHTML = `<span class="toast-mark">${icon('sparkle', 13)}</span><span>${escapeHtml(label)}</span>`;
+  toast.innerHTML = `<span>${escapeHtml(label)}</span>`;
   if (act && act.actionLabel) {
     const button = document.createElement('button');
     button.className = 'toast-action';
@@ -2271,6 +2266,15 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'import-profiles') {
       pageContent.querySelector('[data-profiles-file]')?.click();
     }
+    if (action.dataset.action === 'pick-wallpaper') {
+      pageContent.querySelector('[data-wallpaper-file]')?.click();
+    }
+    if (action.dataset.action === 'remove-wallpaper') {
+      preferences.themeWallpaper = '';
+      savePreferences();
+      applyPreferences();
+      renderPage();
+    }
     return;
   }
 
@@ -2497,19 +2501,6 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
-  // Wallpaper: pick an image, drop it, or clear it.
-  if (target.closest('[data-action="pick-wallpaper"]')) {
-    pageContent.querySelector('[data-wallpaper-file]')?.click();
-    return;
-  }
-  if (target.closest('[data-action="remove-wallpaper"]')) {
-    preferences.themeWallpaper = '';
-    savePreferences();
-    applyPreferences();
-    renderPage();
-    return;
-  }
-
   const friendJoin = target.closest('[data-friend-join]');
   if (friendJoin) {
     const placeId = friendJoin.dataset.friendJoin;
@@ -2518,13 +2509,41 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
-    const segment = target.closest('[data-pref]');
+  const segment = target.closest('[data-pref]');
   if (segment) {
     preferences[segment.dataset.pref] = segment.dataset.value;
     savePreferences();
+    // Language change re-renders the sidebar too: its labels come from t() at
+    // renderSidebar() time, so switching needs a fresh pass, not just renderPage.
+    if (segment.dataset.pref === 'language') renderSidebar();
     renderPage();
     if (segment.dataset.pref === 'language') showToast(t('settings.languageUpdated'));
     if (segment.dataset.pref === 'trayScale') { reportRecentGamesToTray(); showToast(t('settings.tray.updated')); }
+  }
+
+  // Native button.toggle switches for wallpaper effects and card flags.
+  const grainToggle = target.closest('[data-wallpaper-grain-toggle]');
+  if (grainToggle) { preferences.themeGrain = !preferences.themeGrain; savePreferences(); applyPreferences(); renderPage(); return; }
+  const vignetteToggle = target.closest('[data-wallpaper-vignette-toggle]');
+  if (vignetteToggle) { preferences.themeVignette = !preferences.themeVignette; savePreferences(); applyPreferences(); renderPage(); return; }
+  const cardFlagToggle = target.closest('[data-card-flag-toggle]');
+  if (cardFlagToggle) {
+    const flag = cardFlagToggle.dataset.cardFlagToggle;
+    if (['cardShowDescription', 'cardShowLikes', 'cardShowPlaytime', 'cardShowGenre'].includes(flag)) {
+      preferences[flag] = !preferences[flag];
+      savePreferences(); renderPage();
+    }
+    return;
+  }
+  const widgetVisibleToggle = target.closest('[data-widget-visible-toggle]');
+  if (widgetVisibleToggle) {
+    const key = widgetVisibleToggle.dataset.widgetVisibleToggle;
+    const list = Array.isArray(preferences.homeWidgetHidden) ? preferences.homeWidgetHidden.map(String) : [];
+    const at = list.indexOf(key);
+    if (at >= 0) list.splice(at, 1); else list.push(key);
+    preferences.homeWidgetHidden = list;
+    savePreferences(); renderPage();
+    return;
   }
 
   const toggle = target.closest('[data-toggle]');
@@ -2551,34 +2570,7 @@ document.addEventListener('change', (event) => {
     event.target.value = '';
     return;
   }
-  if (event.target.matches('[data-card-flag]')) {
-    const flag = event.target.dataset.cardFlag;
-    if (['cardShowDescription', 'cardShowLikes', 'cardShowPlaytime', 'cardShowGenre'].includes(flag)) {
-      preferences[flag] = event.target.checked;
-      savePreferences(); renderPage();
-    }
-    return;
-  }
-  if (event.target.matches('[data-widget-visible]')) {
-    const key = event.target.dataset.widgetVisible;
-    const list = Array.isArray(preferences.homeWidgetHidden) ? preferences.homeWidgetHidden.map(String) : [];
-    const at = list.indexOf(key);
-    // checked = visible: remove from hidden; unchecked = add.
-    if (event.target.checked) { if (at >= 0) list.splice(at, 1); } else if (at < 0) list.push(key);
-    preferences.homeWidgetHidden = list;
-    savePreferences(); renderPage();
-    return;
-  }
-  if (event.target.matches('[data-wallpaper-grain]')) {
-    preferences.themeGrain = event.target.checked;
-    savePreferences(); applyPreferences();
-    return;
-  }
-  if (event.target.matches('[data-wallpaper-vignette]')) {
-    preferences.themeVignette = event.target.checked;
-    savePreferences(); applyPreferences();
-    return;
-  }
+  // Profiles import (see the change listener above).
 
   // Imported profiles file: merge known profile objects into storage.
   if (event.target.matches('[data-profiles-file]')) {
@@ -2641,26 +2633,26 @@ document.addEventListener('change', (event) => {
 document.addEventListener('input', (event) => {
   if (event.target.matches('[data-card-size]')) {
     preferences.cardSize = Math.max(0.7, Math.min(1.3, Number(event.target.value) || 1));
-    event.target.nextElementSibling.textContent = Math.round(preferences.cardSize * 100) + '%';
+    pageContent.querySelector('[data-card-size-value]')?.replaceChildren(Math.round(preferences.cardSize * 100) + '%');
     savePreferences(); applyPreferences();
     return;
   }
   if (event.target.matches('[data-card-radius]')) {
     preferences.cardRadius = Math.max(0, Math.min(20, Number(event.target.value) || 0));
     preferences.customCardRadius = true;
-    event.target.nextElementSibling.textContent = preferences.cardRadius + 'px';
+    pageContent.querySelector('[data-card-radius-value]')?.replaceChildren(preferences.cardRadius + 'px');
     savePreferences(); applyPreferences();
     return;
   }
   if (event.target.matches('[data-wallpaper-blur]')) {
     preferences.themeWallpaperBlur = Number(event.target.value) || 0;
-    event.target.nextElementSibling.textContent = preferences.themeWallpaperBlur + 'px';
+    pageContent.querySelector('[data-wallpaper-blur-value]')?.replaceChildren(preferences.themeWallpaperBlur + 'px');
     savePreferences(); applyPreferences();
     return;
   }
   if (event.target.matches('[data-wallpaper-dim]')) {
     preferences.themeWallpaperDim = Number(event.target.value) || 0;
-    event.target.nextElementSibling.textContent = preferences.themeWallpaperDim + '%';
+    pageContent.querySelector('[data-wallpaper-dim-value]')?.replaceChildren(preferences.themeWallpaperDim + '%');
     savePreferences(); applyPreferences();
     return;
   }

@@ -675,16 +675,24 @@ function renderHomeStripCard(game) {
   </button>`;
 }
 
-const GENRE_SEARCH_TERMS = {
-  adventure: ['adventure', 'adventure game', 'story adventure', 'open world adventure'],
-  horror: ['horror', 'horror game', 'scary', 'creepy horror'],
-  roleplay: ['roleplay', 'rp game', 'life roleplay', 'town roleplay'],
-  fashion: ['fashion', 'dress up', 'fashion show', 'styling'],
-  parkour: ['obby parkour', 'obby', 'parkour', 'tower obby'],
-  action: ['action', 'action game', 'fighting action', 'battle action'],
-  simulator: ['simulator', 'simulator game', 'clicker simulator', 'tycoon'],
-  survival: ['survival', 'survival game', 'zombie survival', 'island survival']
+const GENRE_SEARCH_BASE = {
+  adventure: 'adventure', horror: 'horror', roleplay: 'roleplay', fashion: 'fashion',
+  parkour: 'obby', action: 'action', simulator: 'simulator', survival: 'survival'
 };
+// Endless query generator: base phrasings first, then modifier suffixes
+// combined with the genre word, so "Показать ещё" always has somewhere to go.
+const TERM_MODIFIERS = ['game', 'story', 'best', 'new', 'popular', 'rp', '2', 'pro', 'mega', 'ultimate', 'extreme', 'tycoon', 'world', 'city', 'island', 'boss', 'legend', 'hero', 'secret', 'escape', 'craft', 'build', 'run', 'jump', 'fight', 'team', 'pvp', 'anime', 'pets', 'trade', 'clicker', 'hard', 'easy', 'fun', 'cool', 'epic', 'free', 'vip', 'obby', 'tower', 'maze', 'race', 'war', 'magic', 'ninja', 'zombie', 'space', 'ocean', 'desert', 'jungle', 'snow', 'fire'];
+function genreSearchTermAt(genre, index) {
+  const base = GENRE_SEARCH_BASE[genre];
+  if (!base) return null;
+  if (index === 0) return base;
+  const modIndex = index - 1;
+  const mod = TERM_MODIFIERS[modIndex % TERM_MODIFIERS.length];
+  const round = Math.floor(modIndex / TERM_MODIFIERS.length);
+  const suffix = round === 0 ? mod : `${mod} ${round + 1}`;
+  // Interleave: "adventure game", "game adventure", so both word orders get used.
+  return modIndex % 2 === 0 ? `${base} ${suffix}` : `${suffix} ${base}`;
+}
 let genreResults = [];
 let genrePageToken = null;
 let genreStatus = 'idle';
@@ -696,21 +704,28 @@ function isGenreSearchActive() { return !searchQuery && activeCategory !== 'all'
 
 async function fetchGenreGames(append = false) {
   const genre = activeCategory;
-  const terms = GENRE_SEARCH_TERMS[genre];
-  if (!terms) return;
+  if (!GENRE_SEARCH_BASE[genre]) return;
   const requestId = ++activeGenreRequestId;
+  const nextTerm = () => {
+    const nextIndex = genreTermIndex + 1;
+    const next = genreSearchTermAt(genre, nextIndex);
+    if (!next) return null;
+    genreTermIndex = nextIndex;
+    genrePageToken = null;
+    return next;
+  };
   if (append && !genrePageToken) {
     // Current search term exhausted: try the next phrasing for fresh results.
-    const nextIndex = genreTermIndex + 1;
-    if (nextIndex >= terms.length) { genreLoadingMore = false; renderPage(); return; }
-    genreTermIndex = nextIndex;
+    const term = nextTerm();
+    if (!term) { genreLoadingMore = false; renderPage(); return; }
     const knownIds = new Set(genreResults.map((game) => game.id));
-    await fetchGenreTerm(terms[nextIndex], requestId, genre, knownIds, true);
+    await fetchGenreTerm(term, requestId, genre, knownIds, true);
     return;
   }
   if (append) { genreLoadingMore = true; renderPage(); }
-  else { genreStatus = 'loading'; genreResults = []; genrePageToken = null; genreTermIndex = 0; renderPage(); }  const knownIds = append ? new Set(genreResults.map((game) => game.id)) : new Set();
-  await fetchGenreTerm(terms[genreTermIndex], requestId, genre, knownIds, append);
+  else { genreStatus = 'loading'; genreResults = []; genrePageToken = null; genreTermIndex = 0; renderPage(); }
+  const knownIds = append ? new Set(genreResults.map((game) => game.id)) : new Set();
+  await fetchGenreTerm(genreSearchTermAt(genre, genreTermIndex), requestId, genre, knownIds, append);
 }
 
 async function fetchGenreTerm(term, requestId, genre, knownIds, append) {
@@ -740,12 +755,12 @@ async function fetchGenreTerm(term, requestId, genre, knownIds, append) {
     // search phrasing automatically so the list keeps growing.
     if (append && !newItems.length) {
       genreLoadingMore = false;
-      const terms = GENRE_SEARCH_TERMS[genre] || [];
       const nextIndex = genreTermIndex + 1;
-      if (nextIndex < terms.length) {
+      const next = genreSearchTermAt(genre, nextIndex);
+      if (next) {
         genreTermIndex = nextIndex;
         genrePageToken = null;
-        fetchGenreTerm(terms[nextIndex], requestId, genre, knownIds, true);
+        fetchGenreTerm(next, requestId, genre, knownIds, true);
         return;
       }
       genrePageToken = null;
@@ -849,9 +864,8 @@ function renderCatalog() {
     } else if (genreStatus === 'error') {
       resultsBody = `<p class="catalog-disclaimer"><strong>${t('catalog.errorTitle')}</strong> ${t('catalog.errorBody')}</p>${renderGrid(list, t('empty.noResults'), t('empty.filterHint'))}`;
     } else {
-      const terms = GENRE_SEARCH_TERMS[activeCategory] || [];
-      const canLoadMore = genrePageToken || genreTermIndex < terms.length - 1;
-      const loadMoreGenre = genreLoadingMore ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : canLoadMore ? `<button class="ghost-button load-more-button" data-action="load-more-genre">${t('search.loadMore')} ${icon('arrow', 13)}</button>` : '';
+      // The term generator is endless: there is always another phrasing.
+      const loadMoreGenre = genreLoadingMore ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : `<button class="ghost-button load-more-button" data-action="load-more-genre">${t('search.loadMore')} ${icon('arrow', 13)}</button>`;
       resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list, t('empty.noResults'), t('empty.filterHint'))}${loadMoreGenre}`;
     }
   } else if (!searchQuery && (discoveryStatus === 'loading' || discoveryStatus === 'loading-more')) {
@@ -868,7 +882,7 @@ function renderCatalog() {
     const offlineNote = discoveryStatus === 'error' ? `<p class="catalog-disclaimer"><strong>${t('catalog.errorTitle')}</strong> ${t('catalog.errorBody')}</p>` : '';
     const sortsForMore = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
     const hasNextSort = sortsForMore.length > 1;
-    const loadMore = (catalogVisibleCount < list.length || hasNextSort) ? `<button class="ghost-button load-more-button" data-action="load-more">${t('catalog.loadMore')} ${icon('arrow', 13)}</button>` : '';
+    const loadMore = `<button class="ghost-button load-more-button" data-action="load-more">${t('catalog.loadMore')} ${icon('arrow', 13)}</button>`;
     const note = cachedItems.length ? `<p class="result-note">${formatResultCount(list.length)} · ${escapeHtml(discoverySortLabel(selectedSort))}</p>` : '';
     resultsBody = `${offlineNote}${note}${renderGrid(list.slice(0, catalogVisibleCount), t('empty.noResults'), t('empty.filterHint'))}${loadMore}`;
   }
@@ -960,6 +974,73 @@ async function loadFriends(username) {
   }
 }
 
+// ---- Endless loading for the default (genreless) catalog view ----
+// Phase 1: Discover categories (5 of them, append mode).
+// Phase 2: general omni-search with rotating popular queries.
+const GENERAL_SEARCH_QUERIES = ['popular', 'roblox', 'games', 'new', 'fun', 'top', 'best', 'free', 'pvp', 'tycoon', 'obby', 'simulator', 'adventure', 'roleplay', 'action', 'survival', 'horror', 'parkour', 'boss', 'anime'];
+let generalSearchIndex = 0;
+let generalSearchToken = null;
+let generalLoadingMore = false;
+let generalRequestId = 0;
+
+function markDiscoverySortUsed(sortId) {
+  const acc = discoveryCatalog.__accumulated || { savedAt: Date.now(), items: [] };
+  acc.usedSorts = [...new Set([...(acc.usedSorts || []), String(sortId)])];
+  discoveryCatalog = { ...discoveryCatalog, __accumulated: acc };
+}
+
+function allDiscoverySortsUsed() {
+  const sorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
+  const used = discoveryCatalog.__accumulated?.usedSorts || [];
+  return sorts.every((sort) => used.includes(sort.id));
+}
+
+async function startGeneralSearchFallback() {
+  const acc = discoveryCatalog.__accumulated || { savedAt: Date.now(), items: [] };
+  acc.searchFallbackStarted = true;
+  discoveryCatalog = { ...discoveryCatalog, __accumulated: acc };
+  await appendGeneralSearch();
+}
+
+async function appendGeneralSearch() {
+  const requestId = ++generalRequestId;
+  generalLoadingMore = true;
+  discoveryStatus = 'loading-more';
+  renderPage();
+  try {
+    if (!window.vortexDesktop?.searchGames) throw new Error('desktop only');
+    const query = GENERAL_SEARCH_QUERIES[generalSearchIndex % GENERAL_SEARCH_QUERIES.length];
+    const response = await window.vortexDesktop.searchGames({
+      query,
+      pageToken: generalSearchToken
+    });
+    if (requestId !== generalRequestId) return;
+    const received = (response.items || []).map((game) => normalizeDiscoveredGame(game, query));
+    const acc = discoveryCatalog.__accumulated || { savedAt: Date.now(), items: [] };
+    const knownIds = new Set(acc.items.map((game) => String(game.id)));
+    const newItems = received.filter((game) => !knownIds.has(String(game.id)));
+    if (!newItems.length && !response.nextPageToken) {
+      // This query is exhausted: rotate to the next one and retry once.
+      generalSearchIndex += 1;
+      generalSearchToken = null;
+      generalLoadingMore = false;
+      if (generalSearchIndex < GENERAL_SEARCH_QUERIES.length * 3) { appendGeneralSearch(); return; }
+    }
+    acc.items = [...acc.items, ...newItems];
+    discoveryCatalog = { ...discoveryCatalog, __accumulated: acc };
+    generalSearchToken = response.nextPageToken || null;
+    if (!generalSearchToken) { generalSearchIndex += 1; generalSearchToken = null; }
+    generalLoadingMore = false;
+    discoveryStatus = 'success';
+    renderPage();
+  } catch {
+    if (requestId !== generalRequestId) return;
+    generalLoadingMore = false;
+    discoveryStatus = 'error';
+    renderPage();
+  }
+}
+
 let autoLoadPending = false;
 let lastAutoLoadAt = 0;
 function maybeLoadMoreCatalog() {
@@ -983,6 +1064,9 @@ function maybeLoadMoreCatalog() {
     renderPage();
     window.scrollTo({ top: scrollY, behavior: 'auto' });
     finish();
+  } else if (allDiscoverySortsUsed() && discoveryCatalog.__accumulated?.searchFallbackStarted) {
+    if (!generalLoadingMore) appendGeneralSearch().finally(finish);
+    else finish();
   } else {
     const btn = document.querySelector('[data-action="load-more"]');
     if (btn) {
@@ -2218,13 +2302,13 @@ async function loadDiscoveryCatalog(sortId = activeDiscoverySort, { force = fals
       const merged = [...previous, ...items.filter((game) => !knownIds.has(String(game.id)))];
       discoveryCatalog = {
         ...discoveryCatalog,
-        __accumulated: { savedAt: Date.now(), items: merged },
+        __accumulated: { savedAt: Date.now(), items: merged, usedSorts: [...new Set([...(discoveryCatalog.__accumulated?.usedSorts || []), String(activeDiscoverySort)])] },
         [activeDiscoverySort]: { savedAt: Date.now(), items }
       };
     } else {
       discoveryCatalog = {
         ...discoveryCatalog,
-        __accumulated: { savedAt: Date.now(), items },
+        __accumulated: { savedAt: Date.now(), items, usedSorts: [String(activeDiscoverySort)] },
         [activeDiscoverySort]: { savedAt: Date.now(), items }
       };
     }
@@ -2491,11 +2575,18 @@ document.addEventListener('click', async (event) => {
         if (catalogVisibleCount < list.length) { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); }
         else {
           // All locally available items are shown: fetch the next Discover
-          // category in append mode so the catalog only ever grows.
+          // category in append mode; once every category is used up, fall
+          // through to an endless general search so loading never dead-ends.
           const sorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
           const index = sorts.findIndex((sort) => sort.id === activeDiscoverySort);
           const next = sorts[(index + 1) % sorts.length];
-          if (next && next.id !== activeDiscoverySort) loadDiscoveryCatalog(next.id, { append: true });
+          if (next && next.id !== activeDiscoverySort && !discoveryCatalog[next.id]) loadDiscoveryCatalog(next.id, { append: true });
+          else if (next && next.id !== activeDiscoverySort && !(discoveryCatalog.__accumulated?.usedSorts || []).includes(next.id)) {
+            markDiscoverySortUsed(next.id);
+            loadDiscoveryCatalog(next.id, { append: true });
+          } else if (!(discoveryCatalog.__accumulated?.searchFallbackStarted)) {
+            startGeneralSearchFallback();
+          }
         }
       }
     }

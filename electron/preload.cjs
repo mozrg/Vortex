@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
     ipcRenderer.on('window:state', listener);
     return () => ipcRenderer.removeListener('window:state', listener);
   },
-  openGame: (placeId, gameId = '') => ipcRenderer.invoke('game:open', placeId, gameId),
+  openGame: (placeId, gameId = '', accessCode = '') => ipcRenderer.invoke('game:open', placeId, gameId, accessCode),
   getUpdateState: () => ipcRenderer.invoke('updates:get-state'),
   retryUpdateCheck: () => ipcRenderer.invoke('updates:retry'),
   onUpdateState: (callback) => {

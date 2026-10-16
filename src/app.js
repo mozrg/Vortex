@@ -518,26 +518,13 @@ function openGameDetails(id) {
     detailGame = { ...detailGame, ...response.game };
     detailStatus = 'success';
     renderPage();
-    loadGameServerDetails(requestId);
   }).catch(() => { if (requestId === detailRequestId && currentView === 'game-detail') { detailStatus = 'error'; renderPage(); } });
-}
-
-async function loadGameServerDetails(requestId = detailRequestId) {
-  if (!detailGame || !window.vortexDesktop?.getGameServers) return;
-  try {
-    const timeout = new Promise((_, reject) => window.setTimeout(() => reject(new Error('timeout')), 9000));
-    const servers = await Promise.race([window.vortexDesktop.getGameServers(detailGame.universeId, detailGame.placeId || detailGame.id), timeout]);
-    if (requestId !== detailRequestId || currentView !== 'game-detail') return;
-    detailGame = { ...detailGame, servers: { ...servers, loading: false } };
-    renderPage();
-  } catch { /* server list is optional; keep all other details rendered */ }
 }
 
 function renderGameDetail() {
   const game = detailGame;
   if (!game) return `<div class="empty-state"><h2>${t('game.detailNotFound')}</h2><button class="ghost-button" data-nav="catalog">${t('empty.openCatalog')}</button></div>`;
   const thumbnail = safeThumbnail(game.icon || game.thumbnail);
-  const servers = game.servers || { private: [], hasPrivateServerSupport: false };
   const media = Array.isArray(game.media) ? game.media : [];
   const videos = media.filter((item) => item.type === 'video' && item.url);
   const screenshots = [...new Map([...(Array.isArray(game.screenshots) ? game.screenshots : []), ...media.filter((item) => item.type !== 'video' && item.url)].map((item) => [item.url, item])).values()];
@@ -563,8 +550,6 @@ function renderGameDetail() {
   const currentMedia = galleryItems[detailGalleryIndex];
   const galleryTitle = videos.length ? t('game.media') : t('game.screenshots');
   const gallery = currentMedia ? `<section class="detail-section"><div class="detail-section-heading"><div><h2>${galleryTitle}</h2><p>${detailGalleryIndex + 1} / ${galleryItems.length}</p></div>${galleryItems.length > 1 ? `<div class="detail-gallery-controls"><button class="icon-button" data-action="gallery-prev" aria-label="${t('game.previousMedia')}">${icon('arrowLeft', 16)}</button><button class="icon-button" data-action="gallery-next" aria-label="${t('game.nextMedia')}">${icon('arrow', 16)}</button></div>` : ''}</div><div class="detail-gallery"><div class="detail-gallery-slide">${currentMedia.kind === 'video' ? `<video controls preload="metadata" poster="${escapeHtml(currentMedia.thumbnail || '')}"><source src="${escapeHtml(currentMedia.url)}" type="video/mp4" /></video>` : `<img src="${escapeHtml(currentMedia.url)}" alt="${escapeHtml(currentMedia.title || game.title)}" />`}</div>${galleryItems.length > 1 ? `<div class="detail-gallery-dots">${galleryItems.map((_, index) => `<button class="gallery-dot ${index === detailGalleryIndex ? 'active' : ''}" data-action="gallery-goto" data-index="${index}" aria-label="${index + 1}"></button>`).join('')}</div>` : ''}</div></section>` : '';
-  const privateServers = servers.private || [];
-  const serverSection = `<section class="detail-section"><div class="detail-section-heading"><div><h2>${t('game.privateServer')}</h2><p>${t('game.privateServersHint')}</p></div><button class="icon-button" data-action="refresh-place-details" title="${t('game.refreshServers')}">${icon('rotate', 16)}</button></div><div class="detail-server-list">${servers.loading ? `<p class="detail-muted">${t('game.loadingDetails')}</p>` : privateServers.length ? privateServers.map((server) => `<div class="detail-server"><span><strong>${escapeHtml(server.name || server.ownerName || t('game.privateServer'))}</strong><small>${formatCount(server.playing)} / ${formatCount(server.maxPlayers)} ${t('game.players')}</small>${server.ownerName ? `<small>${t('game.serverOwner')}: ${escapeHtml(server.ownerName)}</small>` : ''}</span><button class="ghost-button" data-action="join-server" data-id="${escapeHtml(game.id)}" data-server-id="${escapeHtml(server.id)}" ${server.accessCode ? `data-access-code="${escapeHtml(server.accessCode)}"` : ''}>${t('game.joinServer')}</button></div>`).join('') : `<p class="detail-muted">${t(servers.error ? 'game.serverListError' : servers.hasPrivateServerSupport ? 'game.noPrivateServers' : 'game.connectCookieForServers')}</p>`}</div><button class="primary-button" data-action="create-private-server" data-id="${escapeHtml(game.id)}">${t('game.createPrivateServer')}</button></section>`;
   const description = String(game.description || t('game.fallbackDescription'));
   return `<button class="detail-back icon-button" data-action="detail-back" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)}</button>
     <article class="game-detail">
@@ -575,7 +560,6 @@ function renderGameDetail() {
       <section class="detail-section"><h2>${t('game.description')}</h2><p class="detail-description">${escapeHtml(description)}</p></section>
       <section class="detail-section detail-meta"><div><span>${t('game.author')}</span><strong>${escapeHtml(game.creator || t('game.unknownCreator'))}</strong></div><div><span>${t('game.genre')}</span><strong>${escapeHtml(game.genre || t('genre.other'))}</strong></div><div><span>${t('game.updated')}</span><strong>${game.updated ? escapeHtml(new Date(game.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU')) : '—'}</strong></div><div><span>${t('game.playtime')}</span><strong>${playtime}</strong></div></section>
       ${gallery}${badges}${social}
-      ${serverSection}
     </article>`;
 }
 
@@ -2685,14 +2669,11 @@ document.addEventListener('click', async (event) => {
     }
     if (action.dataset.action === 'favorite') { toggleFavorite(action.dataset.id); if (currentView === 'game-detail' && detailGame) renderPage(); }
     if (action.dataset.action === 'play') openGame(action.dataset.id);
-    if (action.dataset.action === 'join-server') openGame(action.dataset.id, action.dataset.serverId, action.dataset.accessCode || '');
     if (action.dataset.action === 'show-more-badges') { detailBadgeCount += 3; renderPage(); return; }
     if (action.dataset.action === 'toggle-badges') { detailBadgesExpanded = !detailBadgesExpanded; renderPage(); return; }
     if (action.dataset.action === 'gallery-prev') { detailGalleryIndex = Math.max(0, detailGalleryIndex - 1); renderPage(); return; }
     if (action.dataset.action === 'gallery-next') { detailGalleryIndex = Math.min(detailGalleryCount - 1, detailGalleryIndex + 1); renderPage(); return; }
     if (action.dataset.action === 'gallery-goto') { detailGalleryIndex = Math.max(0, Number(action.dataset.index) || 0); renderPage(); return; }
-    if (action.dataset.action === 'refresh-place-details') { detailGame = { ...detailGame, servers: { private: [], hasPrivateServerSupport: Boolean(detailGame?.servers?.hasPrivateServerSupport), loading: true } }; renderPage(); loadGameServerDetails(detailRequestId); return; }
-    if (action.dataset.action === 'create-private-server') window.vortexDesktop?.openPrivateServerPage?.(action.dataset.id);
 
     if (action.dataset.action === 'toggle-description') {
       const id = String(action.dataset.id);

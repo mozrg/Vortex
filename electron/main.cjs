@@ -609,46 +609,6 @@ async function getGameDetailsByUniverse(universeIds) {
   return results.flat();
 }
 
-async function fetchPrivateServersForPlace(placeId) {
-  const headers = { Cookie: `.ROBLOSECURITY=${robloxSecurityCookie}`, Accept: 'application/json' };
-  const universeLookup = await fetchCachedJson(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`, 6000);
-  const universeId = String(universeLookup?.universeId || '');
-  if (!/^\d{1,20}$/.test(universeId)) throw new Error('Could not resolve universe for place.');
-  const me = await fetchJson(new Request('https://users.roblox.com/v1/users/authenticated', { headers: { ...headers, 'User-Agent': 'Mozilla/5.0 Vortex/1.0' } }), 6000);
-  if (!me?.id) throw new Error('Roblox cookie is not authenticated.');
-  const output = [];
-  let cursor = '';
-  for (let page = 0; page < 5; page++) {
-    const url = new URL(`https://games.roblox.com/v1/games/${universeId}/private-servers`);
-    url.searchParams.set('limit', '10');
-    url.searchParams.set('sortOrder', 'Asc');
-    if (cursor) url.searchParams.set('cursor', cursor);
-    const payload = await fetchJson(new Request(url, { headers }), 7000);
-    const entries = Array.isArray(payload.data) ? payload.data : [];
-    output.push(...entries.map((server) => ({
-      id: String(server.id || server.privateServerId || ''),
-      accessCode: String(server.accessCode || server.privateServerLinkCode || ''),
-      name: String(server.name || server.serverName || ''),
-      playing: Number(server.playing ?? server.playerCount) || 0,
-      maxPlayers: Number(server.maxPlayers) || 0,
-      ownerName: String(server.owner?.name || me.displayName || me.name || ''),
-      ownerId: String(server.owner?.id || me.id), type: 'private'
-    })).filter((server) => server.id || server.accessCode));
-    cursor = String(payload.nextPageCursor || '');
-    if (!cursor) break;
-  }
-  return output;
-}
-
-
-
-ipcMain.handle('game:private-page', async (_event, placeId) => {
-  const id = String(placeId || '').match(/^\d{5,20}$/)?.[0];
-  if (!id || !robloxSecurityCookie) return false;
-  await shell.openExternal(`https://www.roblox.com/games/${id}/?privateServerLinkCode=`);
-  return true;
-});
-
 ipcMain.handle('games:details', async (_event, request = {}) => {
   const universeId = String(request.universeId ?? '').match(/^\d{1,20}$/)?.[0] || '';
   const placeId = String(request.placeId ?? '').match(/^\d{5,20}$/)?.[0] || '';
@@ -686,17 +646,9 @@ ipcMain.handle('games:details', async (_event, request = {}) => {
     socialLinks: social.status === 'fulfilled' && Array.isArray(social.value?.data) ? social.value.data : [],
     media: media.status === 'fulfilled' && Array.isArray(media.value?.data) ? media.value.data.map((item) => ({ type: String(item.assetType || item.assetTypeId || '').toLowerCase().includes('video') ? 'video' : 'image', url: String(item.videoUrl || item.imageUrl || item.assetUrl || ''), thumbnail: String(item.thumbnailUrl || ''), title: String(item.title || '') })).filter((item) => item.url) : [],
     screenshots: screenshots.status === 'fulfilled' && Array.isArray(screenshots.value?.data) ? screenshots.value.data.flatMap((entry) => entry.thumbnails || []).map((item) => ({ url: String(item.imageUrl || ''), title: String(item.name || '') })).filter((item) => item.url) : [],
-    servers: { public: [], friends: [], private: [], hasPrivateServerSupport: Boolean(robloxSecurityCookie) }
   }};
 });
 
-ipcMain.handle('games:servers', async (_event, universeIdValue, placeIdValue) => {
-  const universeId = String(universeIdValue || '').match(/^\d{1,20}$/)?.[0] || '';
-  const placeId = String(placeIdValue || '').match(/^\d{5,20}$/)?.[0] || '';
-  if (!universeId || !placeId || !robloxSecurityCookie) return { private: [], hasPrivateServerSupport: false };
-  try { return { private: await fetchPrivateServersForPlace(placeId), hasPrivateServerSupport: true }; }
-  catch { return { private: [], hasPrivateServerSupport: true, error: 'private-server-list-unavailable' }; }
-});
 ipcMain.handle('game:open', async (_event, placeId, gameId, accessCode) => {
   const normalizedId = String(placeId ?? '');
   if (!/^\d{5,20}$/.test(normalizedId)) throw new Error('Некорректный идентификатор игры.');

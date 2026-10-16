@@ -611,7 +611,7 @@ async function getGameDetailsByUniverse(universeIds) {
 
 async function fetchPrivateServersForUniverse(universeId) {
   const headers = { Cookie: `.ROBLOSECURITY=${robloxSecurityCookie}`, Accept: 'application/json' };
-  const me = await fetchJson(new Request('https://users.roblox.com/v1/users/authenticated', { headers }), 6000);
+  const me = await fetchJson(new Request('https://users.roblox.com/v1/users/authenticated', { headers: { ...headers, 'User-Agent': 'Mozilla/5.0 Vortex/1.0' } }), 6000);
   if (!me?.id) throw new Error('Roblox cookie is not authenticated.');
   const output = [];
   let cursor = '';
@@ -679,7 +679,7 @@ ipcMain.handle('games:details', async (_event, request = {}) => {
     downVotes: Number(voteData.downVotes ?? base.downVotes) || 0,
     creatorId: String(row.creator?.id ?? ''), creator: String(row.creator?.name ?? base.creator),
     genre: String(row.genreL1 ?? row.genre ?? base.genre),
-    badges: badges.status === 'fulfilled' && Array.isArray(badges.value?.data) ? badges.value.data.slice(0, 12).map((badge) => ({ id: String(badge.id), name: String(badge.name || ''), description: String(badge.description || ''), icon: String(badge.iconImageId || '') })) : [],
+    badges: badges.status === 'fulfilled' && Array.isArray(badges.value?.data) ? badges.value.data.map((badge) => ({ id: String(badge.id), name: String(badge.name || ''), description: String(badge.description || ''), icon: String(badge.iconImageId || '') })) : [],
     socialLinks: social.status === 'fulfilled' && Array.isArray(social.value?.data) ? social.value.data : [],
     media: media.status === 'fulfilled' && Array.isArray(media.value?.data) ? media.value.data.map((item) => ({ type: String(item.assetType || item.assetTypeId || '').toLowerCase().includes('video') ? 'video' : 'image', url: String(item.videoUrl || item.imageUrl || item.assetUrl || ''), thumbnail: String(item.thumbnailUrl || ''), title: String(item.title || '') })).filter((item) => item.url) : [],
     screenshots: screenshots.status === 'fulfilled' && Array.isArray(screenshots.value?.data) ? screenshots.value.data.flatMap((entry) => entry.thumbnails || []).map((item) => ({ url: String(item.imageUrl || ''), title: String(item.name || '') })).filter((item) => item.url) : [],

@@ -697,6 +697,7 @@ let genreResults = [];
 let genrePendingResults = [];
 let genreOverflowResults = [];
 let genrePageToken = null;
+let genreSessionId = '';
 let genreStatus = 'idle';
 let genreLoadingMore = false;
 let activeGenreRequestId = 0;
@@ -709,7 +710,7 @@ async function fetchGenreGames(append = false) {
   if (!GENRE_SEARCH_BASE[genre] || genreLoadingMore) return;
   const requestId = ++activeGenreRequestId;
   const targetNewCount = append ? 10 : 0;
-  const maxRequests = append ? 24 : 1;
+  const maxRequests = append ? 120 : 1;
   if (append) {
     genreLoadingMore = true;
     genrePendingResults = [];
@@ -720,6 +721,7 @@ async function fetchGenreGames(append = false) {
     genrePendingResults = [];
     genreOverflowResults = [];
     genrePageToken = null;
+    genreSessionId = createSearchSessionId();
     genreTermIndex = 0;
     renderPage();
   }
@@ -737,7 +739,8 @@ async function fetchGenreGames(append = false) {
       if (requestId !== activeGenreRequestId || activeCategory !== genre) return;
       const term = genreSearchTermAt(genre, genreTermIndex);
       if (!term) break;
-      const response = await window.vortexDesktop.searchGames({ query: term, pageToken: genrePageToken });
+      const response = await window.vortexDesktop.searchGames({ query: term, sessionId: genreSessionId, pageToken: genrePageToken });
+      genreSessionId = response.sessionId || genreSessionId;
       successfulRequests++;
       if (requestId !== activeGenreRequestId || activeCategory !== genre) return;
       const received = (response.items || []).map((game) => ({

@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
   },
   searchGames: (request) => ipcRenderer.invoke('games:search', request),
   getGameDetails: (request) => ipcRenderer.invoke('games:details', request),
+  getCurrentGameOnline: (universeId) => ipcRenderer.invoke('games:online-count', universeId),
+  openExternalUrl: (url) => ipcRenderer.invoke('shell:open-external', url),
   discoverGames: (request) => ipcRenderer.invoke('games:discover', request),
   getFeaturedGames: (placeIds) => ipcRenderer.invoke('games:featured', placeIds),
   clearSearchCache: () => ipcRenderer.invoke('games:clear-cache'),

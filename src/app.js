@@ -160,6 +160,12 @@ let detailBadgeCount = 3;
 let detailBadgesExpanded = true;
 let detailGalleryIndex = 0;
 let detailGalleryCount = 0;
+let detailOnlineRange = 24;
+let detailOnlineHistory = [];
+let onlineHistoryTimer = null;
+let onlineHistoryBusy = false;
+let onlineHistoryLastSampleAt = 0;
+
 let searchQuery = '';
 let activeCategory = preferences.catalogGenre || 'all';
 let sortMode = 'default';
@@ -506,7 +512,11 @@ function openGameDetails(id) {
   detailBadgesExpanded = true;
   detailGalleryIndex = 0;
   detailGalleryCount = 0;
+  detailOnlineRange = 24;
   detailGame = { ...game, upVotes: Number(game.upVotes) || 0, downVotes: Number(game.downVotes) || 0, playing: Number(game.playerCount) || 0, visits: Number(game.visits) || 0, favorites: Number(game.favorites) || 0 };
+  detailOnlineHistory = readStored(`vortex.onlineHistory.${game.universeId || game.id}`, []);
+  if (onlineHistoryTimer) window.clearInterval(onlineHistoryTimer);
+  onlineHistoryLastSampleAt = 0;
   detailStatus = 'loading';
   currentView = 'game-detail';
   renderPage();
@@ -517,8 +527,38 @@ function openGameDetails(id) {
     if (!response?.ok) { detailStatus = 'error'; renderPage(); return; }
     detailGame = { ...detailGame, ...response.game };
     detailStatus = 'success';
+    sampleOnlineHistory(requestId);
+    if (onlineHistoryTimer) window.clearInterval(onlineHistoryTimer);
+    onlineHistoryTimer = window.setInterval(() => sampleOnlineHistory(requestId), 60000);
     renderPage();
   }).catch(() => { if (requestId === detailRequestId && currentView === 'game-detail') { detailStatus = 'error'; renderPage(); } });
+}
+
+function renderOnlineHistory(points, rangeHours = 24) {
+  const cutoff = Date.now() - Number(rangeHours || 24) * 3600000;
+  const visible = (Array.isArray(points) ? points : []).filter((point) => Number(point.at) >= cutoff);
+  if (!visible.length) return '';
+  const width = 760, height = 190, pad = 22;
+  const values = visible.map((point) => Number(point.count) || 0);
+  const min = Math.min(...values), max = Math.max(...values);
+  const span = max - min || 1;
+  const coords = values.map((value, index) => `${pad + index * (width - pad * 2) / Math.max(visible.length - 1, 1)},${height - pad - (value - min) * (height - pad * 2) / span}`).join(' ');
+  const current = values[values.length - 1];
+  return `<section class="detail-section detail-online-chart"><div class="detail-section-heading"><div><h2>${t('game.onlineHistory')}</h2><p>${t('game.onlineHistoryHint')}</p></div><div class="detail-chart-ranges">${[1,6,24,168].map((hours) => `<button class="filter-chip ${Number(rangeHours) === hours ? 'active' : ''}" data-action="online-chart-range" data-range="${hours}">${hours === 168 ? '7d' : `${hours}h`}</button>`).join('')}</div></div><div class="detail-chart-current"><strong>${formatCount(current)}</strong><span>${t('game.online')}</span></div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="${t('game.onlineHistory')}"><defs><linearGradient id="online-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="var(--accent)" stop-opacity=".28"/><stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs><polygon points="${pad},${height - pad} ${coords} ${width - pad},${height - pad}" fill="url(#online-area)"/><polyline points="${coords}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg><div class="detail-chart-axis"><span>${new Date(visible[0].at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span><span>${t('game.liveObserved')}</span><span>${new Date(visible[visible.length - 1].at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></div></section>`;
+}
+
+function sampleOnlineHistory(requestId = detailRequestId) {
+  if (onlineHistoryBusy || requestId !== detailRequestId || currentView !== 'game-detail' || !detailGame) return;
+  if (Date.now() - onlineHistoryLastSampleAt < 55000) return;
+  onlineHistoryBusy = true;
+  onlineHistoryLastSampleAt = Date.now();
+  window.vortexDesktop?.getCurrentGameOnline?.(detailGame.universeId).then((count) => {
+    if (count === null || count === undefined || requestId !== detailRequestId || currentView !== 'game-detail') return;
+    const point = { at: Date.now(), count: Number(count) || 0 };
+    detailOnlineHistory = [...detailOnlineHistory.filter((item) => Number(item.at) > Date.now() - 7 * 86400000), point].slice(-10080);
+    localStorage.setItem(`vortex.onlineHistory.${detailGame.universeId || detailGame.id}`, JSON.stringify(detailOnlineHistory));
+    renderPage();
+  }).catch(() => {}).finally(() => { onlineHistoryBusy = false; });
 }
 
 function renderGameDetail() {
@@ -531,7 +571,8 @@ function renderGameDetail() {
   const likesTotal = Number(game.upVotes || 0) + Number(game.downVotes || 0);
   const likePercent = likesTotal ? Math.round(Number(game.upVotes || 0) / likesTotal * 100) : null;
   const dislikePercent = likePercent === null ? 0 : 100 - likePercent;
-  const voteBar = likesTotal ? `<div class="detail-like-bar" role="img" aria-label="${t('game.likeRatio')} ${likePercent}%"><span class="detail-like-positive" style="width:${likePercent}%"></span><span class="detail-like-negative" style="width:${dislikePercent}%"></span></div><div class="detail-like-legend"><span><i class="like-dot"></i>${likePercent}% · ${t('game.likeRatio')}</span><span><i class="dislike-dot"></i>${dislikePercent}% · ${t('game.dislikeRatio')}</span></div>` : '';
+  const voteBar = likesTotal ? `<div class="detail-like-bar" role="img" aria-label="${t('game.likeRatio')} ${likePercent}%"><span class="detail-like-positive" style="width:${likePercent}%"></span><span class="detail-like-negative" style="width:${dislikePercent}%"></span></div><div class="detail-like-legend"><span><i class="like-dot"></i>${likePercent}% · ${t('game.likeRatio')} (${formatCount(game.upVotes)})</span><span><i class="dislike-dot"></i>${dislikePercent}% · ${t('game.dislikeRatio')} (${formatCount(game.downVotes)})</span></div>` : '';
+  const onlineHistory = renderOnlineHistory(detailOnlineHistory, detailOnlineRange);
   const playtime = renderPlaytimeBadge(game.id) || t('stats.noData');
   const allBadges = Array.isArray(game.badges) ? game.badges : [];
   const visibleBadges = detailBadgesExpanded ? allBadges.slice(0, detailBadgeCount) : [];
@@ -542,7 +583,7 @@ function renderGameDetail() {
     const label = link.title || link.type || new URL(href).hostname.replace(/^www\./, '');
     const platform = String(link.type || label).toLowerCase();
     const platformLabel = /discord/.test(platform) ? 'Discord' : /youtube|video/.test(platform) ? 'YouTube' : /twitter|x\.com/.test(platform) ? 'X' : /tiktok/.test(platform) ? 'TikTok' : /roblox/.test(platform) ? 'Roblox' : label;
-    return `<a class="detail-social-card" href="${escapeHtml(href)}" target="_blank" rel="noreferrer"><span class="social-platform-icon">${icon(/youtube|video/.test(platform) ? 'play' : /discord/.test(platform) ? 'users' : 'arrowUpRight', 20)}</span><span><strong>${escapeHtml(platformLabel)}</strong><small>${escapeHtml(href.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</small></span></a>`;
+    return `<button class="detail-social-card" type="button" data-action="open-social-link" data-url="${escapeHtml(href)}"><span class="social-platform-icon">${icon(/youtube|video/.test(platform) ? 'play' : /discord/.test(platform) ? 'users' : 'arrowUpRight', 20)}</span><span><strong>${escapeHtml(platformLabel)}</strong><small>${escapeHtml(href.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</small></span></button>`;
   }).join('')}</div></section>` : '';
   const galleryItems = [...videos.map((item) => ({ ...item, kind: 'video' })), ...screenshots.map((item) => ({ ...item, kind: 'image' }))];
   detailGalleryCount = galleryItems.length;
@@ -556,7 +597,7 @@ function renderGameDetail() {
       <header class="detail-hero"><div class="detail-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(game.title)}" />` : ''}</div><div class="detail-hero-copy"><div class="eyebrow"><span class="eyebrow-mark"></span>${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p>${escapeHtml(game.creator || t('game.unknownCreator'))}</p><div class="detail-actions"><button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button><button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button></div></div></header>
       ${detailStatus === 'loading' ? `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('game.loadingDetails')}</strong></div>` : ''}
       ${detailStatus === 'error' ? `<p class="catalog-disclaimer">${t('game.detailsUnavailable')}</p>` : ''}
-      <section class="detail-stats"><div><strong>${formatCount(game.playing ?? game.playerCount)}</strong><span>${t('game.online')}</span></div><div class="detail-like-stat"><strong>${likePercent === null ? '—' : `${likePercent}%`}</strong><span>${t('game.likeRatio')}</span>${voteBar}</div><div><strong>${formatCount(game.visits)}</strong><span>${t('game.visits')}</span></div><div><strong>${formatCount(game.favorites)}</strong><span>${t('game.favorites')}</span></div></section>
+      ${onlineHistory}<section class="detail-stats"><div><strong>${formatCount(game.playing ?? game.playerCount)}</strong><span>${t('game.online')}</span></div><div class="detail-like-stat"><strong>${likePercent === null ? '—' : `${likePercent}%`}</strong><span>${t('game.likeRatio')} · ${formatCount(game.upVotes)} / ${formatCount(game.downVotes)}</span>${voteBar}</div><div><strong>${formatCount(game.visits)}</strong><span>${t('game.visits')}</span></div><div><strong>${formatCount(game.favorites)}</strong><span>${t('game.favorites')}</span></div></section>
       <section class="detail-section"><h2>${t('game.description')}</h2><p class="detail-description">${escapeHtml(description)}</p></section>
       <section class="detail-section detail-meta"><div><span>${t('game.author')}</span><strong>${escapeHtml(game.creator || t('game.unknownCreator'))}</strong></div><div><span>${t('game.genre')}</span><strong>${escapeHtml(game.genre || t('genre.other'))}</strong></div><div><span>${t('game.updated')}</span><strong>${game.updated ? escapeHtml(new Date(game.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU')) : '—'}</strong></div><div><span>${t('game.playtime')}</span><strong>${playtime}</strong></div></section>
       ${gallery}${badges}${social}
@@ -2632,7 +2673,9 @@ document.addEventListener('click', async (event) => {
 
   const action = target.closest('[data-action]');
   if (action) {
-    if (action.dataset.action === 'detail-back') { currentView = 'catalog'; renderPage(); return; }
+    if (action.dataset.action === 'open-social-link') { window.vortexDesktop?.openExternalUrl?.(action.dataset.url); return; }
+    if (action.dataset.action === 'online-chart-range') { detailOnlineRange = Number(action.dataset.range) || 24; renderPage(); return; }
+    if (action.dataset.action === 'detail-back') { if (onlineHistoryTimer) window.clearInterval(onlineHistoryTimer); onlineHistoryTimer = null; currentView = 'catalog'; renderPage(); return; }
     if (action.dataset.action === 'open-details') { openGameDetails(action.dataset.id); return; }
     if (action.dataset.action === 'export-data') {
       const blob = new Blob([JSON.stringify(buildDataExport(), null, 2)], { type: 'application/json' });

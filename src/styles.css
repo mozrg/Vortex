@@ -1024,15 +1024,7 @@ body.no-motion .palette-panel { animation: none; }
 .detail-like-positive { height: 100%; background: linear-gradient(90deg,#22c975,#8be09b); transition: width .4s ease; }
 .detail-like-negative { height: 100%; background: linear-gradient(90deg,#ff7a73,#e94357); }
 .detail-like-legend { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 7px; color: var(--muted); font-size: 9px; }
-.detail-online-chart { padding: 16px 18px; }
-.detail-online-chart .detail-section-heading { margin-bottom: 8px; }
-.detail-online-chart svg { display: block; width: 100%; height: 150px; overflow: visible; }
-.detail-chart-current { display: flex; align-items: baseline; gap: 8px; }
-.detail-chart-current strong { font: 700 22px var(--font-display); }
-.detail-chart-current span, .detail-chart-axis { color: var(--muted); font-size: 10px; }
-.detail-chart-axis { display: flex; justify-content: space-between; padding: 0 3px; }
-.detail-chart-ranges { display: flex; gap: 5px; }
-.detail-chart-ranges .filter-chip { padding: 5px 8px; font-size: 10px; }
+
 .detail-like-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .like-dot, .dislike-dot { width: 7px; height: 7px; border-radius: 50%; background: #33cd7c; }
 .dislike-dot { background: #ef5262; }

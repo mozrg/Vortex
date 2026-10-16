@@ -609,16 +609,6 @@ async function getGameDetailsByUniverse(universeIds) {
   return results.flat();
 }
 
-ipcMain.handle('games:online-count', async (_event, universeIdValue) => {
-  const universeId = String(universeIdValue || '').match(/^\d{1,20}$/)?.[0] || '';
-  if (!universeId) return null;
-  try {
-    const payload = await fetchCachedJson(`https://games.roblox.com/v1/games?universeIds=${universeId}`, 8000);
-    const row = payload?.data?.[0];
-    return row ? Number(row.playing) || 0 : null;
-  } catch { return null; }
-});
-
 ipcMain.handle('shell:open-external', async (_event, value) => {
   try {
     const url = new URL(String(value || ''));

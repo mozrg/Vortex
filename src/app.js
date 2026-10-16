@@ -34,6 +34,7 @@ const palettes = [
 const NAV_ITEMS = [
   { key: 'home', icon: 'home', group: 'menu' },
   { key: 'catalog', icon: 'compass', group: 'menu' },
+  { key: 'search', icon: 'search', group: 'menu' },
   { key: 'favorites', icon: 'heart', group: 'menu' },
   { key: 'recent', icon: 'clock', group: 'menu' },
   { key: 'friends', icon: 'users', group: 'menu' },

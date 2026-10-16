@@ -84,7 +84,16 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .game-card { transition: transform .2s var(--animation-easing), border-color .2s ease, box-shadow .2s ease; }
 .game-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(7,12,22,.16); }
 .search-loading { max-width: 900px; margin: 26px auto; padding: 48px 32px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); text-align: center; }
-.empty-state { border-style: solid; border-color: var(--line); background: var(--surface); border-radius: 14px; }
+.search-page-field { display: flex; align-items: center; gap: 10px; max-width: 900px; margin: 0 auto 28px; padding: 10px 12px 10px 17px; border: 1px solid var(--line-strong); border-radius: 14px; background: color-mix(in srgb, var(--surface) 92%, var(--accent)); box-shadow: 0 14px 35px rgba(0,0,0,.14); }
+.search-page-field:focus-within { border-color: color-mix(in srgb, var(--accent) 70%, var(--line-strong)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent), 0 14px 35px rgba(0,0,0,.14); }
+.search-page-icon { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; color: var(--accent); }
+.search-page-field input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: 500 14px/1.3 var(--font-ui); }
+.search-page-field input::placeholder { color: var(--muted); }
+.search-page-field .primary-button { flex: 0 0 auto; }
+.search-page-field .icon-button { flex: 0 0 auto; }
+.search-page-field + .empty-state { max-width: 720px; margin-inline: auto; }
+body.light-theme .search-page-field { background: #fff; box-shadow: 0 12px 30px rgba(24,30,45,.08); }
+@media (max-width: 700px) { .search-page-field { align-items: stretch; flex-wrap: wrap; padding: 10px; } .search-page-icon { width: 28px; } .search-page-field input { flex-basis: calc(100% - 42px); } .search-page-field .primary-button { width: 100%; justify-content: center; } }
 @media (max-width: 700px) { .catalog-filter-group { align-items: flex-start; flex-direction: column; gap: 6px; } .catalog-view-toggle { justify-self: start; } .catalog-list-view .game-card { grid-template-columns: 104px 1fr; } .catalog-list-view .game-card .game-card-actions { display: none; } }
 
 .sidebar-auto-hide .sidebar:hover, .sidebar-auto-hide .sidebar:focus-within { transform: translateX(0); opacity: 1; }

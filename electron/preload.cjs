@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
     return () => ipcRenderer.removeListener('updates:state', listener);
   },
   searchGames: (request) => ipcRenderer.invoke('games:search', request),
+  getGameDetails: (request) => ipcRenderer.invoke('games:details', request),
   discoverGames: (request) => ipcRenderer.invoke('games:discover', request),
   getFeaturedGames: (placeIds) => ipcRenderer.invoke('games:featured', placeIds),
   clearSearchCache: () => ipcRenderer.invoke('games:clear-cache'),

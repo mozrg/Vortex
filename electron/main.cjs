@@ -609,6 +609,39 @@ async function getGameDetailsByUniverse(universeIds) {
   return results.flat();
 }
 
+ipcMain.handle('games:details', async (_event, request = {}) => {
+  const universeId = String(request.universeId ?? '').match(/^\d{1,20}$/)?.[0] || '';
+  const placeId = String(request.placeId ?? '').match(/^\d{5,20}$/)?.[0] || '';
+  if (!universeId && !placeId) return { ok: false, error: 'invalid-id' };
+  let resolvedUniverseId = universeId;
+  if (!resolvedUniverseId && placeId) {
+    const place = await fetchCachedJson(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`, 300000);
+    resolvedUniverseId = String(place?.universeId ?? '');
+  }
+  if (!/^\d{1,20}$/.test(resolvedUniverseId)) return { ok: false, error: 'not-found' };
+  const [game, votes, badges, social] = await Promise.allSettled([
+    fetchCachedJson(`https://games.roblox.com/v1/games?universeIds=${resolvedUniverseId}`, 60000),
+    fetchCachedJson(`https://games.roblox.com/v1/games/${resolvedUniverseId}/votes`, 60000),
+    fetchCachedJson(`https://badges.roblox.com/v1/universes/${resolvedUniverseId}/badges?limit=100&sortOrder=Asc`, 60000),
+    fetchCachedJson(`https://games.roblox.com/v1/games/${resolvedUniverseId}/social-links/list`, 60000)
+  ]);
+  const row = game.status === 'fulfilled' && Array.isArray(game.value?.data) ? game.value.data[0] : null;
+  if (!row) return { ok: false, error: 'not-found' };
+  const thumbs = await getThumbnails([resolvedUniverseId]);
+  const base = mapGame(row, thumbs.get(resolvedUniverseId), placeId || row.rootPlaceId);
+  const voteData = votes.status === 'fulfilled' ? votes.value || {} : {};
+  return { ok: true, game: {
+    ...base, description: String(row.description ?? base.description), universeId: resolvedUniverseId, placeId: String(row.rootPlaceId || placeId || ''),
+    visits: Number(row.visits) || 0, favorites: Number(row.favoritedCount ?? row.favorites) || 0,
+    updated: row.updated || row.created || '', created: row.created || '',
+    playing: Number(row.playing) || 0, upVotes: Number(voteData.upVotes ?? base.upVotes) || 0,
+    downVotes: Number(voteData.downVotes ?? base.downVotes) || 0,
+    creatorId: String(row.creator?.id ?? ''), creator: String(row.creator?.name ?? base.creator),
+    genre: String(row.genreL1 ?? row.genre ?? base.genre),
+    badges: badges.status === 'fulfilled' && Array.isArray(badges.value?.data) ? badges.value.data.slice(0, 12).map((badge) => ({ id: String(badge.id), name: String(badge.name || ''), description: String(badge.description || ''), icon: String(badge.iconImageId || '') })) : [],
+    socialLinks: social.status === 'fulfilled' && Array.isArray(social.value?.data) ? social.value.data : []
+  }};
+});
 ipcMain.handle('game:open', async (_event, placeId, gameId) => {
   const normalizedId = String(placeId ?? '');
   if (!/^\d{5,20}$/.test(normalizedId)) throw new Error('Некорректный идентификатор игры.');

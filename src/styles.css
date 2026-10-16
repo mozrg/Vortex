@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   color-scheme: dark;
   --bg: #0b0c10;
   --surface: #111319;
@@ -997,3 +997,30 @@ body.no-motion .palette-panel { animation: none; }
 .profile-copy { display: grid; gap: 1px; min-width: 0; flex: 1; }
 .profile-copy strong { font-size: 12px; color: var(--text); }
 .profile-copy small { font-size: 9.5px; color: var(--muted); }
+/* Place detail page */
+.game-title[data-action="open-details"], .game-cover[data-action="open-details"] { cursor: pointer; }
+.game-title[data-action="open-details"]:hover { color: var(--accent); }
+.detail-back { margin-bottom: 18px; }
+.game-detail { max-width: 1120px; margin: 0 auto; }
+.detail-hero { display: grid; grid-template-columns: minmax(220px, 360px) 1fr; gap: 28px; align-items: center; padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
+.detail-cover { overflow: hidden; aspect-ratio: 16/9; border-radius: 12px; background: var(--surface-2); }
+.detail-cover img { width: 100%; height: 100%; object-fit: cover; }
+.detail-hero-copy h1 { margin: 10px 0; font: 750 30px/1.12 var(--font-display); letter-spacing: -.035em; }
+.detail-hero-copy p { color: var(--muted); }
+.detail-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.detail-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+.detail-stats > div, .detail-meta > div { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.detail-stats strong, .detail-stats span { display: block; }
+.detail-stats strong { font-size: 20px; }
+.detail-stats span, .detail-meta span { margin-top: 5px; color: var(--muted); font-size: 11px; }
+.detail-section { margin: 16px 0; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.detail-section h2 { margin: 0 0 12px; font: 650 16px var(--font-display); }
+.detail-description { white-space: pre-wrap; line-height: 1.7; color: var(--text-soft); }
+.detail-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 0; border: 0; background: transparent; }
+.detail-meta > div span, .detail-meta > div strong { display: block; }
+.detail-meta > div strong { margin-top: 8px; font-size: 13px; }
+.detail-badges, .detail-social-links { display: flex; flex-wrap: wrap; gap: 10px; }
+.detail-badge { display: grid; gap: 5px; max-width: 240px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.detail-badge small, .detail-muted { color: var(--muted); }
+.detail-social-links a { padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; color: var(--accent); }
+@media (max-width: 720px) { .detail-hero { grid-template-columns: 1fr; } .detail-stats, .detail-meta { grid-template-columns: repeat(2, 1fr); } }

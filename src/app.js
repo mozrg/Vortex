@@ -153,6 +153,8 @@ let playSessionGameId = null;
 let dynamicGames = readStored('vortex.discovered', []);
 const expandedDescriptions = new Set();
 let currentView = 'home';
+let detailGame = null;
+let detailStatus = 'idle';
 let searchQuery = '';
 let activeCategory = preferences.catalogGenre || 'all';
 let sortMode = 'default';
@@ -488,6 +490,44 @@ function renderPlaytimeBadge(gameId) {
   return `<span class="card-playtime">${icon('clock', 11)} ${label}${formatted.unit}</span>`;
 }
 
+function openGameDetails(id) {
+  const game = getGame(id) || genreResults.find((item) => String(item.id) === String(id)) || searchResults.find((item) => String(item.id) === String(id));
+  if (!game) return;
+  detailGame = { ...game };
+  detailStatus = 'loading';
+  currentView = 'game-detail';
+  renderPage();
+  window.vortexDesktop?.getGameDetails?.({ universeId: game.universeId, placeId: game.id }).then((response) => {
+    if (currentView !== 'game-detail' || !response?.ok) { detailStatus = response?.ok ? 'success' : 'error'; renderPage(); return; }
+    detailGame = { ...detailGame, ...response.game };
+    detailStatus = 'success';
+    renderPage();
+  }).catch(() => { detailStatus = 'error'; renderPage(); });
+}
+
+function renderGameDetail() {
+  const game = detailGame;
+  if (!game) return `<div class="empty-state"><h2>${t('game.detailNotFound')}</h2><button class="ghost-button" data-nav="catalog">${t('empty.openCatalog')}</button></div>`;
+  const thumbnail = safeThumbnail(game.thumbnail);
+  const likesTotal = Number(game.upVotes || 0) + Number(game.downVotes || 0);
+  const likePercent = likesTotal ? Math.round(Number(game.upVotes || 0) / likesTotal * 100) : null;
+  const playtime = renderPlaytimeBadge(game.id) || t('stats.noData');
+  const badges = Array.isArray(game.badges) && game.badges.length ? `<section class="detail-section"><h2>${t('game.badges')}</h2><div class="detail-badges">${game.badges.map((badge) => `<span class="detail-badge"><strong>${escapeHtml(badge.name)}</strong>${badge.description ? `<small>${escapeHtml(badge.description)}</small>` : ''}</span>`).join('')}</div></section>` : '';
+  const social = Array.isArray(game.socialLinks) && game.socialLinks.length ? `<section class="detail-section"><h2>${t('game.socialLinks')}</h2><div class="detail-social-links">${game.socialLinks.map((link) => `<a href="${escapeHtml(link.url || '#')}" target="_blank" rel="noreferrer">${escapeHtml(link.title || link.type || t('game.socialLink'))}</a>`).join('')}</div></section>` : '';
+  const description = String(game.description || t('game.fallbackDescription'));
+  return `<button class="ghost-button detail-back" data-nav="catalog">${icon('arrowLeft', 14)} ${t('game.backToCatalog')}</button>
+    <article class="game-detail">
+      <header class="detail-hero"><div class="detail-cover">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" />` : ''}</div><div class="detail-hero-copy"><div class="eyebrow"><span class="eyebrow-mark"></span>${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p>${escapeHtml(game.creator || t('game.unknownCreator'))}</p><div class="detail-actions"><button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button><button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button></div></div></header>
+      ${detailStatus === 'loading' ? `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('game.loadingDetails')}</strong></div>` : ''}
+      ${detailStatus === 'error' ? `<p class="catalog-disclaimer">${t('game.detailsUnavailable')}</p>` : ''}
+      <section class="detail-stats"><div><strong>${formatCount(game.playing || game.playerCount)}</strong><span>${t('game.online')}</span></div><div><strong>${likePercent === null ? '—' : `${likePercent}%`}</strong><span>${t('game.likeRatio')}</span></div><div><strong>${formatCount(game.visits)}</strong><span>${t('game.visits')}</span></div><div><strong>${formatCount(game.favorites)}</strong><span>${t('game.favorites')}</span></div></section>
+      <section class="detail-section"><h2>${t('game.description')}</h2><p class="detail-description">${escapeHtml(description)}</p></section>
+      <section class="detail-section detail-meta"><div><span>${t('game.author')}</span><strong>${escapeHtml(game.creator || t('game.unknownCreator'))}</strong></div><div><span>${t('game.genre')}</span><strong>${escapeHtml(game.genre || t('genre.other'))}</strong></div><div><span>${t('game.updated')}</span><strong>${game.updated ? escapeHtml(new Date(game.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU')) : '—'}</strong></div><div><span>${t('game.playtime')}</span><strong>${playtime}</strong></div></section>
+      ${badges}${social}
+      <section class="detail-section"><h2>${t('game.servers')}</h2><p class="detail-muted">${t('game.serversUnavailable')}</p><button class="ghost-button" data-action="play" data-id="${escapeHtml(game.id)}">${t('game.joinServer')}</button></section>
+    </article>`;
+}
+
 function renderGameCard(game) {
   game = localizeGame(game);
   const isFavorite = favorites.has(game.id);
@@ -501,14 +541,14 @@ function renderGameCard(game) {
   const category = game.genre ? `<span class="game-category"><i></i>${escapeHtml(game.genre)}</span>` : '<span></span>';
   const expandedDescription = expandedDescriptions.has(String(game.id));
   const canExpandDescription = description.length > 100;
-  return `<article class="game-card" style="--game-color: var(--accent)" data-game="${id}">
-    <div class="game-cover art-${art} ${thumbnail ? 'has-thumbnail' : ''}">
+  return `<article class="game-card" style="--game-color: var(--accent)" data-game="${id}" data-universe-id="${escapeHtml(game.universeId || '')}">
+    <div class="game-cover art-${art} ${thumbnail ? 'has-thumbnail' : ''}" data-action="open-details" data-id="${id}">
       ${thumbnail ? `<img class="game-thumbnail" src="${escapeHtml(thumbnail)}" alt="" loading="eager" decoding="async" />` : ''}
       <span class="cover-shine"></span>
       <button class="favorite-button ${isFavorite ? 'is-favorite' : ''}" data-action="favorite" data-id="${id}" aria-label="${isFavorite ? t('card.favoriteRemove') : t('card.favoriteAdd')}" aria-pressed="${isFavorite}">${icon('heart', 15)}</button>
     </div>
     <div class="game-info">
-      <div class="game-title-row"><h3 class="game-title">${escapeHtml(game.title)}</h3></div>
+      <div class="game-title-row"><h3 class="game-title" data-action="open-details" data-id="${id}">${escapeHtml(game.title)}</h3></div>
       ${preferences.cardShowDescription ? `<p class="game-description ${expandedDescription ? 'expanded' : ''}" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
       ${canExpandDescription ? `<button class="description-more" data-action="toggle-description" data-id="${id}" aria-expanded="${expandedDescription}">${t(expandedDescription ? 'card.readLess' : 'card.readMore')}</button>` : ''}` : ''}
       ${preferences.cardShowLikes ? liveStats : ''}
@@ -1978,14 +2018,9 @@ function renderPage() {
   document.body.classList.toggle('sidebar-compact', readStored('vortex.sidebarCompact', false));
   updateSidebar();
   renderUpdateBanner();
-  const pages = { home: renderHome, catalog: renderCatalog, search: renderSearchPage, favorites: renderFavorites, recent: renderRecent, friends: renderFriends, plans: renderPlans, settings: renderSettings };
+  const pages = { home: renderHome, catalog: renderCatalog, 'game-detail': renderGameDetail, favorites: renderFavorites, recent: renderRecent, friends: renderFriends, plans: renderPlans, settings: renderSettings };
   pageContent.innerHTML = (pages[currentView] || renderHome)();
   mountIcons(pageContent);
-  if (currentView === 'search') {
-    // Keep the search input focused and stable across re-renders.
-    const input = pageContent.querySelector('[data-search-page-input]');
-    if (input && document.activeElement !== input && !input.value) input.focus();
-  }
   if (pageContent.dataset.renderedView !== currentView) {
     pageContent.dataset.renderedView = currentView;
     pageContent.dataset.transition = preferences.motion ? preferences.pageTransition : 'none';
@@ -2561,6 +2596,7 @@ document.addEventListener('click', async (event) => {
 
   const action = target.closest('[data-action]');
   if (action) {
+    if (action.dataset.action === 'open-details') { openGameDetails(action.dataset.id); return; }
     if (action.dataset.action === 'export-data') {
       const blob = new Blob([JSON.stringify(buildDataExport(), null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);

@@ -611,17 +611,19 @@ async function getGameDetailsByUniverse(universeIds) {
 
 async function fetchRobloxPlaceServers(universeId, rootPlaceId = '') {
   const placeId = String(rootPlaceId || '');
+  if (!placeId) return { public: [], friends: [], private: [], hasPrivateServerSupport: Boolean(robloxSecurityCookie) };
+  const headers = robloxSecurityCookie ? { Cookie: `.ROBLOSECURITY=${robloxSecurityCookie}` } : {};
   const [publicResult, friendsResult, privateResult] = await Promise.allSettled([
-    placeId ? fetchCachedJson(`https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Asc&limit=10`, 8000) : Promise.resolve(null),
-    placeId ? fetchJson(new Request(`https://games.roblox.com/v1/games/${placeId}/servers/Friends?sortOrder=Asc&limit=10`, { headers: robloxSecurityCookie ? { Cookie: `.ROBLOSECURITY=${robloxSecurityCookie}` } : {} }), 8000) : Promise.resolve(null),
-    robloxSecurityCookie ? fetchJson(new Request(`https://games.roblox.com/v1/games/${placeId}/private-servers?limit=10&sortOrder=Asc`, { headers: { Cookie: `.ROBLOSECURITY=${robloxSecurityCookie}` } }), 8000) : Promise.resolve(null)
+    fetchCachedJson(`https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Asc&limit=10`, 7000),
+    robloxSecurityCookie ? fetchJson(new Request(`https://games.roblox.com/v1/games/${placeId}/servers/Friends?sortOrder=Asc&limit=10`, { headers }), 7000) : Promise.resolve(null),
+    robloxSecurityCookie ? fetchJson(new Request(`https://games.roblox.com/v1/games/${universeId}/private-servers?limit=10&sortOrder=Asc`, { headers }), 7000) : Promise.resolve(null)
   ]);
   const mapServers = (result, type) => result.status === 'fulfilled' && Array.isArray(result.value?.data) ? result.value.data.map((server) => ({
     id: String(server.id || ''), playing: Number(server.playing) || 0, maxPlayers: Number(server.maxPlayers) || 0,
     type, ownerName: String(server.owner?.name || ''), ownerId: String(server.owner?.id || ''),
     accessCode: String(server.accessCode || '')
   })).filter((server) => type !== 'private' || server.accessCode) : [];
-  return { public: mapServers(publicResult, 'public'), friends: mapServers(friendsResult, 'friends'), private: mapServers(privateResult, 'private') };
+  return { public: mapServers(publicResult, 'public'), friends: mapServers(friendsResult, 'friends'), private: mapServers(privateResult, 'private'), hasPrivateServerSupport: Boolean(robloxSecurityCookie) };
 }
 
 ipcMain.handle('game:private-page', async (_event, placeId) => {
@@ -637,25 +639,23 @@ ipcMain.handle('games:details', async (_event, request = {}) => {
   if (!universeId && !placeId) return { ok: false, error: 'invalid-id' };
   let resolvedUniverseId = universeId;
   if (!resolvedUniverseId && placeId) {
-    const place = await fetchCachedJson(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`, 300000);
-    resolvedUniverseId = String(place?.universeId ?? '');
+    try {
+      const place = await fetchCachedJson(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`, 9000);
+      resolvedUniverseId = String(place?.universeId ?? '');
+    } catch { return { ok: false, error: 'universe-lookup-failed' }; }
   }
   if (!/^\d{1,20}$/.test(resolvedUniverseId)) return { ok: false, error: 'not-found' };
-  const [game, votes, badges, social, media, thumbnails] = await Promise.allSettled([
+  const [game, votes, badges, social, media, screenshots] = await Promise.allSettled([
     fetchCachedJson(`https://games.roblox.com/v1/games?universeIds=${resolvedUniverseId}`, 9000),
     fetchCachedJson(`https://games.roblox.com/v1/games/${resolvedUniverseId}/votes`, 9000),
     fetchCachedJson(`https://badges.roblox.com/v1/universes/${resolvedUniverseId}/badges?limit=100&sortOrder=Asc`, 9000),
-    robloxSecurityCookie ? fetchJson(new Request(`https://games.roblox.com/v1/games/${resolvedUniverseId}/social-links/list`, { headers: { Cookie: `.ROBLOSECURITY=${robloxSecurityCookie}` } }), 9000) : fetchCachedJson(`https://games.roblox.com/v1/games/${resolvedUniverseId}/social-links/list`, 9000),
+    robloxSecurityCookie ? fetchJson(new Request(`https://games.roblox.com/v1/games/${resolvedUniverseId}/social-links/list`, { headers: { Cookie: `.ROBLOSECURITY=${robloxSecurityCookie}` } }), 9000) : Promise.resolve(null),
     fetchCachedJson(`https://games.roblox.com/v2/games/${resolvedUniverseId}/media?limit=10`, 9000),
     fetchCachedJson(`https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=${resolvedUniverseId}&countPerUniverse=10&size=768x432&format=Png&isCircular=false`, 9000)
   ]);
   const row = game.status === 'fulfilled' && Array.isArray(game.value?.data) ? game.value.data[0] : null;
   if (!row) return { ok: false, error: 'not-found' };
-  const [iconMap, serversResult] = await Promise.all([
-    getThumbnails([resolvedUniverseId]),
-    fetchRobloxPlaceServers(resolvedUniverseId, row.rootPlaceId).catch(() => ({ public: [], friends: [], private: [], hasPrivateServerSupport: Boolean(robloxSecurityCookie) }))
-  ]);
-  const thumbs = iconMap;
+  const thumbs = await getThumbnails([resolvedUniverseId]);
   const base = mapGame(row, thumbs.get(resolvedUniverseId), placeId || row.rootPlaceId);
   const voteData = votes.status === 'fulfilled' ? votes.value || {} : {};
   return { ok: true, game: {
@@ -669,9 +669,16 @@ ipcMain.handle('games:details', async (_event, request = {}) => {
     badges: badges.status === 'fulfilled' && Array.isArray(badges.value?.data) ? badges.value.data.slice(0, 12).map((badge) => ({ id: String(badge.id), name: String(badge.name || ''), description: String(badge.description || ''), icon: String(badge.iconImageId || '') })) : [],
     socialLinks: social.status === 'fulfilled' && Array.isArray(social.value?.data) ? social.value.data : [],
     media: media.status === 'fulfilled' && Array.isArray(media.value?.data) ? media.value.data.map((item) => ({ type: String(item.assetType || item.assetTypeId || '').toLowerCase().includes('video') ? 'video' : 'image', url: String(item.videoUrl || item.imageUrl || item.assetUrl || ''), thumbnail: String(item.thumbnailUrl || ''), title: String(item.title || '') })).filter((item) => item.url) : [],
-    screenshots: thumbnails.status === 'fulfilled' && Array.isArray(thumbnails.value?.data) ? thumbnails.value.data.flatMap((entry) => entry.thumbnails || []).map((item) => ({ url: String(item.imageUrl || ''), title: String(item.name || '') })).filter((item) => item.url) : [],
-    servers: { ...serversResult, hasPrivateServerSupport: Boolean(robloxSecurityCookie) }
+    screenshots: screenshots.status === 'fulfilled' && Array.isArray(screenshots.value?.data) ? screenshots.value.data.flatMap((entry) => entry.thumbnails || []).map((item) => ({ url: String(item.imageUrl || ''), title: String(item.name || '') })).filter((item) => item.url) : [],
+    servers: { public: [], friends: [], private: [], hasPrivateServerSupport: Boolean(robloxSecurityCookie) }
   }};
+});
+
+ipcMain.handle('games:servers', async (_event, universeIdValue, placeIdValue) => {
+  const universeId = String(universeIdValue || '').match(/^\d{1,20}$/)?.[0] || '';
+  const placeId = String(placeIdValue || '').match(/^\d{5,20}$/)?.[0] || '';
+  if (!universeId || !placeId) return { public: [], friends: [], private: [], hasPrivateServerSupport: Boolean(robloxSecurityCookie) };
+  return fetchRobloxPlaceServers(universeId, placeId);
 });
 ipcMain.handle('game:open', async (_event, placeId, gameId, accessCode) => {
   const normalizedId = String(placeId ?? '');

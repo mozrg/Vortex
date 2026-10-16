@@ -505,24 +505,36 @@ function openGameDetails(id) {
   currentView = 'game-detail';
   renderPage();
   if (!window.vortexDesktop?.getGameDetails) { detailStatus = 'error'; renderPage(); return; }
-  const timeout = new Promise((_, reject) => window.setTimeout(() => reject(new Error('timeout')), 18000));
+  const timeout = new Promise((_, reject) => window.setTimeout(() => reject(new Error('timeout')), 14000));
   Promise.race([window.vortexDesktop.getGameDetails({ universeId: game.universeId, placeId: game.id }), timeout]).then((response) => {
     if (requestId !== detailRequestId || currentView !== 'game-detail') return;
     if (!response?.ok) { detailStatus = 'error'; renderPage(); return; }
     detailGame = { ...detailGame, ...response.game };
     detailStatus = 'success';
     renderPage();
+    loadGameServerDetails(requestId);
   }).catch(() => { if (requestId === detailRequestId && currentView === 'game-detail') { detailStatus = 'error'; renderPage(); } });
+}
+
+async function loadGameServerDetails(requestId = detailRequestId) {
+  if (!detailGame || !window.vortexDesktop?.getGameServers) return;
+  try {
+    const timeout = new Promise((_, reject) => window.setTimeout(() => reject(new Error('timeout')), 9000));
+    const servers = await Promise.race([window.vortexDesktop.getGameServers(detailGame.universeId, detailGame.placeId || detailGame.id), timeout]);
+    if (requestId !== detailRequestId || currentView !== 'game-detail') return;
+    detailGame = { ...detailGame, servers };
+    renderPage();
+  } catch { /* server list is optional; keep all other details rendered */ }
 }
 
 function renderGameDetail() {
   const game = detailGame;
   if (!game) return `<div class="empty-state"><h2>${t('game.detailNotFound')}</h2><button class="ghost-button" data-nav="catalog">${t('empty.openCatalog')}</button></div>`;
   const thumbnail = safeThumbnail(game.icon || game.thumbnail);
-  const servers = game.servers || { public: [], private: [] };
+  const servers = game.servers || { public: [], friends: [], private: [], hasPrivateServerSupport: false };
   const media = Array.isArray(game.media) ? game.media : [];
   const videos = media.filter((item) => item.type === 'video' && item.url);
-  const screenshots = [...(Array.isArray(game.screenshots) ? game.screenshots : []), ...media.filter((item) => item.type !== 'video' && item.url)];
+  const screenshots = [...new Map([...(Array.isArray(game.screenshots) ? game.screenshots : []), ...media.filter((item) => item.type !== 'video' && item.url)].map((item) => [item.url, item])).values()];
   const likesTotal = Number(game.upVotes || 0) + Number(game.downVotes || 0);
   const likePercent = likesTotal ? Math.round(Number(game.upVotes || 0) / likesTotal * 100) : null;
   const dislikePercent = likePercent === null ? 0 : 100 - likePercent;
@@ -541,7 +553,7 @@ function renderGameDetail() {
   const serverTabs = ['public', 'friends', 'private'];
   const activeServerTab = serverTabs.includes(detailServerTab) ? detailServerTab : 'public';
   const activeServers = activeServerTab ? servers[activeServerTab] || [] : [];
-  const serverSection = `<section class="detail-section"><div class="detail-section-heading"><div><h2>${t('game.servers')}</h2><p>${t('game.serversHint')}</p></div><button class="icon-button" data-action="refresh-place-details" title="${t('game.refreshServers')}">${icon('rotate', 16)}</button></div>${serverTabs.length ? `<div class="detail-server-tabs">${serverTabs.map((key) => `<button class="filter-chip ${activeServerTab === key ? 'active' : ''}" data-action="server-tab" data-server-tab="${key}">${t(`game.serverTab.${key}`)}</button>`).join('')}</div><div class="detail-server-list">${activeServers.length ? activeServers.map((server) => `<div class="detail-server"><span><strong>${server.kind === 'private' ? t('game.privateServer') : server.kind === 'friends' ? t('game.friendServer') : t('game.publicServer')}</strong><small>${formatCount(server.playing)} / ${formatCount(server.maxPlayers)} ${t('game.players')}</small>${server.ownerName ? `<small>${t('game.serverOwner')}: ${escapeHtml(server.ownerName)}</small>` : ''}</span><button class="ghost-button" data-action="join-server" data-id="${escapeHtml(game.id)}" data-server-id="${escapeHtml(server.id)}" ${server.accessCode ? `data-access-code="${escapeHtml(server.accessCode)}"` : ''}>${t('game.joinServer')}</button></div>`).join('') : `<p class="detail-muted">${t(activeServerTab === 'friends' ? 'game.noFriendServers' : activeServerTab === 'private' ? 'game.noPrivateServers' : 'game.noPublicServers')}</p>`}</div>` : `<p class="detail-muted">${t(activeServerTab === 'friends' ? 'game.noFriendServers' : activeServerTab === 'private' ? 'game.noPrivateServers' : 'game.noPublicServers')}</p>`}${servers.hasPrivateServerSupport ? `<button class="primary-button" data-action="create-private-server" data-id="${escapeHtml(game.id)}">${t('game.createPrivateServer')}</button>` : ''}</section>`;
+  const serverSection = `<section class="detail-section"><div class="detail-section-heading"><div><h2>${t('game.servers')}</h2><p>${t('game.serversHint')}</p></div><button class="icon-button" data-action="refresh-place-details" title="${t('game.refreshServers')}">${icon('rotate', 16)}</button></div>${serverTabs.length ? `<div class="detail-server-tabs">${serverTabs.map((key) => `<button class="filter-chip ${activeServerTab === key ? 'active' : ''}" data-action="server-tab" data-server-tab="${key}">${t(`game.serverTab.${key}`)}</button>`).join('')}</div><div class="detail-server-list">${activeServers.length ? activeServers.map((server) => `<div class="detail-server"><span><strong>${server.kind === 'private' ? t('game.privateServer') : server.kind === 'friends' ? t('game.friendServer') : t('game.publicServer')}</strong><small>${formatCount(server.playing)} / ${formatCount(server.maxPlayers)} ${t('game.players')}</small>${server.ownerName ? `<small>${t('game.serverOwner')}: ${escapeHtml(server.ownerName)}</small>` : ''}</span><button class="ghost-button" data-action="join-server" data-id="${escapeHtml(game.id)}" data-server-id="${escapeHtml(server.id)}" ${server.accessCode ? `data-access-code="${escapeHtml(server.accessCode)}"` : ''}>${t('game.joinServer')}</button></div>`).join('') : `<p class="detail-muted">${t(activeServerTab === 'friends' ? 'game.noFriendServers' : activeServerTab === 'private' ? 'game.noPrivateServers' : 'game.noPublicServers')}</p>`}</div>` : `<p class="detail-muted">${t(activeServerTab === 'friends' ? 'game.noFriendServers' : activeServerTab === 'private' ? 'game.noPrivateServers' : 'game.noPublicServers')}</p>`}${servers.hasPrivateServerSupport ? `<button class="primary-button" data-action="create-private-server" data-id="${escapeHtml(game.id)}">${t('game.createPrivateServer')}</button>` : `<p class="detail-muted">${t('game.connectCookieForServers')}</p>`}</section>`;
   const description = String(game.description || t('game.fallbackDescription'));
   return `<button class="detail-back icon-button" data-action="detail-back" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)}</button>
     <article class="game-detail">
@@ -2664,7 +2676,7 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'play') openGame(action.dataset.id);
     if (action.dataset.action === 'join-server') openGame(action.dataset.id, action.dataset.serverId, action.dataset.accessCode || '');
     if (action.dataset.action === 'server-tab') { detailServerTab = action.dataset.serverTab; renderPage(); return; }
-    if (action.dataset.action === 'refresh-place-details') { if (detailGame) openGameDetails(detailGame.id); return; }
+    if (action.dataset.action === 'refresh-place-details') { detailGame = { ...detailGame, servers: { public: [], friends: [], private: [], hasPrivateServerSupport: Boolean(detailGame?.servers?.hasPrivateServerSupport) } }; renderPage(); loadGameServerDetails(detailRequestId); return; }
     if (action.dataset.action === 'create-private-server') window.vortexDesktop?.openPrivateServerPage?.(action.dataset.id);
 
     if (action.dataset.action === 'toggle-description') {

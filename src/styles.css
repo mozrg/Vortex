@@ -1004,7 +1004,7 @@ body.no-motion .palette-panel { animation: none; }
 .detail-back svg { transform: translateX(-1px); }
 .game-detail { max-width: 1120px; margin: 0 auto; }
 .detail-hero { position: relative; isolation: isolate; display: grid; grid-template-columns: 184px 1fr; gap: 26px; align-items: center; overflow: hidden; padding: 28px; border: 1px solid var(--line-strong); border-radius: 22px; background: radial-gradient(ellipse at 80% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 46%), linear-gradient(135deg, color-mix(in srgb, var(--surface) 90%, var(--accent)), var(--surface)); box-shadow: 0 22px 60px rgba(0,0,0,.22); }
-.detail-hero::after { position: absolute; z-index: -1; right: -55px; bottom: -150px; width: 380px; height: 300px; border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); border-radius: 50%; content: ''; box-shadow: 0 0 0 24px color-mix(in srgb, var(--accent) 4%, transparent), 0 0 0 52px color-mix(in srgb, var(--accent) 3%, transparent); }
+.detail-hero::after { display: none; }
 .detail-avatar { width: 184px; height: 184px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 55%, white); border-radius: 28px; background: var(--surface-2); box-shadow: 0 18px 45px rgba(0,0,0,.32); }
 .detail-avatar img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .detail-hero-copy { position: relative; z-index: 1; }
@@ -1014,12 +1014,13 @@ body.no-motion .palette-panel { animation: none; }
 .detail-hero-copy p { color: var(--muted); }
 .detail-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 .detail-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
-.detail-stats > div, .detail-meta > div { padding: 18px; border: 1px solid var(--line); border-radius: 15px; background: linear-gradient(145deg, color-mix(in srgb, var(--surface-2) 70%, transparent), var(--surface)); box-shadow: 0 8px 25px rgba(0,0,0,.08); }
+.detail-stats > div, .detail-meta > div { padding: 18px; border: 1px solid var(--line-strong); border-radius: 14px; background: linear-gradient(150deg, color-mix(in srgb, var(--surface-2) 78%, transparent), var(--surface)); box-shadow: 0 8px 22px rgba(0,0,0,.12); }
 .detail-stats > div { position: relative; overflow: hidden; }
-.detail-stats > div::after { position: absolute; right: -18px; bottom: -25px; width: 75px; height: 75px; border: 1px solid var(--line); border-radius: 50%; content: ''; }
+.detail-stats > div::after { display: none; }
 .detail-stats > div:nth-child(2) strong { color: #78d6a6; }
-.detail-like-stat { min-width: 0; }
-.detail-like-bar { display: flex; height: 7px; overflow: hidden; margin-top: 12px; border-radius: 99px; background: rgba(245,85,102,.22); }
+.detail-stats > div:not(.detail-like-stat) { display: flex; min-height: 78px; flex-direction: column; justify-content: center; }
+.detail-like-stat { min-width: 0; padding-top: 14px !important; }
+.detail-like-bar { display: flex; height: 8px; overflow: hidden; margin-top: 12px; border-radius: 4px; background: rgba(245,85,102,.22); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
 .detail-like-positive { height: 100%; background: linear-gradient(90deg,#22c975,#8be09b); transition: width .4s ease; }
 .detail-like-negative { height: 100%; background: linear-gradient(90deg,#ff7a73,#e94357); }
 .detail-like-legend { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 7px; color: var(--muted); font-size: 9px; }
@@ -1028,6 +1029,8 @@ body.no-motion .palette-panel { animation: none; }
 .dislike-dot { background: #ef5262; }
 .detail-section { box-shadow: 0 10px 30px rgba(0,0,0,.08); }
 .detail-description { max-width: 900px; font-size: 13px; }
+body.light-theme .detail-hero { background: linear-gradient(135deg,#fff,#f5f2ff 68%,#f9f7ff); }
+body.light-theme .detail-stats > div, body.light-theme .detail-meta > div { background: #fff; }
 .detail-stats strong, .detail-stats span { display: block; }
 .detail-stats strong { font-size: 20px; }
 .detail-stats span, .detail-meta span { margin-top: 5px; color: var(--muted); font-size: 11px; }

@@ -29,5 +29,6 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
   detectRobloxAccount: () => ipcRenderer.invoke('friends:detect-account'),
   setPresenceCookie: (cookie) => ipcRenderer.invoke('friends:presence-cookie', { cookie }),
   removePresenceCookie: () => ipcRenderer.invoke('friends:presence-cookie', { remove: true }),
-  getPresenceStatus: () => ipcRenderer.invoke('friends:presence-status')
+  getPresenceStatus: () => ipcRenderer.invoke('friends:presence-status'),
+  getRobloxCurrentUser: () => ipcRenderer.invoke('auth:roblox-current-user')
 });

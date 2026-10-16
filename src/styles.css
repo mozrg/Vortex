@@ -1055,7 +1055,14 @@ body.light-theme .detail-stats > div, body.light-theme .detail-meta > div, body.
 .detail-server { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-2); }
 .detail-server > span { display: grid; gap: 4px; }
 .detail-server small { color: var(--muted); font-size: 10px; }
-.detail-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 12px; }
+.detail-gallery { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.detail-gallery-slide { display: grid; min-height: 180px; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #08090d; }
+.detail-gallery-slide a, .detail-gallery-slide video { display: block; width: 100%; max-height: 460px; aspect-ratio: 16/9; object-fit: contain; }
+.detail-gallery-slide img { display: block; width: 100%; height: 100%; max-height: 460px; object-fit: contain; }
+.detail-gallery-controls { display: flex; gap: 8px; }
+.detail-gallery-dots { display: flex; justify-content: center; gap: 7px; padding: 9px; }
+.gallery-dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: var(--line-strong); cursor: pointer; }
+.gallery-dot.active { width: 22px; border-radius: 8px; background: var(--accent); }
 .detail-gallery a, .detail-gallery video { display: block; width: 100%; overflow: hidden; aspect-ratio: 16/9; border: 1px solid var(--line); border-radius: 12px; background: #08090d; object-fit: cover; }
 .detail-gallery img { width: 100%; height: 100%; object-fit: cover; transition: transform .2s; }
 .detail-gallery a:hover img { transform: scale(1.04); }

@@ -609,22 +609,35 @@ async function getGameDetailsByUniverse(universeIds) {
   return results.flat();
 }
 
-async function fetchRobloxPlaceServers(universeId, rootPlaceId = '') {
-  const placeId = String(rootPlaceId || '');
-  if (!placeId) return { public: [], friends: [], private: [], hasPrivateServerSupport: Boolean(robloxSecurityCookie) };
-  const headers = robloxSecurityCookie ? { Cookie: `.ROBLOSECURITY=${robloxSecurityCookie}` } : {};
-  const [publicResult, friendsResult, privateResult] = await Promise.allSettled([
-    fetchCachedJson(`https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Asc&limit=10`, 7000),
-    robloxSecurityCookie ? fetchJson(new Request(`https://games.roblox.com/v1/games/${placeId}/servers/Friends?sortOrder=Asc&limit=10`, { headers }), 7000) : Promise.resolve(null),
-    robloxSecurityCookie ? fetchJson(new Request(`https://games.roblox.com/v1/games/${universeId}/private-servers?limit=10&sortOrder=Asc`, { headers }), 7000) : Promise.resolve(null)
-  ]);
-  const mapServers = (result, type) => result.status === 'fulfilled' && Array.isArray(result.value?.data) ? result.value.data.map((server) => ({
-    id: String(server.id || ''), playing: Number(server.playing) || 0, maxPlayers: Number(server.maxPlayers) || 0,
-    type, ownerName: String(server.owner?.name || ''), ownerId: String(server.owner?.id || ''),
-    accessCode: String(server.accessCode || '')
-  })).filter((server) => type !== 'private' || server.accessCode) : [];
-  return { public: mapServers(publicResult, 'public'), friends: mapServers(friendsResult, 'friends'), private: mapServers(privateResult, 'private'), hasPrivateServerSupport: Boolean(robloxSecurityCookie) };
+async function fetchPrivateServersForUniverse(universeId) {
+  const headers = { Cookie: `.ROBLOSECURITY=${robloxSecurityCookie}`, Accept: 'application/json' };
+  const me = await fetchJson(new Request('https://users.roblox.com/v1/users/authenticated', { headers }), 6000);
+  if (!me?.id) throw new Error('Roblox cookie is not authenticated.');
+  const output = [];
+  let cursor = '';
+  for (let page = 0; page < 5; page++) {
+    const url = new URL(`https://games.roblox.com/v1/games/${universeId}/private-servers`);
+    url.searchParams.set('limit', '10');
+    url.searchParams.set('sortOrder', 'Asc');
+    if (cursor) url.searchParams.set('cursor', cursor);
+    const payload = await fetchJson(new Request(url, { headers }), 7000);
+    const entries = Array.isArray(payload.data) ? payload.data : [];
+    output.push(...entries.map((server) => ({
+      id: String(server.id || server.privateServerId || ''),
+      accessCode: String(server.accessCode || server.privateServerLinkCode || ''),
+      name: String(server.name || server.serverName || ''),
+      playing: Number(server.playing ?? server.playerCount) || 0,
+      maxPlayers: Number(server.maxPlayers) || 0,
+      ownerName: String(server.owner?.name || me.displayName || me.name || ''),
+      ownerId: String(server.owner?.id || me.id), type: 'private'
+    })).filter((server) => server.id || server.accessCode));
+    cursor = String(payload.nextPageCursor || '');
+    if (!cursor) break;
+  }
+  return output;
 }
+
+
 
 ipcMain.handle('game:private-page', async (_event, placeId) => {
   const id = String(placeId || '').match(/^\d{5,20}$/)?.[0];
@@ -677,8 +690,9 @@ ipcMain.handle('games:details', async (_event, request = {}) => {
 ipcMain.handle('games:servers', async (_event, universeIdValue, placeIdValue) => {
   const universeId = String(universeIdValue || '').match(/^\d{1,20}$/)?.[0] || '';
   const placeId = String(placeIdValue || '').match(/^\d{5,20}$/)?.[0] || '';
-  if (!universeId || !placeId) return { public: [], friends: [], private: [], hasPrivateServerSupport: Boolean(robloxSecurityCookie) };
-  return fetchRobloxPlaceServers(universeId, placeId);
+  if (!universeId || !placeId || !robloxSecurityCookie) return { private: [], hasPrivateServerSupport: false };
+  try { return { private: await fetchPrivateServersForUniverse(universeId), hasPrivateServerSupport: true }; }
+  catch { return { private: [], hasPrivateServerSupport: true, error: 'private-server-list-unavailable' }; }
 });
 ipcMain.handle('game:open', async (_event, placeId, gameId, accessCode) => {
   const normalizedId = String(placeId ?? '');
@@ -1019,6 +1033,13 @@ ipcMain.handle('friends:presence-cookie', async (_event, request = {}) => {
 });
 
 ipcMain.handle('friends:presence-status', () => ({ enabled: Boolean(robloxSecurityCookie) }));
+ipcMain.handle('auth:roblox-current-user', async () => {
+  if (!robloxSecurityCookie) return null;
+  try {
+    const me = await fetchJson(new Request('https://users.roblox.com/v1/users/authenticated', { headers: { Cookie: `.ROBLOSECURITY=${robloxSecurityCookie}` } }), 8000);
+    return me?.id ? { id: String(me.id), name: String(me.name || ''), displayName: String(me.displayName || me.name || '') } : null;
+  } catch { return null; }
+});
 
 ipcMain.handle('friends:detect-account', async () => {
   const account = await detectLocalRobloxAccount();

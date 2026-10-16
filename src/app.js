@@ -156,7 +156,9 @@ let currentView = 'home';
 let detailGame = null;
 let detailStatus = 'idle';
 let detailRequestId = 0;
-let detailServerTab = 'public';
+let detailBadgeCount = 3;
+let detailGalleryIndex = 0;
+let detailGalleryCount = 0;
 let searchQuery = '';
 let activeCategory = preferences.catalogGenre || 'all';
 let sortMode = 'default';
@@ -499,7 +501,9 @@ function openGameDetails(id) {
   const game = getGame(id) || genreResults.find((item) => String(item.id) === String(id)) || searchResults.find((item) => String(item.id) === String(id));
   if (!game) return;
   const requestId = ++detailRequestId;
-  detailServerTab = 'public';
+  detailBadgeCount = 3;
+  detailGalleryIndex = 0;
+  detailGalleryCount = 0;
   detailGame = { ...game, upVotes: Number(game.upVotes) || 0, downVotes: Number(game.downVotes) || 0, playing: Number(game.playerCount) || 0, visits: Number(game.visits) || 0, favorites: Number(game.favorites) || 0 };
   detailStatus = 'loading';
   currentView = 'game-detail';
@@ -522,7 +526,7 @@ async function loadGameServerDetails(requestId = detailRequestId) {
     const timeout = new Promise((_, reject) => window.setTimeout(() => reject(new Error('timeout')), 9000));
     const servers = await Promise.race([window.vortexDesktop.getGameServers(detailGame.universeId, detailGame.placeId || detailGame.id), timeout]);
     if (requestId !== detailRequestId || currentView !== 'game-detail') return;
-    detailGame = { ...detailGame, servers };
+    detailGame = { ...detailGame, servers: { ...servers, loading: false } };
     renderPage();
   } catch { /* server list is optional; keep all other details rendered */ }
 }
@@ -531,7 +535,7 @@ function renderGameDetail() {
   const game = detailGame;
   if (!game) return `<div class="empty-state"><h2>${t('game.detailNotFound')}</h2><button class="ghost-button" data-nav="catalog">${t('empty.openCatalog')}</button></div>`;
   const thumbnail = safeThumbnail(game.icon || game.thumbnail);
-  const servers = game.servers || { public: [], friends: [], private: [], hasPrivateServerSupport: false };
+  const servers = game.servers || { private: [], hasPrivateServerSupport: false };
   const media = Array.isArray(game.media) ? game.media : [];
   const videos = media.filter((item) => item.type === 'video' && item.url);
   const screenshots = [...new Map([...(Array.isArray(game.screenshots) ? game.screenshots : []), ...media.filter((item) => item.type !== 'video' && item.url)].map((item) => [item.url, item])).values()];
@@ -540,7 +544,9 @@ function renderGameDetail() {
   const dislikePercent = likePercent === null ? 0 : 100 - likePercent;
   const voteBar = likesTotal ? `<div class="detail-like-bar" role="img" aria-label="${t('game.likeRatio')} ${likePercent}%"><span class="detail-like-positive" style="width:${likePercent}%"></span><span class="detail-like-negative" style="width:${dislikePercent}%"></span></div><div class="detail-like-legend"><span><i class="like-dot"></i>${likePercent}% · ${t('game.likeRatio')}</span><span><i class="dislike-dot"></i>${dislikePercent}% · ${t('game.dislikeRatio')}</span></div>` : '';
   const playtime = renderPlaytimeBadge(game.id) || t('stats.noData');
-  const badges = Array.isArray(game.badges) && game.badges.length ? `<section class="detail-section"><h2>${t('game.badges')}</h2><div class="detail-badges">${game.badges.map((badge) => `<span class="detail-badge"><strong>${escapeHtml(badge.name)}</strong>${badge.description ? `<small>${escapeHtml(badge.description)}</small>` : ''}</span>`).join('')}</div></section>` : '';
+  const allBadges = Array.isArray(game.badges) ? game.badges : [];
+  const visibleBadges = allBadges.slice(0, detailBadgeCount);
+  const badges = allBadges.length ? `<section class="detail-section"><h2>${t('game.badges')}</h2><div class="detail-badges">${visibleBadges.map((badge) => `<span class="detail-badge"><strong>${escapeHtml(badge.name)}</strong>${badge.description ? `<small>${escapeHtml(badge.description)}</small>` : ''}</span>`).join('')}</div>${visibleBadges.length < allBadges.length ? `<button class="ghost-button" data-action="show-more-badges">${t('game.showMoreBadges')}</button>` : ''}</section>` : '';
   const social = Array.isArray(game.socialLinks) && game.socialLinks.length ? `<section class="detail-section"><h2>${t('game.socialLinks')}</h2><div class="detail-social-links">${game.socialLinks.map((link) => {
     const href = safeExternalUrl(link.url);
     if (!href) return '';
@@ -549,11 +555,13 @@ function renderGameDetail() {
     const platformLabel = /discord/.test(platform) ? 'Discord' : /youtube|video/.test(platform) ? 'YouTube' : /twitter|x\.com/.test(platform) ? 'X' : /tiktok/.test(platform) ? 'TikTok' : /roblox/.test(platform) ? 'Roblox' : label;
     return `<a class="detail-social-card" href="${escapeHtml(href)}" target="_blank" rel="noreferrer"><span class="social-platform-icon">${icon(/youtube|video/.test(platform) ? 'play' : /discord/.test(platform) ? 'users' : 'arrowUpRight', 20)}</span><span><strong>${escapeHtml(platformLabel)}</strong><small>${escapeHtml(href.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</small></span></a>`;
   }).join('')}</div></section>` : '';
-  const gallery = screenshots.length || videos.length ? `<section class="detail-section"><h2>${t('game.media')}</h2><div class="detail-gallery">${videos.map((item) => `<video controls preload="metadata" poster="${escapeHtml(item.thumbnail || '')}"><source src="${escapeHtml(item.url)}" type="video/mp4" /></video>`).join('')}${screenshots.map((item) => `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.title || game.title)}" loading="lazy" /></a>`).join('')}</div></section>` : '';
-  const serverTabs = ['public', 'friends', 'private'];
-  const activeServerTab = serverTabs.includes(detailServerTab) ? detailServerTab : 'public';
-  const activeServers = activeServerTab ? servers[activeServerTab] || [] : [];
-  const serverSection = `<section class="detail-section"><div class="detail-section-heading"><div><h2>${t('game.servers')}</h2><p>${t('game.serversHint')}</p></div><button class="icon-button" data-action="refresh-place-details" title="${t('game.refreshServers')}">${icon('rotate', 16)}</button></div>${serverTabs.length ? `<div class="detail-server-tabs">${serverTabs.map((key) => `<button class="filter-chip ${activeServerTab === key ? 'active' : ''}" data-action="server-tab" data-server-tab="${key}">${t(`game.serverTab.${key}`)}</button>`).join('')}</div><div class="detail-server-list">${activeServers.length ? activeServers.map((server) => `<div class="detail-server"><span><strong>${server.kind === 'private' ? t('game.privateServer') : server.kind === 'friends' ? t('game.friendServer') : t('game.publicServer')}</strong><small>${formatCount(server.playing)} / ${formatCount(server.maxPlayers)} ${t('game.players')}</small>${server.ownerName ? `<small>${t('game.serverOwner')}: ${escapeHtml(server.ownerName)}</small>` : ''}</span><button class="ghost-button" data-action="join-server" data-id="${escapeHtml(game.id)}" data-server-id="${escapeHtml(server.id)}" ${server.accessCode ? `data-access-code="${escapeHtml(server.accessCode)}"` : ''}>${t('game.joinServer')}</button></div>`).join('') : `<p class="detail-muted">${t(activeServerTab === 'friends' ? 'game.noFriendServers' : activeServerTab === 'private' ? 'game.noPrivateServers' : 'game.noPublicServers')}</p>`}</div>` : `<p class="detail-muted">${t(activeServerTab === 'friends' ? 'game.noFriendServers' : activeServerTab === 'private' ? 'game.noPrivateServers' : 'game.noPublicServers')}</p>`}${servers.hasPrivateServerSupport ? `<button class="primary-button" data-action="create-private-server" data-id="${escapeHtml(game.id)}">${t('game.createPrivateServer')}</button>` : `<p class="detail-muted">${t('game.connectCookieForServers')}</p>`}</section>`;
+  const galleryItems = [...videos.map((item) => ({ ...item, kind: 'video' })), ...screenshots.map((item) => ({ ...item, kind: 'image' }))];
+  detailGalleryCount = galleryItems.length;
+  detailGalleryIndex = Math.min(detailGalleryIndex, Math.max(0, galleryItems.length - 1));
+  const currentMedia = galleryItems[detailGalleryIndex];
+  const gallery = currentMedia ? `<section class="detail-section"><div class="detail-section-heading"><div><h2>${t('game.media')}</h2><p>${detailGalleryIndex + 1} / ${galleryItems.length}</p></div>${galleryItems.length > 1 ? `<div class="detail-gallery-controls"><button class="icon-button" data-action="gallery-prev" aria-label="${t('game.previousMedia')}">${icon('arrowLeft', 16)}</button><button class="icon-button" data-action="gallery-next" aria-label="${t('game.nextMedia')}">${icon('arrow', 16)}</button></div>` : ''}</div><div class="detail-gallery"><div class="detail-gallery-slide">${currentMedia.kind === 'video' ? `<video controls preload="metadata" poster="${escapeHtml(currentMedia.thumbnail || '')}"><source src="${escapeHtml(currentMedia.url)}" type="video/mp4" /></video>` : `<a href="${escapeHtml(currentMedia.url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(currentMedia.url)}" alt="${escapeHtml(currentMedia.title || game.title)}" /></a>`}</div>${galleryItems.length > 1 ? `<div class="detail-gallery-dots">${galleryItems.map((_, index) => `<button class="gallery-dot ${index === detailGalleryIndex ? 'active' : ''}" data-action="gallery-goto" data-index="${index}" aria-label="${index + 1}"></button>`).join('')}</div>` : ''}</div></section>` : '';
+  const privateServers = servers.private || [];
+  const serverSection = `<section class="detail-section"><div class="detail-section-heading"><div><h2>${t('game.privateServer')}</h2><p>${t('game.privateServersHint')}</p></div><button class="icon-button" data-action="refresh-place-details" title="${t('game.refreshServers')}">${icon('rotate', 16)}</button></div><div class="detail-server-list">${servers.loading ? `<p class="detail-muted">${t('game.loadingDetails')}</p>` : privateServers.length ? privateServers.map((server) => `<div class="detail-server"><span><strong>${escapeHtml(server.name || server.ownerName || t('game.privateServer'))}</strong><small>${formatCount(server.playing)} / ${formatCount(server.maxPlayers)} ${t('game.players')}</small>${server.ownerName ? `<small>${t('game.serverOwner')}: ${escapeHtml(server.ownerName)}</small>` : ''}</span><button class="ghost-button" data-action="join-server" data-id="${escapeHtml(game.id)}" data-server-id="${escapeHtml(server.id)}" ${server.accessCode ? `data-access-code="${escapeHtml(server.accessCode)}"` : ''}>${t('game.joinServer')}</button></div>`).join('') : `<p class="detail-muted">${t(servers.error ? 'game.serverListError' : servers.hasPrivateServerSupport ? 'game.noPrivateServers' : 'game.connectCookieForServers')}</p>`}</div><button class="primary-button" data-action="create-private-server" data-id="${escapeHtml(game.id)}">${t('game.createPrivateServer')}</button></section>`;
   const description = String(game.description || t('game.fallbackDescription'));
   return `<button class="detail-back icon-button" data-action="detail-back" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)}</button>
     <article class="game-detail">
@@ -2675,8 +2683,11 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'favorite') { toggleFavorite(action.dataset.id); if (currentView === 'game-detail' && detailGame) renderPage(); }
     if (action.dataset.action === 'play') openGame(action.dataset.id);
     if (action.dataset.action === 'join-server') openGame(action.dataset.id, action.dataset.serverId, action.dataset.accessCode || '');
-    if (action.dataset.action === 'server-tab') { detailServerTab = action.dataset.serverTab; renderPage(); return; }
-    if (action.dataset.action === 'refresh-place-details') { detailGame = { ...detailGame, servers: { public: [], friends: [], private: [], hasPrivateServerSupport: Boolean(detailGame?.servers?.hasPrivateServerSupport) } }; renderPage(); loadGameServerDetails(detailRequestId); return; }
+    if (action.dataset.action === 'show-more-badges') { detailBadgeCount += 3; renderPage(); return; }
+    if (action.dataset.action === 'gallery-prev') { detailGalleryIndex = Math.max(0, detailGalleryIndex - 1); renderPage(); return; }
+    if (action.dataset.action === 'gallery-next') { detailGalleryIndex = Math.min(detailGalleryCount - 1, detailGalleryIndex + 1); renderPage(); return; }
+    if (action.dataset.action === 'gallery-goto') { detailGalleryIndex = Math.max(0, Number(action.dataset.index) || 0); renderPage(); return; }
+    if (action.dataset.action === 'refresh-place-details') { detailGame = { ...detailGame, servers: { private: [], hasPrivateServerSupport: Boolean(detailGame?.servers?.hasPrivateServerSupport), loading: true } }; renderPage(); loadGameServerDetails(detailRequestId); return; }
     if (action.dataset.action === 'create-private-server') window.vortexDesktop?.openPrivateServerPage?.(action.dataset.id);
 
     if (action.dataset.action === 'toggle-description') {

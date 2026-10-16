@@ -625,6 +625,13 @@ async function fetchRobloxPlaceServers(universeId) {
   return { public: mapServers(publicResult, 'public'), friends: mapServers(friendsResult, 'friends'), private: mapServers(privateResult, 'private') };
 }
 
+ipcMain.handle('game:private-page', async (_event, placeId) => {
+  const id = String(placeId || '').match(/^\d{5,20}$/)?.[0];
+  if (!id || !robloxSecurityCookie) return false;
+  await shell.openExternal(`https://www.roblox.com/games/${id}/?privateServerLinkCode=`);
+  return true;
+});
+
 ipcMain.handle('games:details', async (_event, request = {}) => {
   const universeId = String(request.universeId ?? '').match(/^\d{1,20}$/)?.[0] || '';
   const placeId = String(request.placeId ?? '').match(/^\d{5,20}$/)?.[0] || '';
@@ -635,12 +642,13 @@ ipcMain.handle('games:details', async (_event, request = {}) => {
     resolvedUniverseId = String(place?.universeId ?? '');
   }
   if (!/^\d{1,20}$/.test(resolvedUniverseId)) return { ok: false, error: 'not-found' };
-  const [game, votes, badges, social, media, servers] = await Promise.allSettled([
+  const [game, votes, badges, social, media, thumbnails, servers] = await Promise.allSettled([
     fetchCachedJson(`https://games.roblox.com/v1/games?universeIds=${resolvedUniverseId}`, 60000),
     fetchCachedJson(`https://games.roblox.com/v1/games/${resolvedUniverseId}/votes`, 60000),
     fetchCachedJson(`https://badges.roblox.com/v1/universes/${resolvedUniverseId}/badges?limit=100&sortOrder=Asc`, 60000),
     fetchCachedJson(`https://games.roblox.com/v1/games/${resolvedUniverseId}/social-links/list`, 60000),
     fetchCachedJson(`https://games.roblox.com/v2/games/${resolvedUniverseId}/media?limit=10`, 60000),
+    fetchCachedJson(`https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=${resolvedUniverseId}&countPerUniverse=10&size=768x432&format=Png&isCircular=false`, 60000),
     fetchRobloxPlaceServers(resolvedUniverseId)
   ]);
   const row = game.status === 'fulfilled' && Array.isArray(game.value?.data) ? game.value.data[0] : null;
@@ -659,7 +667,8 @@ ipcMain.handle('games:details', async (_event, request = {}) => {
     badges: badges.status === 'fulfilled' && Array.isArray(badges.value?.data) ? badges.value.data.slice(0, 12).map((badge) => ({ id: String(badge.id), name: String(badge.name || ''), description: String(badge.description || ''), icon: String(badge.iconImageId || '') })) : [],
     socialLinks: social.status === 'fulfilled' && Array.isArray(social.value?.data) ? social.value.data : [],
     media: media.status === 'fulfilled' && Array.isArray(media.value?.data) ? media.value.data.map((item) => ({ type: String(item.assetType || item.assetTypeId || '').toLowerCase().includes('video') ? 'video' : 'image', url: String(item.videoUrl || item.imageUrl || item.assetUrl || ''), thumbnail: String(item.thumbnailUrl || ''), title: String(item.title || '') })).filter((item) => item.url) : [],
-    servers: servers.status === 'fulfilled' ? servers.value : { public: [], private: [] }
+    screenshots: thumbnails.status === 'fulfilled' && Array.isArray(thumbnails.value?.data) ? thumbnails.value.data.flatMap((entry) => entry.thumbnails || []).map((item) => ({ url: String(item.imageUrl || ''), title: String(item.name || '') })).filter((item) => item.url) : [],
+    servers: servers.status === 'fulfilled' ? { ...servers.value, hasPrivateServerSupport: Boolean(robloxSecurityCookie) } : { public: [], friends: [], private: [], hasPrivateServerSupport: Boolean(robloxSecurityCookie) }
   }};
 });
 ipcMain.handle('game:open', async (_event, placeId, gameId, accessCode) => {
@@ -667,7 +676,7 @@ ipcMain.handle('game:open', async (_event, placeId, gameId, accessCode) => {
   if (!/^\d{5,20}$/.test(normalizedId)) throw new Error('Некорректный идентификатор игры.');
 
   // gameId = a specific server instance: joining a friend's server needs it.
-  const normalizedGameId = /^\d{5,40}$/.test(String(gameId ?? '')) ? String(gameId) : '';
+  const normalizedGameId = /^(?:\d{5,40}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(String(gameId ?? '')) ? String(gameId) : '';
   try {
     const normalizedAccessCode = /^[A-Za-z0-9-]{8,100}$/.test(String(accessCode ?? '')) ? String(accessCode) : '';
     await shell.openExternal(`roblox://placeId=${normalizedId}${normalizedGameId ? `&gameInstanceId=${normalizedGameId}` : ''}${normalizedAccessCode ? `&accessCode=${encodeURIComponent(normalizedAccessCode)}` : ''}`);

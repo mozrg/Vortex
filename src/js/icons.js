@@ -12,6 +12,7 @@ const icons = {
   sparkle: '<path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-2-5.8L4 11l6-2.2z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/>',
   arrow: '<path d="M5 12h14m-6-6 6 6-6 6"/>',
   arrowLeft: '<path d="M19 12H5m6 6-6-6 6-6"/>',
+  rotate: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.8-2L20 12M4 12l2.6 5a7 7 0 0 0 11.8-2"/>',
   star: '<path d="m12 3 2.8 5.8 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.7l6.2-.9z"/>',
   grid: '<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/>',
   palette: '<path d="M12 3a9 9 0 1 0 0 18h1.4a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7h1.2a3.7 3.7 0 0 0 3.7-3.7C21 6.6 17 3 12 3Z"/><path d="M7.5 11h.01M10 7.5h.01m4 0h.01M17 10h.01"/>',

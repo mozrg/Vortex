@@ -156,6 +156,7 @@ let currentView = 'home';
 let detailGame = null;
 let detailStatus = 'idle';
 let detailRequestId = 0;
+let detailServerTab = 'public';
 let searchQuery = '';
 let activeCategory = preferences.catalogGenre || 'all';
 let sortMode = 'default';
@@ -498,6 +499,7 @@ function openGameDetails(id) {
   const game = getGame(id) || genreResults.find((item) => String(item.id) === String(id)) || searchResults.find((item) => String(item.id) === String(id));
   if (!game) return;
   const requestId = ++detailRequestId;
+  detailServerTab = 'public';
   detailGame = { ...game };
   detailStatus = 'loading';
   currentView = 'game-detail';
@@ -518,7 +520,7 @@ function renderGameDetail() {
   const servers = game.servers || { public: [], private: [] };
   const media = Array.isArray(game.media) ? game.media : [];
   const videos = media.filter((item) => item.type === 'video' && item.url);
-  const screenshots = media.filter((item) => item.type !== 'video' && item.url);
+  const screenshots = [...(Array.isArray(game.screenshots) ? game.screenshots : []), ...media.filter((item) => item.type !== 'video' && item.url)];
   const likesTotal = Number(game.upVotes || 0) + Number(game.downVotes || 0);
   const likePercent = likesTotal ? Math.round(Number(game.upVotes || 0) / likesTotal * 100) : null;
   const playtime = renderPlaytimeBadge(game.id) || t('stats.noData');
@@ -533,9 +535,12 @@ function renderGameDetail() {
   }).join('')}</div></section>` : '';
   const gallery = screenshots.length || videos.length ? `<section class="detail-section"><h2>${t('game.media')}</h2><div class="detail-gallery">${videos.map((item) => `<video controls preload="metadata" poster="${escapeHtml(item.thumbnail || '')}"><source src="${escapeHtml(item.url)}" type="video/mp4" /></video>`).join('')}${screenshots.map((item) => `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.title || game.title)}" loading="lazy" /></a>`).join('')}</div></section>` : '';
   const serverItems = [...(servers.public || []).map((server) => ({ ...server, kind: 'public' })), ...(servers.friends || []).map((server) => ({ ...server, kind: 'friends' })), ...(servers.private || []).map((server) => ({ ...server, kind: 'private' }))];
-  const serverSection = `<section class="detail-section"><h2>${t('game.servers')}</h2>${serverItems.length ? `<div class="detail-server-list">${serverItems.map((server) => `<div class="detail-server"><span><strong>${server.kind === 'private' ? t('game.privateServer') : server.kind === 'friends' ? t('game.friendServer') : t('game.publicServer')}</strong><small>${formatCount(server.playing)} / ${formatCount(server.maxPlayers)} ${t('game.players')}</small>${server.ownerName ? `<small>${t('game.serverOwner')}: ${escapeHtml(server.ownerName)}</small>` : ''}</span><button class="ghost-button" data-action="join-server" data-id="${escapeHtml(game.id)}" data-server-id="${escapeHtml(server.id)}" ${server.accessCode ? `data-access-code="${escapeHtml(server.accessCode)}"` : ''}>${t('game.joinServer')}</button></div>`).join('')}</div>` : `<p class="detail-muted">${t('game.serversUnavailable')}</p>`}<button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${t('game.joinServer')}</button></section>`;
+  const serverTabs = ['public', 'friends', 'private'].filter((key) => (servers[key] || []).length);
+  const activeServerTab = serverTabs.includes(detailServerTab) ? detailServerTab : serverTabs[0];
+  const activeServers = activeServerTab ? servers[activeServerTab] || [] : [];
+  const serverSection = `<section class="detail-section"><div class="detail-section-heading"><div><h2>${t('game.servers')}</h2><p>${t('game.serversHint')}</p></div><button class="icon-button" data-action="refresh-place-details" title="${t('game.refreshServers')}">${icon('rotate', 16)}</button></div>${serverTabs.length ? `<div class="detail-server-tabs">${serverTabs.map((key) => `<button class="filter-chip ${activeServerTab === key ? 'active' : ''}" data-action="server-tab" data-server-tab="${key}">${t(`game.serverTab.${key}`)}</button>`).join('')}</div><div class="detail-server-list">${activeServers.map((server) => `<div class="detail-server"><span><strong>${server.kind === 'private' ? t('game.privateServer') : server.kind === 'friends' ? t('game.friendServer') : t('game.publicServer')}</strong><small>${formatCount(server.playing)} / ${formatCount(server.maxPlayers)} ${t('game.players')}</small>${server.ownerName ? `<small>${t('game.serverOwner')}: ${escapeHtml(server.ownerName)}</small>` : ''}</span><button class="ghost-button" data-action="join-server" data-id="${escapeHtml(game.id)}" data-server-id="${escapeHtml(server.id)}" ${server.accessCode ? `data-access-code="${escapeHtml(server.accessCode)}"` : ''}>${t('game.joinServer')}</button></div>`).join('')}</div>` : `<p class="detail-muted">${t('game.serversUnavailable')}</p>`}${servers.hasPrivateServerSupport ? `<button class="primary-button" data-action="create-private-server" data-id="${escapeHtml(game.id)}">${t('game.createPrivateServer')}</button>` : ''}</section>`;
   const description = String(game.description || t('game.fallbackDescription'));
-  return `<button class="detail-back icon-button" data-nav="catalog" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)}</button>
+  return `<button class="detail-back icon-button" data-action="detail-back" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)}</button>
     <article class="game-detail">
       <header class="detail-hero"><div class="detail-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(game.title)}" />` : ''}</div><div class="detail-hero-copy"><div class="eyebrow"><span class="eyebrow-mark"></span>${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p>${escapeHtml(game.creator || t('game.unknownCreator'))}</p><div class="detail-actions"><button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button><button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button></div></div></header>
       ${detailStatus === 'loading' ? `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('game.loadingDetails')}</strong></div>` : ''}
@@ -2242,7 +2247,7 @@ function openGame(id, gameId = '', accessCode = '') {
   const game = getGame(id) || (String(id).match(/^\d{5,20}$/) ? { id: String(id), title: t('friends.joinGameTitle') } : null);
   if (!game) return;
   // A specific server instance (joining a friend) rides along to the main process.
-  const joinGameId = /^\d{5,40}$/.test(String(gameId)) ? String(gameId) : '';
+  const joinGameId = /^(?:\d{5,40}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(String(gameId)) ? String(gameId) : '';
   const safeAccessCode = /^[A-Za-z0-9-]{8,100}$/.test(String(accessCode || '')) ? String(accessCode) : '';
   // A new launch closes the previous session: it is the natural end marker.
   closePlaySession();
@@ -2617,6 +2622,7 @@ document.addEventListener('click', async (event) => {
 
   const action = target.closest('[data-action]');
   if (action) {
+    if (action.dataset.action === 'detail-back') { currentView = 'catalog'; renderPage(); return; }
     if (action.dataset.action === 'open-details') { openGameDetails(action.dataset.id); return; }
     if (action.dataset.action === 'export-data') {
       const blob = new Blob([JSON.stringify(buildDataExport(), null, 2)], { type: 'application/json' });
@@ -2654,6 +2660,9 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'favorite') { toggleFavorite(action.dataset.id); if (currentView === 'game-detail' && detailGame) renderPage(); }
     if (action.dataset.action === 'play') openGame(action.dataset.id);
     if (action.dataset.action === 'join-server') openGame(action.dataset.id, action.dataset.serverId, action.dataset.accessCode || '');
+    if (action.dataset.action === 'server-tab') { detailServerTab = action.dataset.serverTab; renderPage(); return; }
+    if (action.dataset.action === 'refresh-place-details') { if (detailGame) openGameDetails(detailGame.id); return; }
+    if (action.dataset.action === 'create-private-server') window.vortexDesktop?.openPrivateServerPage?.(action.dataset.id);
 
     if (action.dataset.action === 'toggle-description') {
       const id = String(action.dataset.id);

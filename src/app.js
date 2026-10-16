@@ -839,6 +839,67 @@ function renderGenreFilters() {
 function renderCatalogViewToggle() {
   return `<div class="catalog-view-toggle" role="group" aria-label="${t('catalog.view')}"><button class="icon-button ${preferences.catalogView === 'grid' ? 'active' : ''}" data-catalog-view="grid" title="${t('catalog.gridView')}">${icon('grid', 14)}</button><button class="icon-button ${preferences.catalogView === 'list' ? 'active' : ''}" data-catalog-view="list" title="${t('catalog.listView')}">${icon('layout', 14)}</button></div>`;
 }
+
+// ---- Dedicated search tab ----
+// The search page owns its own input and its own results state. Search fires
+// only on Enter or the search button — nothing re-renders on its own, and
+// "Показать ещё" is the only way to grow the list.
+function renderSearchPage() {
+  const results = searchResults;
+  let bodyHtml = '';
+  if (!searchQuery) {
+    bodyHtml = `<div class="empty-state"><div class="empty-icon">${icon('search', 20)}</div><h2>${t('search.emptyTitle')}</h2><p>${t('search.emptyBody')}</p></div>`;
+  } else if (searchQuery.trim().length < 2) {
+    bodyHtml = `<div class="empty-state"><div class="empty-icon">${icon('search', 20)}</div><h2>${t('search.shortTitle')}</h2><p>${t('search.shortBody')}</p></div>`;
+  } else if (searchStatus === 'loading') {
+    bodyHtml = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('search.loading')}</strong><small>${t('search.loadingNote')}</small></div>`;
+  } else if (searchStatus === 'error') {
+    bodyHtml = `<p class="catalog-disclaimer"><strong>${t('search.errorTitle')}</strong> ${t('search.errorBody')}</p>${renderGrid(results, t('search.noMatches'), t('search.tryAnother'))}`;
+  } else if (results.length) {
+    const loadMore = isLoadingMore
+      ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>`
+      : `<button class="ghost-button load-more-button" data-action="load-more">${t('search.loadMore')} ${icon('arrow', 13)}</button>`;
+    bodyHtml = `<p class="result-note">${formatResultCount(results.length)}</p>${renderGrid(results, t('search.noResults'), t('search.tryShorter'))}${loadMore}`;
+  } else {
+    bodyHtml = renderGrid(results, t('search.noResults'), t('search.tryShorter'));
+  }
+  return `${pageHeading(t('page.search.eyebrow'), t('page.search.title'), t('page.search.description'))}
+    <section class="section-block">
+      <div class="search-page-field">
+        <span class="search-page-icon">${icon('search', 18)}</span>
+        <input data-search-page-input type="search" autocomplete="off" placeholder="${t('search.placeholder')}" value="${escapeHtml(searchQuery)}" />
+        ${searchQuery ? `<button class="icon-button" data-search-page-clear aria-label="${t('search.clear')}">${icon('close', 14)}</button>` : ''}
+        <button class="primary-button" data-search-page-submit>${icon('search', 14)} ${t('search.submit')}</button>
+      </div>
+      ${bodyHtml}
+    </section>`;
+}
+
+function searchPageNavigate() {
+  if (currentView !== 'search') {
+    currentView = 'search';
+    renderPage();
+  }
+}
+
+function submitSearchPage(value) {
+  searchQuery = String(value || '');
+  searchResults = [];
+  searchPageToken = null;
+  isLoadingMore = false;
+  searchSessionId = createSearchSessionId();
+  searchRequestId += 1;
+  if (searchTimer) window.clearTimeout(searchTimer);
+  if (searchQuery.trim().length >= 2) {
+    searchStatus = 'loading';
+    renderPage();
+    fetchLiveSearch(false);
+  } else {
+    searchStatus = 'idle';
+    renderPage();
+  }
+}
+
 function renderCatalog() {
   const list = filterGames();
   const availableSorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
@@ -1041,42 +1102,8 @@ async function appendGeneralSearch() {
   }
 }
 
-let autoLoadPending = false;
-let lastAutoLoadAt = 0;
-function maybeLoadMoreCatalog() {
-  if (currentView !== 'catalog' || autoLoadPending || Date.now() - lastAutoLoadAt < 800) return;
-  const nearBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - Math.max(500, window.innerHeight * 0.8);
-  if (!nearBottom) return;
-  autoLoadPending = true;
-  lastAutoLoadAt = Date.now();
-  const finish = () => { autoLoadPending = false; lastAutoLoadAt = Date.now(); };
-  // Genre view: auto-fetch the next page when the token is available.
-  if (isGenreSearchActive()) {
-    if (genrePageToken && !genreLoadingMore) fetchGenreGames(true).finally(finish);
-    else finish();
-    return;
-  }
-  if (searchQuery.length >= 2) { finish(); return; }
-  const list = filterGames();
-  if (catalogVisibleCount < list.length) {
-    const scrollY = window.scrollY;
-    catalogVisibleCount += CATALOG_PAGE_SIZE;
-    renderPage();
-    window.scrollTo({ top: scrollY, behavior: 'auto' });
-    finish();
-  } else if (allDiscoverySortsUsed() && discoveryCatalog.__accumulated?.searchFallbackStarted) {
-    if (!generalLoadingMore) appendGeneralSearch().finally(finish);
-    else finish();
-  } else {
-    const btn = document.querySelector('[data-action="load-more"]');
-    if (btn) {
-      const scrollY = window.scrollY;
-      btn.click();
-      // Restore scroll position after the re-render wipes it.
-      window.requestAnimationFrame(() => { window.scrollTo({ top: scrollY, behavior: 'auto' }); finish(); });
-    } else finish();
-  }
-}
+// Loading is strictly manual: the "Показать ещё" button is the only trigger.
+// No scroll listeners — the page never refreshes on its own.
 function renderRecent() {
   const list = recentGames.map(getGame).filter(Boolean);
   return `${pageHeading(t('page.recent.eyebrow'), t('page.recent.title'), t('page.recent.description'))}
@@ -1928,7 +1955,7 @@ function renderSettings() {
     <div class="settings-layout">${settingsTabs()}<div class="settings-panel">${panel}</div></div>`;
 }
 
-const viewNames = { home: 'nav.home', catalog: 'nav.catalog', favorites: 'nav.favorites', recent: 'nav.recent', friends: 'nav.friends', plans: 'nav.plans', settings: 'nav.settings' };
+const viewNames = { home: 'nav.home', catalog: 'nav.catalog', search: 'nav.search', favorites: 'nav.favorites', recent: 'nav.recent', friends: 'nav.friends', plans: 'nav.plans', settings: 'nav.settings' };
 
 function renderSidebar() {
   const groups = renderSidebarNav();
@@ -1949,9 +1976,14 @@ function renderPage() {
   document.body.classList.toggle('sidebar-compact', readStored('vortex.sidebarCompact', false));
   updateSidebar();
   renderUpdateBanner();
-  const pages = { home: renderHome, catalog: renderCatalog, favorites: renderFavorites, recent: renderRecent, friends: renderFriends, plans: renderPlans, settings: renderSettings };
+  const pages = { home: renderHome, catalog: renderCatalog, search: renderSearchPage, favorites: renderFavorites, recent: renderRecent, friends: renderFriends, plans: renderPlans, settings: renderSettings };
   pageContent.innerHTML = (pages[currentView] || renderHome)();
   mountIcons(pageContent);
+  if (currentView === 'search') {
+    // Keep the search input focused and stable across re-renders.
+    const input = pageContent.querySelector('[data-search-page-input]');
+    if (input && document.activeElement !== input && !input.value) input.focus();
+  }
   if (pageContent.dataset.renderedView !== currentView) {
     pageContent.dataset.renderedView = currentView;
     pageContent.dataset.transition = preferences.motion ? preferences.pageTransition : 'none';
@@ -2449,7 +2481,8 @@ function toggleFavorite(id) {
 
 function setView(view) {
   currentView = view;
-  if (view !== 'catalog') {
+  // The search tab keeps its own results: switching tabs does not wipe them.
+  if (view !== 'catalog' && view !== 'search') {
     searchQuery = '';
     searchInput.value = '';
     activeCategory = preferences.catalogGenre || 'all';
@@ -2567,31 +2600,23 @@ document.addEventListener('click', async (event) => {
       else expandedDescriptions.add(id);
       renderPage();
     }
-    if (action.dataset.action === 'load-more') {
+    if (action.dataset.action === 'load-more' || action.dataset.action === 'load-more-genre') {
+      // One unified manual "load more": pick the right source and append.
       if (searchQuery.length >= 2) fetchLiveSearch(true);
       else if (isGenreSearchActive()) fetchGenreGames(true);
       else {
         const list = filterGames();
         if (catalogVisibleCount < list.length) { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); }
-        else {
-          // All locally available items are shown: fetch the next Discover
-          // category in append mode; once every category is used up, fall
-          // through to an endless general search so loading never dead-ends.
+        else if (allDiscoverySortsUsed() || discoveryCatalog.__accumulated?.searchFallbackStarted) {
+          if (!generalLoadingMore) appendGeneralSearch();
+        } else {
+          // Fetch the next unused Discover category in append mode.
           const sorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
-          const index = sorts.findIndex((sort) => sort.id === activeDiscoverySort);
-          const next = sorts[(index + 1) % sorts.length];
-          if (next && next.id !== activeDiscoverySort && !discoveryCatalog[next.id]) loadDiscoveryCatalog(next.id, { append: true });
-          else if (next && next.id !== activeDiscoverySort && !(discoveryCatalog.__accumulated?.usedSorts || []).includes(next.id)) {
-            markDiscoverySortUsed(next.id);
-            loadDiscoveryCatalog(next.id, { append: true });
-          } else if (!(discoveryCatalog.__accumulated?.searchFallbackStarted)) {
-            startGeneralSearchFallback();
-          }
+          const unused = sorts.find((sort) => !(discoveryCatalog.__accumulated?.usedSorts || []).includes(sort.id));
+          if (unused) loadDiscoveryCatalog(unused.id, { append: true });
+          else if (!(discoveryCatalog.__accumulated?.searchFallbackStarted)) startGeneralSearchFallback();
         }
       }
-    }
-    if (action.dataset.action === 'load-more-genre') {
-      if (isGenreSearchActive()) fetchGenreGames(true);
     }
     if (action.dataset.action === 'notifications') showToast(t('toast.notifications'));
     if (action.dataset.action === 'retry-update') {
@@ -2694,6 +2719,18 @@ document.addEventListener('click', async (event) => {
     renderPage();
     return;
   }
+  const searchSubmit = target.closest('[data-search-page-submit]');
+  if (searchSubmit) {
+    const input = pageContent.querySelector('[data-search-page-input]');
+    submitSearchPage(input ? input.value : searchQuery);
+    return;
+  }
+  const searchClear = target.closest('[data-search-page-clear]');
+  if (searchClear) {
+    submitSearchPage('');
+    return;
+  }
+
   const sidebarHide = target.closest('[data-sidebar-hide]');
   if (sidebarHide) { const compact = !document.body.classList.contains('sidebar-compact'); localStorage.setItem('vortex.sidebarCompact', JSON.stringify(compact)); renderPage(); return; }
   const catalogView = target.closest('[data-catalog-view]');
@@ -3129,6 +3166,12 @@ document.addEventListener('input', (event) => {
     scheduleLiveSearch(searchInput.value);
     return;
   }
+  if (event.target.matches('[data-search-page-input]')) {
+    // Typing just updates the query string; search fires only on Enter or
+    // the search button — no automatic loading while typing.
+    searchQuery = event.target.value;
+    return;
+  }
   if (event.target.matches('[data-game-search]')) {
     scheduleGameSearch(event.target.value);
     return;
@@ -3241,6 +3284,16 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     if (paletteOpen()) closeCommandPalette();
     else openCommandPalette();
+    return;
+  }
+  if (event.key === 'Enter' && event.target.matches('[data-search-page-input]')) {
+    event.preventDefault();
+    submitSearchPage(event.target.value);
+    return;
+  }
+  if (event.key === 'Escape' && event.target.matches('[data-search-page-input]')) {
+    event.preventDefault();
+    if (searchQuery) submitSearchPage('');
     return;
   }
   if (event.key === '/' && !isTyping) {
@@ -3420,7 +3473,6 @@ document.addEventListener('mouseout', (event) => {
   if (event.target.closest?.('.friend-card') && !event.relatedTarget?.closest?.('.friend-card')) hideFriendPreview();
 });
 document.addEventListener('scroll', hideFriendPreview, true);
-document.addEventListener('scroll', maybeLoadMoreCatalog, { passive: true, capture: true });
 
 function bootVortex() {
 restorePlaySession();

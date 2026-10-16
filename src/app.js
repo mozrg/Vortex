@@ -34,7 +34,6 @@ const palettes = [
 const NAV_ITEMS = [
   { key: 'home', icon: 'home', group: 'menu' },
   { key: 'catalog', icon: 'compass', group: 'menu' },
-  { key: 'search', icon: 'search', group: 'menu' },
   { key: 'favorites', icon: 'heart', group: 'menu' },
   { key: 'recent', icon: 'clock', group: 'menu' },
   { key: 'friends', icon: 'users', group: 'menu' },
@@ -695,6 +694,8 @@ function genreSearchTermAt(genre, index) {
   return modIndex % 2 === 0 ? `${base} ${suffix}` : `${suffix} ${base}`;
 }
 let genreResults = [];
+let genrePendingResults = [];
+let genreOverflowResults = [];
 let genrePageToken = null;
 let genreStatus = 'idle';
 let genreLoadingMore = false;
@@ -705,77 +706,72 @@ function isGenreSearchActive() { return !searchQuery && activeCategory !== 'all'
 
 async function fetchGenreGames(append = false) {
   const genre = activeCategory;
-  if (!GENRE_SEARCH_BASE[genre]) return;
+  if (!GENRE_SEARCH_BASE[genre] || genreLoadingMore) return;
   const requestId = ++activeGenreRequestId;
-  const nextTerm = () => {
-    const nextIndex = genreTermIndex + 1;
-    const next = genreSearchTermAt(genre, nextIndex);
-    if (!next) return null;
-    genreTermIndex = nextIndex;
+  const targetNewCount = append ? 10 : 0;
+  const maxRequests = append ? 24 : 1;
+  if (append) {
+    genreLoadingMore = true;
+    genrePendingResults = [];
+    renderPage();
+  } else {
+    genreStatus = 'loading';
+    genreResults = [];
+    genrePendingResults = [];
+    genreOverflowResults = [];
     genrePageToken = null;
-    return next;
-  };
-  if (append && !genrePageToken) {
-    // Current search term exhausted: try the next phrasing for fresh results.
-    const term = nextTerm();
-    if (!term) { genreLoadingMore = false; renderPage(); return; }
-    const knownIds = new Set(genreResults.map((game) => game.id));
-    await fetchGenreTerm(term, requestId, genre, knownIds, true);
-    return;
+    genreTermIndex = 0;
+    renderPage();
   }
-  if (append) { genreLoadingMore = true; renderPage(); }
-  else { genreStatus = 'loading'; genreResults = []; genrePageToken = null; genreTermIndex = 0; renderPage(); }
-  const knownIds = append ? new Set(genreResults.map((game) => game.id)) : new Set();
-  await fetchGenreTerm(genreSearchTermAt(genre, genreTermIndex), requestId, genre, knownIds, append);
-}
 
-async function fetchGenreTerm(term, requestId, genre, knownIds, append) {
+  const seen = new Set([...genreResults, ...genreOverflowResults].map((game) => String(game.id)));
+  let successfulRequests = 0;
   try {
     if (!window.vortexDesktop?.searchGames) throw new Error('desktop only');
-    const response = await window.vortexDesktop.searchGames({
-      query: term,
-      pageToken: append ? genrePageToken : null
-    });
-    if (requestId !== activeGenreRequestId || activeCategory !== genre) return;
-    const received = (response.items || []).map((game) => ({
-      ...game,
-      id: String(game.id),
-      title: String(game.title || t('game.fallbackDescription')),
-      creator: String(game.creator || ''),
-      genre: String(game.genre || ''),
-      genreKey: game.genreKey || inferGenreKey(game),
-      tagKey: 'roblox',
-      art: 'live',
-      iconKey: 'gamepad',
-      description: String(game.description || t('game.fallbackDescription')),
-      live: true,
-      search: term
-    }));
-    const newItems = received.filter((game) => !knownIds.has(game.id));
-    // Token still present but the page repeated itself: advance to the next
-    // search phrasing automatically so the list keeps growing.
-    if (append && !newItems.length) {
-      genreLoadingMore = false;
-      const nextIndex = genreTermIndex + 1;
-      const next = genreSearchTermAt(genre, nextIndex);
-      if (next) {
-        genreTermIndex = nextIndex;
-        genrePageToken = null;
-        fetchGenreTerm(next, requestId, genre, knownIds, true);
-        return;
+    if (append) {
+      while (genreOverflowResults.length && genrePendingResults.length < targetNewCount) {
+        genrePendingResults.push(genreOverflowResults.shift());
       }
-      genrePageToken = null;
-      renderPage();
-      return;
     }
-    genreResults = append ? [...genreResults, ...newItems] : newItems;
-    genrePageToken = response.nextPageToken || null;
+    while (successfulRequests < maxRequests && (!append || genrePendingResults.length < targetNewCount)) {
+      if (requestId !== activeGenreRequestId || activeCategory !== genre) return;
+      const term = genreSearchTermAt(genre, genreTermIndex);
+      if (!term) break;
+      const response = await window.vortexDesktop.searchGames({ query: term, pageToken: genrePageToken });
+      successfulRequests++;
+      if (requestId !== activeGenreRequestId || activeCategory !== genre) return;
+      const received = (response.items || []).map((game) => ({
+        ...game, id: String(game.id), title: String(game.title || t('game.fallbackDescription')),
+        creator: String(game.creator || ''), genre: String(game.genre || ''),
+        genreKey: game.genreKey || inferGenreKey(game), tagKey: 'roblox', art: 'live', iconKey: 'gamepad',
+        description: String(game.description || t('game.fallbackDescription')), live: true, search: term
+      }));
+      const novel = [];
+      for (const game of received) {
+        if (seen.has(game.id)) continue;
+        seen.add(game.id);
+        novel.push(game);
+      }
+      if (append) {
+        const need = Math.max(0, targetNewCount - genrePendingResults.length);
+        genrePendingResults.push(...novel.slice(0, need));
+        genreOverflowResults.push(...novel.slice(need));
+      } else genreResults.push(...novel);
+      const nextToken = response.nextPageToken || null;
+      if (nextToken) genrePageToken = nextToken;
+      else { genrePageToken = null; genreTermIndex++; }
+    }
+    if (append) genreResults = [...genreResults, ...genrePendingResults];
+    genrePendingResults = [];
     genreStatus = 'success';
     genreLoadingMore = false;
     renderPage();
   } catch {
     if (requestId !== activeGenreRequestId) return;
-    genreStatus = 'error';
+    // Keep partial successful games if a later page hits a transient error.
+    if (append && genrePendingResults.length) genreResults = [...genreResults, ...genrePendingResults];
+    genrePendingResults = [];
+    genreStatus = genreResults.length ? 'success' : 'error';
     genreLoadingMore = false;
     renderPage();
   }
@@ -784,8 +780,10 @@ async function fetchGenreTerm(term, requestId, genre, knownIds, append) {
 function filterGames() {
   const query = searchQuery.trim().toLocaleLowerCase(preferences.language);
   if (isGenreSearchActive()) {
-    let list = genreResults.filter((game) => game.genreKey === activeCategory || inferGenreKey(game) === activeCategory);
-    if (!list.length) list = genreResults;
+    // Results were fetched from Roblox using the selected genre query.
+    // Do not re-filter by our local genre classifier; that used to hide most
+    // valid API hits, making a 10-game batch appear as only 1–3 cards.
+    let list = [...genreResults];
     if (sortMode === 'alpha') list = list.slice().sort((first, second) => first.title.localeCompare(second.title, preferences.language));
     if (sortMode === 'players') list = list.slice().sort((first, second) => (second.playerCount || 0) - (first.playerCount || 0));
     if (sortMode === 'likes') list = list.slice().sort((first, second) => {

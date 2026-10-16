@@ -609,8 +609,11 @@ async function getGameDetailsByUniverse(universeIds) {
   return results.flat();
 }
 
-async function fetchPrivateServersForUniverse(universeId) {
+async function fetchPrivateServersForPlace(placeId) {
   const headers = { Cookie: `.ROBLOSECURITY=${robloxSecurityCookie}`, Accept: 'application/json' };
+  const universeLookup = await fetchCachedJson(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`, 6000);
+  const universeId = String(universeLookup?.universeId || '');
+  if (!/^\d{1,20}$/.test(universeId)) throw new Error('Could not resolve universe for place.');
   const me = await fetchJson(new Request('https://users.roblox.com/v1/users/authenticated', { headers: { ...headers, 'User-Agent': 'Mozilla/5.0 Vortex/1.0' } }), 6000);
   if (!me?.id) throw new Error('Roblox cookie is not authenticated.');
   const output = [];
@@ -691,7 +694,7 @@ ipcMain.handle('games:servers', async (_event, universeIdValue, placeIdValue) =>
   const universeId = String(universeIdValue || '').match(/^\d{1,20}$/)?.[0] || '';
   const placeId = String(placeIdValue || '').match(/^\d{5,20}$/)?.[0] || '';
   if (!universeId || !placeId || !robloxSecurityCookie) return { private: [], hasPrivateServerSupport: false };
-  try { return { private: await fetchPrivateServersForUniverse(universeId), hasPrivateServerSupport: true }; }
+  try { return { private: await fetchPrivateServersForPlace(placeId), hasPrivateServerSupport: true }; }
   catch { return { private: [], hasPrivateServerSupport: true, error: 'private-server-list-unavailable' }; }
 });
 ipcMain.handle('game:open', async (_event, placeId, gameId, accessCode) => {

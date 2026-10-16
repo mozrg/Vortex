@@ -157,6 +157,7 @@ let detailGame = null;
 let detailStatus = 'idle';
 let detailRequestId = 0;
 let detailBadgeCount = 3;
+let detailBadgesExpanded = true;
 let detailGalleryIndex = 0;
 let detailGalleryCount = 0;
 let searchQuery = '';
@@ -502,6 +503,7 @@ function openGameDetails(id) {
   if (!game) return;
   const requestId = ++detailRequestId;
   detailBadgeCount = 3;
+  detailBadgesExpanded = true;
   detailGalleryIndex = 0;
   detailGalleryCount = 0;
   detailGame = { ...game, upVotes: Number(game.upVotes) || 0, downVotes: Number(game.downVotes) || 0, playing: Number(game.playerCount) || 0, visits: Number(game.visits) || 0, favorites: Number(game.favorites) || 0 };
@@ -545,8 +547,8 @@ function renderGameDetail() {
   const voteBar = likesTotal ? `<div class="detail-like-bar" role="img" aria-label="${t('game.likeRatio')} ${likePercent}%"><span class="detail-like-positive" style="width:${likePercent}%"></span><span class="detail-like-negative" style="width:${dislikePercent}%"></span></div><div class="detail-like-legend"><span><i class="like-dot"></i>${likePercent}% · ${t('game.likeRatio')}</span><span><i class="dislike-dot"></i>${dislikePercent}% · ${t('game.dislikeRatio')}</span></div>` : '';
   const playtime = renderPlaytimeBadge(game.id) || t('stats.noData');
   const allBadges = Array.isArray(game.badges) ? game.badges : [];
-  const visibleBadges = allBadges.slice(0, detailBadgeCount);
-  const badges = allBadges.length ? `<section class="detail-section"><h2>${t('game.badges')}</h2><div class="detail-badges">${visibleBadges.map((badge) => `<span class="detail-badge"><strong>${escapeHtml(badge.name)}</strong>${badge.description ? `<small>${escapeHtml(badge.description)}</small>` : ''}</span>`).join('')}</div>${visibleBadges.length < allBadges.length ? `<button class="ghost-button" data-action="show-more-badges">${t('game.showMoreBadges')}</button>` : ''}</section>` : '';
+  const visibleBadges = detailBadgesExpanded ? allBadges.slice(0, detailBadgeCount) : [];
+  const badges = allBadges.length ? `<section class="detail-section"><div class="detail-section-heading"><h2>${t('game.badges')}</h2><button class="ghost-button" data-action="toggle-badges">${t(detailBadgesExpanded ? 'game.hideBadges' : 'game.showBadges')}</button></div>${detailBadgesExpanded ? `<div class="detail-badges">${visibleBadges.map((badge) => `<span class="detail-badge"><strong>${escapeHtml(badge.name)}</strong>${badge.description ? `<small>${escapeHtml(badge.description)}</small>` : ''}</span>`).join('')}</div>${visibleBadges.length < allBadges.length ? `<button class="ghost-button" data-action="show-more-badges">${t('game.showMoreBadges')}</button>` : ''}` : ''}</section>` : '';
   const social = Array.isArray(game.socialLinks) && game.socialLinks.length ? `<section class="detail-section"><h2>${t('game.socialLinks')}</h2><div class="detail-social-links">${game.socialLinks.map((link) => {
     const href = safeExternalUrl(link.url);
     if (!href) return '';
@@ -559,7 +561,8 @@ function renderGameDetail() {
   detailGalleryCount = galleryItems.length;
   detailGalleryIndex = Math.min(detailGalleryIndex, Math.max(0, galleryItems.length - 1));
   const currentMedia = galleryItems[detailGalleryIndex];
-  const gallery = currentMedia ? `<section class="detail-section"><div class="detail-section-heading"><div><h2>${t('game.media')}</h2><p>${detailGalleryIndex + 1} / ${galleryItems.length}</p></div>${galleryItems.length > 1 ? `<div class="detail-gallery-controls"><button class="icon-button" data-action="gallery-prev" aria-label="${t('game.previousMedia')}">${icon('arrowLeft', 16)}</button><button class="icon-button" data-action="gallery-next" aria-label="${t('game.nextMedia')}">${icon('arrow', 16)}</button></div>` : ''}</div><div class="detail-gallery"><div class="detail-gallery-slide">${currentMedia.kind === 'video' ? `<video controls preload="metadata" poster="${escapeHtml(currentMedia.thumbnail || '')}"><source src="${escapeHtml(currentMedia.url)}" type="video/mp4" /></video>` : `<a href="${escapeHtml(currentMedia.url)}" target="_blank" rel="noreferrer"><img src="${escapeHtml(currentMedia.url)}" alt="${escapeHtml(currentMedia.title || game.title)}" /></a>`}</div>${galleryItems.length > 1 ? `<div class="detail-gallery-dots">${galleryItems.map((_, index) => `<button class="gallery-dot ${index === detailGalleryIndex ? 'active' : ''}" data-action="gallery-goto" data-index="${index}" aria-label="${index + 1}"></button>`).join('')}</div>` : ''}</div></section>` : '';
+  const galleryTitle = videos.length ? t('game.media') : t('game.screenshots');
+  const gallery = currentMedia ? `<section class="detail-section"><div class="detail-section-heading"><div><h2>${galleryTitle}</h2><p>${detailGalleryIndex + 1} / ${galleryItems.length}</p></div>${galleryItems.length > 1 ? `<div class="detail-gallery-controls"><button class="icon-button" data-action="gallery-prev" aria-label="${t('game.previousMedia')}">${icon('arrowLeft', 16)}</button><button class="icon-button" data-action="gallery-next" aria-label="${t('game.nextMedia')}">${icon('arrow', 16)}</button></div>` : ''}</div><div class="detail-gallery"><div class="detail-gallery-slide">${currentMedia.kind === 'video' ? `<video controls preload="metadata" poster="${escapeHtml(currentMedia.thumbnail || '')}"><source src="${escapeHtml(currentMedia.url)}" type="video/mp4" /></video>` : `<img src="${escapeHtml(currentMedia.url)}" alt="${escapeHtml(currentMedia.title || game.title)}" />`}</div>${galleryItems.length > 1 ? `<div class="detail-gallery-dots">${galleryItems.map((_, index) => `<button class="gallery-dot ${index === detailGalleryIndex ? 'active' : ''}" data-action="gallery-goto" data-index="${index}" aria-label="${index + 1}"></button>`).join('')}</div>` : ''}</div></section>` : '';
   const privateServers = servers.private || [];
   const serverSection = `<section class="detail-section"><div class="detail-section-heading"><div><h2>${t('game.privateServer')}</h2><p>${t('game.privateServersHint')}</p></div><button class="icon-button" data-action="refresh-place-details" title="${t('game.refreshServers')}">${icon('rotate', 16)}</button></div><div class="detail-server-list">${servers.loading ? `<p class="detail-muted">${t('game.loadingDetails')}</p>` : privateServers.length ? privateServers.map((server) => `<div class="detail-server"><span><strong>${escapeHtml(server.name || server.ownerName || t('game.privateServer'))}</strong><small>${formatCount(server.playing)} / ${formatCount(server.maxPlayers)} ${t('game.players')}</small>${server.ownerName ? `<small>${t('game.serverOwner')}: ${escapeHtml(server.ownerName)}</small>` : ''}</span><button class="ghost-button" data-action="join-server" data-id="${escapeHtml(game.id)}" data-server-id="${escapeHtml(server.id)}" ${server.accessCode ? `data-access-code="${escapeHtml(server.accessCode)}"` : ''}>${t('game.joinServer')}</button></div>`).join('') : `<p class="detail-muted">${t(servers.error ? 'game.serverListError' : servers.hasPrivateServerSupport ? 'game.noPrivateServers' : 'game.connectCookieForServers')}</p>`}</div><button class="primary-button" data-action="create-private-server" data-id="${escapeHtml(game.id)}">${t('game.createPrivateServer')}</button></section>`;
   const description = String(game.description || t('game.fallbackDescription'));
@@ -2684,6 +2687,7 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'play') openGame(action.dataset.id);
     if (action.dataset.action === 'join-server') openGame(action.dataset.id, action.dataset.serverId, action.dataset.accessCode || '');
     if (action.dataset.action === 'show-more-badges') { detailBadgeCount += 3; renderPage(); return; }
+    if (action.dataset.action === 'toggle-badges') { detailBadgesExpanded = !detailBadgesExpanded; renderPage(); return; }
     if (action.dataset.action === 'gallery-prev') { detailGalleryIndex = Math.max(0, detailGalleryIndex - 1); renderPage(); return; }
     if (action.dataset.action === 'gallery-next') { detailGalleryIndex = Math.min(detailGalleryCount - 1, detailGalleryIndex + 1); renderPage(); return; }
     if (action.dataset.action === 'gallery-goto') { detailGalleryIndex = Math.max(0, Number(action.dataset.index) || 0); renderPage(); return; }

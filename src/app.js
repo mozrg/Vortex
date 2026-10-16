@@ -2307,7 +2307,7 @@ async function loadDiscoveryCatalog(sortId = activeDiscoverySort, { force = fals
     const previous = discoveryCatalog.__accumulated?.items || [];
     const knownIds = new Set(previous.map((game) => String(game.id)));
     const merged = [...previous, ...cached.items.filter((game) => !knownIds.has(String(game.id)))];
-    discoveryCatalog = { ...discoveryCatalog, __accumulated: { savedAt: Date.now(), items: merged } };
+    discoveryCatalog = { ...discoveryCatalog, __accumulated: { savedAt: Date.now(), items: merged, usedSorts: [...new Set([...(discoveryCatalog.__accumulated?.usedSorts || []), String(sortId)])] } };
     activeDiscoverySort = sortId;
     discoveryStatus = 'success';
     renderPage();

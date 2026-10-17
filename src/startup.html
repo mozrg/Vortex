@@ -42,14 +42,28 @@
       .progress.downloading i { animation: none; transition: width .25s ease; }
 
       .version { margin-top: 12px; color: #6d6878; font-size: 8.5px; letter-spacing: .06em; }
+
+      /* Multi-stage checklist shown while an update runs. */
+      .stages { display: grid; gap: 5px; width: 100%; margin: 12px 0 0; padding: 0; list-style: none; }
+      .stages li { display: flex; align-items: center; gap: 9px; color: #6f6a7c; font-size: 9.5px; letter-spacing: .01em; transition: color .25s ease; }
+      .stages li i { display: grid; width: 14px; height: 14px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(190,169,255,.22); border-radius: 50%; background: rgba(255,255,255,.02); transition: border-color .25s ease, background .25s ease; }
+      .stages li i::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: transparent; transition: background .25s ease; }
+      .stages li.active { color: #eae5f6; }
+      .stages li.active i { border-color: #a58aff; background: rgba(155,124,255,.16); }
+      .stages li.active i::before { background: #c4afff; }
+      .stages li.done { color: #9b93ad; }
+      .stages li.done i { border-color: rgba(114,81,206,.55); background: rgba(114,81,206,.18); }
+      .stages li.done i::before { content: ""; width: 8px; height: 4px; border: 1.5px solid #8fd6a8; border-top: 0; border-right: 0; border-radius: 0; background: none; transform: rotate(-45deg) translate(0, -1px); }
+      .stages li.error { color: #e0a496; }
+      .stages li.error i { border-color: rgba(224,112,95,.45); background: rgba(224,112,95,.12); }
+      .stages li.error i::before { background: #e0705f; }
       @keyframes load { 0% { transform: translateX(-110%); } 100% { transform: translateX(430%); } }
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
     </style>
   </head>
   <body>
     <main>
-      <div class="brand"><svg class="brand-logo" viewBox="0 0 709 572" fill="none" aria-hidden="true">
-          <defs>
+      <div class="brand"><svg class="brand-logo" viewBox="0 0 709 572" fill="none" aria-hidden="true">          <defs>
             <clipPath id="logo-wipe"><rect x="0" y="0" width="709" height="572"><animate attributeName="width" values="0;709;709" keyTimes="0;.5;1" dur="2.2s" fill="freeze" calcMode="spline" keySplines=".4 0 .2 1"/></rect></clipPath>
           </defs>
           <g clip-path="url(#logo-wipe)">
@@ -65,6 +79,13 @@
         <span class="status-copy"><strong data-copy="startup">Подготовка лаунчера</strong><small id="updates-copy">Проверяем обновления…</small></span>
         <div class="progress" aria-hidden="true"><i></i></div>
       </section>
+      <ol class="stages" id="stages" hidden>
+        <li data-stage="checksum"><i></i><span>Контрольная сумма</span></li>
+        <li data-stage="prepare"><i></i><span>Подготовка к загрузке</span></li>
+        <li data-stage="downloading"><i></i><span>Загрузка установщика</span></li>
+        <li data-stage="verify"><i></i><span>Проверка установщика</span></li>
+        <li data-stage="installing"><i></i><span>Установка новой версии</span></li>
+      </ol>
       <small class="version" id="version-copy">VORTEX · PLACE LAUNCHER</small>
     </main>
     <script>
@@ -72,6 +93,7 @@
         ru: { title: 'Открываем каталог', subtitle: 'Подготавливаем каталог и проверяем обновления', startup: 'Подготовка лаунчера', checking: 'Проверяем доступные версии', current: 'Установлена актуальная версия', unavailable: 'Пока нет опубликованных обновлений', downloading: 'Загружаем обновление', downloaded: 'Обновление загружено и проверено', applying: 'Устанавливаем обновление — лаунчер перезапустится', error: 'Не удалось обновиться — запускаем текущую версию', development: 'Проверка обновлений доступна в установленной версии', version: 'Текущая версия {version}', waiting: 'Загрузка идёт, это может занять минуту' },
         en: { title: 'Opening your library', subtitle: 'Preparing your library and checking for updates', startup: 'Preparing the launcher', checking: 'Checking for available versions', current: 'You have the latest version', unavailable: 'No published updates yet', downloading: 'Downloading the update', downloaded: 'Update downloaded and verified', applying: 'Installing update — the launcher will restart', error: 'Update failed — opening the current version', development: 'Update checks run in the installed app', version: 'Current version {version}', waiting: 'Downloading, this can take a minute' }
       };
+      const stageOrder = ['checksum', 'prepare', 'downloading', 'verify', 'installing'];
       const language = navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en';
       document.documentElement.lang = language;
       document.querySelectorAll('[data-copy]').forEach((node) => { node.textContent = copy[language][node.dataset.copy]; });
@@ -79,21 +101,44 @@
       const updateCopy = document.getElementById('updates-copy');
       const versionCopy = document.getElementById('version-copy');
       const progress = document.querySelector('.progress');
+      const stagesList = document.getElementById('stages');
       let waitingHintShown = false;
       let currentState = { status: 'checking' };
       const BUSY = ['checking', 'downloading', 'applying'];
+      function renderStages() {
+        const stage = currentState.stage || null;
+        const failed = currentState.status === 'error';
+        const stageIndex = stage ? stageOrder.indexOf(stage) : -1;
+        const active = ['downloading', 'applying'].includes(currentState.status);
+        stagesList.hidden = !stage || !['downloading', 'applying', 'error'].includes(currentState.status);
+        if (stagesList.hidden) return;
+        for (const item of stagesList.querySelectorAll('li')) {
+          const name = item.dataset.stage;
+          const index = stageOrder.indexOf(name);
+          item.classList.toggle('done', !failed && index < stageIndex);
+          item.classList.toggle('active', !failed && name === stage);
+          item.classList.toggle('error', failed && name === stage);
+        }
+        if (currentState.status === 'applying') {
+          for (const item of stagesList.querySelectorAll('li')) {
+            item.classList.remove('error');
+            item.classList.add('done');
+          }
+          stagesList.querySelector('li[data-stage="installing"]').classList.replace('done', 'active');
+        }
+      }
       function render() {
         const status = currentState.status || 'checking';
         const key = ['current', 'unavailable', 'downloading', 'downloaded', 'applying', 'error', 'development'].includes(status) ? status : 'checking';
         const percent = Math.max(0, Math.min(100, Number(currentState.progress) || 0));
         const suffix = key === 'downloading' && Number.isFinite(currentState.progress) ? ` · ${percent}%` : '';
-        updateCopy.textContent = waitingHintShown && key === 'checking' ? `${copy[language].waiting}${suffix}` : `${copy[language][key]}${suffix}`;
-        statusCard.classList.toggle('failed', status === 'error');
+        updateCopy.textContent = waitingHintShown && key === 'checking' ? `${copy[language].waiting}${suffix}` : `${copy[language][key]}${suffix}`;        statusCard.classList.toggle('failed', status === 'error');
         progress.classList.toggle('downloading', key === 'downloading' || key === 'applying');
         if (key === 'downloading' || key === 'applying') {
           progress.querySelector('i').style.width = `${key === 'applying' ? 100 : Math.max(1, percent)}%`;
         }
         if (currentState.currentVersion) versionCopy.textContent = copy[language].version.replace('{version}', currentState.currentVersion);
+        renderStages();
       }
       function showUpdateState(state) {
         if (state) currentState = state;
@@ -107,6 +152,14 @@
         render();
       }, 10000);
       window.vortexStartup?.getUpdateState?.().then(showUpdateState).catch(() => {});
+      // Match splash language to stage labels.
+      if (language === 'en') {
+        document.querySelector('[data-stage="checksum"] span').textContent = 'Checksum';
+        document.querySelector('[data-stage="prepare"] span').textContent = 'Preparing';
+        document.querySelector('[data-stage="downloading"] span').textContent = 'Downloading installer';
+        document.querySelector('[data-stage="verify"] span').textContent = 'Verifying installer';
+        document.querySelector('[data-stage="installing"] span').textContent = 'Installing new version';
+      }
     </script>
   </body>
 </html>

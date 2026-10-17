@@ -2078,11 +2078,13 @@ function renderUpdateBanner(state) {
     return;
   }
   const progress = Math.max(0, Math.min(100, Number(latestUpdateState.progress) || 0));
+  const stageKeys = { checksum: 'updates.stage.checksum', prepare: 'updates.stage.prepare', downloading: 'updates.stage.downloading', verify: 'updates.stage.verify', installing: 'updates.stage.installing' };
+  const stageText = stageKeys[latestUpdateState?.stage] ? t(stageKeys[latestUpdateState.stage]) : null;
   const title = t('updates.title', { version: escapeHtml(latestUpdateState.latestVersion || '') });
   const message = status === 'downloaded' ? t('updates.ready')
     : status === 'applying' ? t('updates.applying')
       : status === 'error' ? t('updates.error', { error: escapeHtml(latestUpdateState.errorMessage || 'Unknown error') })
-        : t('updates.downloading', { percent: progress });
+        : `${stageText ? `${stageText} · ` : ''}${t('updates.downloading', { percent: progress })}`;
   banner.dataset.status = status;
   banner.hidden = false;
   banner.innerHTML = `<span class="update-banner-icon">${icon(status === 'error' ? 'close' : status === 'downloaded' ? 'check' : 'sparkle', 18)}</span><span class="update-banner-copy"><strong>${title}</strong><small>${message}</small></span>${status === 'error' ? `<button class="ghost-button" data-action="retry-update">${t('updates.retry')}</button>` : `<span class="update-banner-progress" aria-label="${progress}%"><i style="--progress:${status === 'applying' || status === 'downloaded' ? 100 : progress}%"></i></span>`}`;

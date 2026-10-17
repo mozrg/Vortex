@@ -32,11 +32,11 @@ let startupWindow = null;
 let updateCheckRunning = false;
 // Last state seen while the splash was still visible, replayed to the main window.
 let pendingUpdateStateForMainWindow = null;
-let updateState = { status: 'checking', progress: 0, currentVersion: app.getVersion(), latestVersion: null, releaseUrl: null, errorMessage: null };
+let updateState = { status: 'checking', progress: 0, stage: null, currentVersion: app.getVersion(), latestVersion: null, releaseUrl: null, errorMessage: null };
 
 function publicUpdateState() {
-  const { status, progress, currentVersion, latestVersion, releaseUrl, errorMessage } = updateState;
-  return { status, progress, currentVersion, latestVersion, releaseUrl, errorMessage };
+  const { status, progress, stage, currentVersion, latestVersion, releaseUrl, errorMessage } = updateState;
+  return { status, progress, stage, currentVersion, latestVersion, releaseUrl, errorMessage };
 }
 
 function broadcastUpdateState() {
@@ -190,6 +190,7 @@ async function streamInstallerToFile(url, installer, partialPath, sizeOnDisk, ex
         setUpdateState({
           status: 'downloading',
           progress: Math.min(99, Math.floor((received / installer.size) * 100)),
+          stage: 'downloading',
           latestVersion: installer.version ?? updateState.latestVersion,
           releaseUrl: updateState.releaseUrl
         });
@@ -215,6 +216,7 @@ async function streamInstallerToFile(url, installer, partialPath, sizeOnDisk, ex
 }
 
 async function downloadUpdate(release, version, installer, checksumAsset) {
+  setUpdateState({ status: 'downloading', progress: 0, stage: 'checksum', latestVersion: version, releaseUrl: release.html_url, errorMessage: null });
   await appendUpdateLog(`download: requesting checksum for ${installer.name}`);
   const checksumResponse = await fetchReleaseAsset(checksumAsset.browser_download_url);
   const checksumText = await checksumResponse.text();
@@ -224,6 +226,7 @@ async function downloadUpdate(release, version, installer, checksumAsset) {
   await appendUpdateLog(`download: checksum received for ${installer.name} (${installer.size} bytes)`);
 
   const updateDirectory = path.join(app.getPath('userData'), 'updates');
+  setUpdateState({ status: 'downloading', progress: 0, stage: 'prepare', latestVersion: version, releaseUrl: release.html_url, errorMessage: null });
   await fsp.mkdir(updateDirectory, { recursive: true });
   const fileName = installer.name;
   await cleanupLegacyUpdateFiles(fileName);
@@ -231,6 +234,7 @@ async function downloadUpdate(release, version, installer, checksumAsset) {
   try {
     if ((await fsp.stat(finalPath)).size === installer.size && (await hashFile(finalPath)) === expectedHash) {
       await appendUpdateLog('download: a verified installer is already cached, applying it');
+      setUpdateState({ status: 'downloading', progress: 100, stage: 'verify', latestVersion: version, releaseUrl: release.html_url, errorMessage: null });
       await installUpdate(finalPath, version, release);
       return;
     }
@@ -249,12 +253,14 @@ async function downloadUpdate(release, version, installer, checksumAsset) {
       setUpdateState({
         status: 'downloading',
         progress: resuming ? Math.min(99, Math.floor((sizeOnDisk / installer.size) * 100)) : 0,
+        stage: 'downloading',
         latestVersion: version,
         releaseUrl: release.html_url,
         errorMessage: null
       });
       await streamInstallerToFile(installer.browser_download_url, asset, partialPath, resuming ? sizeOnDisk : 0, expectedHash);
       await fsp.rm(finalPath, { force: true, maxRetries: 5, retryDelay: 300 });
+      setUpdateState({ status: 'downloading', progress: 100, stage: 'verify', latestVersion: version, releaseUrl: release.html_url, errorMessage: null });
       await fsp.rename(partialPath, finalPath);
       await appendUpdateLog(`download: ${fileName} verified after ${attempt} attempt(s)`);
       await installUpdate(finalPath, version, release);
@@ -290,7 +296,7 @@ async function installUpdate(installerPath, version, release) {
   await fsp.writeFile(script, `\ufeff${body}`, 'utf8');
   await appendUpdateLog(`update: verified setup cached at ${installerPath}`);
   await appendUpdateLog('update: preparing hidden installer handoff');
-  setUpdateState({ status: 'applying', progress: 100, latestVersion: version, releaseUrl: release.html_url, errorMessage: null });
+  setUpdateState({ status: 'applying', progress: 100, stage: 'installing', latestVersion: version, releaseUrl: release.html_url, errorMessage: null });
   // The helper must outlive this process, so it is started through `cmd /c start`:
   // a detached powershell.exe is not executed reliably on Windows, while a process
   // created by `start` keeps running after the launcher exits.
@@ -319,7 +325,7 @@ async function checkForUpdates() {
   }
 
   updateCheckRunning = true;
-  setUpdateState({ status: 'checking', progress: 0, latestVersion: null, releaseUrl: null, errorMessage: null });
+  setUpdateState({ status: 'checking', progress: 0, stage: null, latestVersion: null, releaseUrl: null, errorMessage: null });
   // Each step is logged before and after the network call: if a check ever stalls again,
   // apply.log shows exactly which request never came back.
   const startedAt = Date.now();
@@ -388,11 +394,11 @@ function createWindow() {
 
   const splash = new BrowserWindow({
     width: 440,
-    height: 300,
+    height: 420,
     minWidth: 440,
-    minHeight: 300,
+    minHeight: 420,
     maxWidth: 440,
-    maxHeight: 300,
+    maxHeight: 420,
     frame: false,
     resizable: false,
     show: false,

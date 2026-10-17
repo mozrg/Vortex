@@ -320,7 +320,7 @@ async function installUpdate(installerPath, version, release) {
 async function checkForUpdates() {
   if (updateCheckRunning) return;
   if (!app.isPackaged) {
-    setUpdateState({ status: 'development', progress: 0 });
+    setUpdateState({ status: 'development', progress: 0, stage: null });
     return;
   }
 
@@ -337,7 +337,7 @@ async function checkForUpdates() {
     });
     await appendUpdateLog(`check: release list answered with ${response.status} after ${Date.now() - startedAt} ms`);
     if (response.status === 404) {
-      setUpdateState({ status: 'unavailable', progress: 0, latestVersion: null, releaseUrl: null, errorMessage: null });
+      setUpdateState({ status: 'unavailable', progress: 0, stage: null, latestVersion: null, releaseUrl: null, errorMessage: null });
       return;
     }
     if (!response.ok) throw new Error(`GitHub returned ${response.status}.`);
@@ -347,19 +347,20 @@ async function checkForUpdates() {
       // Releases exist but none has a complete installer + SHA-256 pair yet
       // (e.g. an empty draft-like release). Nothing to install, so this is not an error.
       await appendUpdateLog('check: no published release carries a complete installer yet');
-      setUpdateState({ status: 'unavailable', progress: 0, latestVersion: null, releaseUrl: null, errorMessage: null });
+      setUpdateState({ status: 'unavailable', progress: 0, stage: null, latestVersion: null, releaseUrl: null, errorMessage: null });
       return;
     }
     const { release, version, installer, checksumAsset } = candidate;
     await appendUpdateLog(`check: newest published version is ${version}, installed is ${app.getVersion()}`);
     if (!isNewerVersion(version, app.getVersion())) {
-      setUpdateState({ status: 'current', progress: 0, latestVersion: version, releaseUrl: release.html_url });
+      setUpdateState({ status: 'current', progress: 0, stage: null, latestVersion: version, releaseUrl: release.html_url });
       return;
     }
     await downloadUpdate(release, version, installer, checksumAsset);
   } catch (error) {
     console.warn('Vortex update check failed:', error.message);
     await appendUpdateLog(`check failed after ${Date.now() - startedAt} ms: ${error.message}`);
+    // The stage is intentionally preserved: the splash highlights the step that failed.
     setUpdateState({ status: 'error', progress: 0, errorMessage: String(error.message || 'Update failed').slice(0, 240) });
   } finally {
     updateCheckRunning = false;

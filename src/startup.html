@@ -134,8 +134,11 @@
         const suffix = key === 'downloading' && Number.isFinite(currentState.progress) ? ` · ${percent}%` : '';
         updateCopy.textContent = waitingHintShown && key === 'checking' ? `${copy[language].waiting}${suffix}` : `${copy[language][key]}${suffix}`;        statusCard.classList.toggle('failed', status === 'error');
         progress.classList.toggle('downloading', key === 'downloading' || key === 'applying');
+        progress.classList.toggle('applying', key === 'applying');
         if (key === 'downloading' || key === 'applying') {
           progress.querySelector('i').style.width = `${key === 'applying' ? 100 : Math.max(1, percent)}%`;
+        } else {
+          progress.querySelector('i').style.width = '';
         }
         if (currentState.currentVersion) versionCopy.textContent = copy[language].version.replace('{version}', currentState.currentVersion);
         renderStages();

@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
   getFeaturedGames: (placeIds) => ipcRenderer.invoke('games:featured', placeIds),
   clearSearchCache: () => ipcRenderer.invoke('games:clear-cache'),
   reportRecentGames: (payload) => ipcRenderer.send('tray:recent-games', payload),
+  getTrayState: () => ipcRenderer.invoke('tray:state'),
   listFriends: (username) => ipcRenderer.invoke('friends:list', { username }),
   detectRobloxAccount: () => ipcRenderer.invoke('friends:detect-account'),
   setPresenceCookie: (cookie) => ipcRenderer.invoke('friends:presence-cookie', { cookie }),

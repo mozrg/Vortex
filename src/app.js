@@ -73,7 +73,7 @@ const preferenceDefaults = {
   themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeGrainStrength: 0.05, themeVignette: false, themeVignetteStrength: 1,
   cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true,
   homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal',
-  homeSectionTitles: {}, homeSectionScale: 1, catalogView: 'grid', catalogGenre: 'all', cardAspect: 'auto', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern',
+  homeSectionTitles: {}, homeSectionScale: 1, catalogView: 'grid', catalogGenre: 'all', catalogAccess: 'all', cardAspect: 'auto', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern',
   discordPresence: false, friendFavoriteAlerts: false,
   diskCache: true, lazyImages: true, onlineHistoryLimit: 'week', trayMiniPlayer: true,
   catalogGroupByGenre: false,
@@ -81,34 +81,64 @@ const preferenceDefaults = {
 };
 
 // Rebindable shortcuts. `fallback` is used until the user records a custom combo.
+// Matching is done on KeyboardEvent.code (physical key), not .key: with a
+// non-Latin layout Ctrl+K reports "л" as .key but still reports "KeyK" as .code.
 const HOTKEY_ACTIONS = [
-  { id: 'palette', label: 'settings.hotkeys.search', fallback: { key: 'k', ctrl: true, shift: false } },
-  { id: 'settings', label: 'settings.hotkeys.settings', fallback: { key: ',', ctrl: true, shift: false } },
-  { id: 'friends', label: 'settings.hotkeys.friends', fallback: { key: 'f', ctrl: true, shift: true } },
-  { id: 'back', label: 'settings.hotkeys.back', fallback: { key: 'Escape', ctrl: false, shift: false } }
+  { id: 'palette', label: 'settings.hotkeys.search', fallback: { code: 'KeyK', key: 'k', ctrl: true, shift: false } },
+  { id: 'settings', label: 'settings.hotkeys.settings', fallback: { code: 'Comma', key: ',', ctrl: true, shift: false } },
+  { id: 'friends', label: 'settings.hotkeys.friends', fallback: { code: 'KeyF', key: 'f', ctrl: true, shift: true } },
+  { id: 'back', label: 'settings.hotkeys.back', fallback: { code: 'Escape', key: 'Escape', ctrl: false, shift: false } }
 ];
 
 function hotkeyCombo(id) {
   const custom = preferences.hotkeys?.[id];
-  if (custom && custom.key) return custom;
+  if (custom && (custom.code || custom.key)) return custom;
   return HOTKEY_ACTIONS.find((action) => action.id === id)?.fallback || null;
 }
 
+// Turn a physical key code into the label shown in settings.
+function hotkeyKeyLabel(combo) {
+  if (!combo) return '—';
+  if (combo.code === 'Escape') return 'Esc';
+  if (combo.code === 'Comma') return ',';
+  if (combo.code === 'Period') return '.';
+  if (combo.code === 'Slash') return '/';
+  if (combo.code === 'Semicolon') return ';';
+  if (combo.code === 'Quote') return "'";
+  if (combo.code === 'BracketLeft') return '[';
+  if (combo.code === 'BracketRight') return ']';
+  if (combo.code === 'Backslash') return '\\';
+  if (combo.code === 'Minus') return '-';
+  if (combo.code === 'Equal') return '=';
+  if (combo.code === 'Backquote') return '`';
+  if (combo.code === 'Space') return 'Space';
+  if (/^Key[A-Z]$/.test(combo.code || '')) return combo.code.slice(3);
+  if (/^Digit\d$/.test(combo.code || '')) return combo.code.slice(5);
+  if (/^F\d{1,2}$/.test(combo.code || '')) return combo.code;
+  // Fall back to the recorded character (used for non-Latin custom combos).
+  const key = String(combo.key || '');
+  return key.length === 1 ? key.toUpperCase() : key;
+}
+
 function formatHotkey(combo) {
-  if (!combo || !combo.key) return '—';
+  if (!combo) return '—';
   const parts = [];
   if (combo.ctrl) parts.push('Ctrl');
   if (combo.shift) parts.push('Shift');
-  const key = combo.key === 'Escape' ? 'Esc' : combo.key === ',' ? ',' : combo.key.length === 1 ? combo.key.toUpperCase() : combo.key;
-  parts.push(key);
+  if (combo.alt) parts.push('Alt');
+  parts.push(hotkeyKeyLabel(combo));
   return parts.join('+');
 }
 
 function matchesHotkey(event, combo) {
-  if (!combo || !combo.key) return false;
-  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-  const target = combo.key.length === 1 ? combo.key.toLowerCase() : combo.key;
-  return key === target && Boolean(event.ctrlKey || event.metaKey) === Boolean(combo.ctrl) && Boolean(event.shiftKey) === Boolean(combo.shift);
+  if (!combo) return false;
+  // Physical code wins so the shortcut survives a Russian/Cyrillic layout.
+  const codeMatches = combo.code && event.code === combo.code;
+  const keyMatches = combo.key && String(event.key).toLowerCase() === String(combo.key).toLowerCase();
+  if (!codeMatches && !keyMatches) return false;
+  return Boolean(event.ctrlKey || event.metaKey) === Boolean(combo.ctrl)
+    && Boolean(event.shiftKey) === Boolean(combo.shift)
+    && Boolean(event.altKey) === Boolean(combo.alt);
 }
 
 // Recording mode: the next non-modifier key press becomes the shortcut.
@@ -123,7 +153,15 @@ function startHotkeyRecording(id, button) {
       event.preventDefault();
       event.stopPropagation();
       if (!['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) {
-        const combo = { key: event.key, ctrl: Boolean(event.ctrlKey || event.metaKey), shift: Boolean(event.shiftKey) };
+        // Store both the physical code and the character so the shortcut works
+        // in any keyboard layout.
+        const combo = {
+          code: event.code || '',
+          key: event.key,
+          ctrl: Boolean(event.ctrlKey || event.metaKey),
+          shift: Boolean(event.shiftKey),
+          alt: Boolean(event.altKey)
+        };
         preferences.hotkeys = { ...(preferences.hotkeys || {}), [id]: combo };
         savePreferences();
       }
@@ -231,6 +269,8 @@ let detailGalleryCount = 0;
 
 let searchQuery = '';
 let activeCategory = preferences.catalogGenre || 'all';
+// Access is a separate axis from genre: "paid" is not a genre.
+let activeAccess = preferences.catalogAccess === 'paid' ? 'paid' : 'all';
 let sortMode = 'default';
 let searchStatus = 'idle';
 let searchResults = [];
@@ -364,7 +404,21 @@ function applyPreferences() {
   if (!['ru', 'en'].includes(preferences.language)) preferences.language = 'ru';
   if (!['home', 'accent', 'cards', 'effects', 'interface', 'general', 'integrations', 'data', 'version'].includes(preferences.settingsTab)) preferences.settingsTab = 'home';
   if (!['off', 'week', 'month'].includes(preferences.onlineHistoryLimit)) preferences.onlineHistoryLimit = 'week';
+  if (!['all', 'paid'].includes(preferences.catalogAccess)) preferences.catalogAccess = 'all';
   if (!preferences.hotkeys || typeof preferences.hotkeys !== 'object') preferences.hotkeys = {};
+  // Older saves stored only the character; add the physical code so the
+  // shortcut keeps working on a Cyrillic layout.
+  for (const [id, combo] of Object.entries(preferences.hotkeys)) {
+    if (!combo || typeof combo !== 'object' || combo.code) continue;
+    const fallback = HOTKEY_ACTIONS.find((action) => action.id === id)?.fallback;
+    const key = String(combo.key || '');
+    if (key === 'Escape') preferences.hotkeys[id] = { ...combo, code: 'Escape' };
+    else if (key === ',') preferences.hotkeys[id] = { ...combo, code: 'Comma' };
+    else if (key === '.') preferences.hotkeys[id] = { ...combo, code: 'Period' };
+    else if (/^[a-z]$/i.test(key)) preferences.hotkeys[id] = { ...combo, code: `Key${key.toUpperCase()}` };
+    else if (/^\d$/.test(key)) preferences.hotkeys[id] = { ...combo, code: `Digit${key}` };
+    else if (fallback?.code && fallback.key === key) preferences.hotkeys[id] = { ...combo, code: fallback.code };
+  }
   for (const flag of ['diskCache', 'lazyImages', 'trayMiniPlayer', 'catalogGroupByGenre']) {
     preferences[flag] = preferences[flag] !== false;
   }
@@ -846,7 +900,7 @@ function renderHome() {
     hero: preferences.homeShowHero && featured ? `<section class="hero-card home-widget" data-home-widget="hero">
       <span class="hero-avatar" aria-hidden="true">${safeThumbnail(featured.thumbnail) ? `<img src="${escapeHtml(safeThumbnail(featured.thumbnail))}" alt="" />` : `<span class="hero-avatar-fallback">${escapeHtml((featured.title || 'R')[0].toLocaleUpperCase())}</span>`}</span>
       <div class="hero-copy"><span class="hero-kicker">${t('hero.kicker')}</span><h2>${escapeHtml(featured.title)}</h2><p>${escapeHtml(featured.description || t('hero.body'))}</p>
-        <div class="hero-actions"><button class="primary-button" data-action="play" data-id="${escapeHtml(featured.id)}">${icon('play')} ${t('hero.play', { title: escapeHtml(featured.title) })}</button><span class="hero-meta">${escapeHtml(featured.creator || t('hero.meta'))}</span></div>
+        <div class="hero-actions"><button class="primary-button" data-action="play" data-id="${escapeHtml(featured.id)}">${icon('play')} ${t('hero.play', { title: escapeHtml(featured.title) })}</button>${featured.creator ? `<span class="hero-meta">${escapeHtml(featured.creator)}</span>` : ''}</div>
       </div>
     </section>` : '',
     picks: `<section class="section-block home-widget" data-home-widget="picks">${renderWidgetHeading('picks', t('home.section.title'), t('home.section.subtitle'))}
@@ -943,7 +997,7 @@ let genreLoadingMore = false;
 let activeGenreRequestId = 0;
 let genreTermIndex = 0;
 
-function isGenreSearchActive() { return !searchQuery && activeCategory !== 'all' && activeCategory !== 'paid'; }
+function isGenreSearchActive() { return !searchQuery && activeCategory !== 'all'; }
 
 async function fetchGenreGames(append = false) {
   const genre = activeCategory;
@@ -1081,7 +1135,13 @@ function renderCustomSortSelect(isLiveSearch) {
 
 function renderGenreFilters() {
   const genres = ['all', 'adventure', 'horror', 'roleplay', 'fashion', 'parkour', 'action', 'simulator', 'survival'];
-  return `<div class="catalog-filter-group"><span class="catalog-filter-label">${t('search.genre')}</span><div class="filter-row genre-filter-row">${genres.map((genre) => `<button class="filter-chip ${activeCategory === genre ? 'active' : ''}" data-category="${genre}">${t(`genre.${genre}`)}</button>`).join('')}<button class="filter-chip filter-chip-paid ${activeCategory === 'paid' ? 'active' : ''}" data-category="paid">${icon('coin', 12)} ${t('catalog.paid')}</button></div></div>`;
+  return `<div class="catalog-filter-group"><span class="catalog-filter-label">${t('search.genre')}</span><div class="filter-row genre-filter-row">${genres.map((genre) => `<button class="filter-chip ${activeCategory === genre ? 'active' : ''}" data-category="${genre}">${t(`genre.${genre}`)}</button>`).join('')}</div></div>`;
+}
+
+// Access filter sits beside genres, not inside them.
+function renderAccessFilters() {
+  const options = [['all', t('catalog.accessAll')], ['paid', t('catalog.accessPaid')]];
+  return `<div class="catalog-filter-group"><span class="catalog-filter-label">${t('catalog.access')}</span><div class="filter-row access-filter-row">${options.map(([value, label]) => `<button class="filter-chip ${activeAccess === value ? 'active' : ''}" data-access="${value}">${value === 'paid' ? icon('coin', 12) : ''}${label}</button>`).join('')}</div></div>`;
 }
 function renderCatalogViewToggle() {
   return `<div class="catalog-view-toggle" role="group" aria-label="${t('catalog.view')}"><button class="icon-button ${preferences.catalogView === 'grid' ? 'active' : ''}" data-catalog-view="grid" title="${t('catalog.gridView')}">${icon('grid', 14)}</button><button class="icon-button ${preferences.catalogView === 'list' ? 'active' : ''}" data-catalog-view="list" title="${t('catalog.listView')}">${icon('list', 14)}</button></div>`;
@@ -1148,7 +1208,7 @@ function submitSearchPage(value) {
 }
 
 function renderCatalog() {
-  if (activeCategory === 'paid' && paidStatus === 'idle') window.setTimeout(() => loadPaidGames(), 0);
+  if (activeAccess === 'paid' && paidStatus === 'idle') window.setTimeout(() => loadPaidGames(), 0);
   const list = filterGames();
   const availableSorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
   const selectedSort = availableSorts.find((sort) => sort.id === activeDiscoverySort) || availableSorts[0];
@@ -1156,8 +1216,8 @@ function renderCatalog() {
   const isLiveSearch = searchQuery.length >= 2;
   const isPlaceId = /^\d{5,20}$/.test(searchQuery.trim());
   const controls = isLiveSearch
-    ? `<div class="live-search-caption"><span class="live-search-dot"></span>${isPlaceId ? t('search.placeId') : t('search.live')}</div>${renderCustomSortSelect(true)}${renderGenreFilters()}${renderCatalogViewToggle()}`
-    : `<div class="filter-row discovery-sort-row" role="tablist" aria-label="${t('page.catalog.title')}">${availableSorts.map((sort) => `<button class="filter-chip ${activeDiscoverySort === sort.id ? 'active' : ''}" role="tab" aria-selected="${activeDiscoverySort === sort.id}" data-discovery-sort="${escapeHtml(sort.id)}">${escapeHtml(discoverySortLabel(sort))}</button>`).join('')}</div>${renderCustomSortSelect(false)}${renderGenreFilters()}${renderCatalogViewToggle()}`;
+    ? `<div class="live-search-caption"><span class="live-search-dot"></span>${isPlaceId ? t('search.placeId') : t('search.live')}</div>${renderCustomSortSelect(true)}${renderGenreFilters()}${renderAccessFilters()}${renderCatalogViewToggle()}`
+    : `<div class="filter-row discovery-sort-row" role="tablist" aria-label="${t('page.catalog.title')}">${availableSorts.map((sort) => `<button class="filter-chip ${activeDiscoverySort === sort.id ? 'active' : ''}" role="tab" aria-selected="${activeDiscoverySort === sort.id}" data-discovery-sort="${escapeHtml(sort.id)}">${escapeHtml(discoverySortLabel(sort))}</button>`).join('')}</div>${renderCustomSortSelect(false)}${renderGenreFilters()}${renderAccessFilters()}${renderCatalogViewToggle()}`;
   let resultsBody = '';
   if (searchQuery.length === 1) {
     resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('search', 20)}</div><h2>${t('search.shortTitle')}</h2><p>${t('search.shortBody')}</p></div>`;
@@ -1167,8 +1227,8 @@ function renderCatalog() {
     resultsBody = `<p class="catalog-disclaimer"><strong>${t('search.errorTitle')}</strong> ${t('search.errorBody')}</p>${renderGrid(list, t('search.noMatches'), t('search.tryAnother'))}`;
   } else if (isLiveSearch && searchStatus === 'success') {
     resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list, t('search.noResults'), t('search.tryShorter'))}${isLoadingMore ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : searchPageToken ? `<button class="ghost-button load-more-button" data-action="load-more">${t('search.loadMore')} ${icon('arrow', 13)}</button>` : ''}`;
-  } else if (activeCategory === 'paid' && !searchQuery) {
-    // Paid experiences: a dedicated section inside the catalog, not a new page.
+  } else if (activeAccess === 'paid' && !searchQuery) {
+    // Paid experiences: a section inside the catalog, not a new page and not a genre.
     if (paidStatus === 'loading') {
       resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.paidLoading')}</strong><small>${t('catalog.paidLoadingNote')}</small></div>`;
     } else if (paidStatus === 'error') {
@@ -1176,7 +1236,11 @@ function renderCatalog() {
     } else if (!paidGames.length) {
       resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('coin', 20)}</div><h2>${t('catalog.paidEmptyTitle')}</h2><p>${t('catalog.paidEmptyBody')}</p></div>`;
     } else {
-      resultsBody = `<div class="catalog-paid-head"><h2>${icon('coin', 15)} ${t('catalog.paid')}</h2><span>${paidGames.length}</span></div><p class="catalog-disclaimer">${t('catalog.paidHint')}</p>${renderGrid(paidGames, t('empty.noResults'), t('empty.filterHint'))}`;
+      const visible = paidGames.slice(0, paidVisibleCount);
+      const more = paidGames.length > visible.length
+        ? `<div class="load-more-row"><button class="ghost-button" data-action="paid-more">${t('catalog.showMore', { count: String(Math.min(24, paidGames.length - visible.length)) })}</button></div>`
+        : '';
+      resultsBody = `<div class="paid-section-head"><p class="result-note">${t('catalog.shown', { shown: String(visible.length), total: String(paidGames.length) })} · ${t('catalog.paidHint')}</p><button class="ghost-button" data-action="paid-rescan" ${paidStatus === 'loading' ? 'disabled' : ''}>${icon('refreshCw', 13)} ${t('catalog.paidRescan')}</button></div>${renderGrid(visible, t('empty.noResults'), t('empty.filterHint'))}${more}`;
     }
   } else if (isGenreSearchActive()) {
     if (genreStatus === 'loading') {
@@ -1215,14 +1279,15 @@ let favoritesVisibleCount = 24;
 let paidGames = [];
 let paidStatus = 'idle';
 let paidRequestId = 0;
+let paidVisibleCount = 24;
 
 async function loadPaidGames(force = false) {
   if (!force && (paidStatus === 'loading' || paidGames.length)) return;
   paidStatus = 'loading';
   const requestId = ++paidRequestId;
-  if (currentView === 'catalog' && activeCategory === 'paid') renderPage();
+  if (currentView === 'catalog' && activeAccess === 'paid') renderPage();
   try {
-    const list = await window.vortexDesktop?.getPaidGames?.();
+    const list = await window.vortexDesktop?.getPaidGames?.({ force });
     if (requestId !== paidRequestId) return;
     paidGames = Array.isArray(list) ? list : [];
     paidStatus = 'success';
@@ -1230,7 +1295,7 @@ async function loadPaidGames(force = false) {
     if (requestId !== paidRequestId) return;
     paidStatus = 'error';
   }
-  if (currentView === 'catalog' && activeCategory === 'paid') renderPage();
+  if (currentView === 'catalog' && activeAccess === 'paid') renderPage();
 }
 
 function renderFavorites() {
@@ -3050,6 +3115,8 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'open-social-link') { window.vortexDesktop?.openExternalUrl?.(action.dataset.url); return; }
     if (action.dataset.action === 'toggle-detail-description') { detailDescriptionExpanded = !detailDescriptionExpanded; renderPage(); return; }
     if (action.dataset.action === 'favorites-more') { favoritesVisibleCount += 24; renderPage(); return; }
+    if (action.dataset.action === 'paid-more') { paidVisibleCount += 24; renderPage(); return; }
+    if (action.dataset.action === 'paid-rescan') { void loadPaidGames(true); return; }
     if (action.dataset.action === 'reset-hotkeys') { preferences.hotkeys = {}; savePreferences(); showToast(t('settings.hotkeys.resetDone')); renderPage(); return; }
     if (action.dataset.action === 'check-api-status') { void checkApiStatus(); return; }
     if (action.dataset.action === 'clear-api-cache') { responseCacheLocal.clear(); localStorage.removeItem('vortex.detailCache'); showToast(t('settings.cache.apiCleared')); renderPage(); return; }
@@ -3262,9 +3329,20 @@ document.addEventListener('click', async (event) => {
     savePreferences();
     // Full reset of genre pagination when the user switches filters.
     genreResults = []; genrePageToken = null; genreStatus = 'idle'; genreLoadingMore = false; genreTermIndex = 0;
-    if (activeCategory === 'paid') { void loadPaidGames(); renderPage(); return; }
+    if (activeAccess === 'paid') { void loadPaidGames(); renderPage(); return; }
     if (isGenreSearchActive()) fetchGenreGames(false);
     else renderPage();
+    return;
+  }
+
+  const access = target.closest('[data-access]');
+  if (access) {
+    activeAccess = access.dataset.access === 'paid' ? 'paid' : 'all';
+    preferences.catalogAccess = activeAccess;
+    savePreferences();
+    paidVisibleCount = 24;
+    if (activeAccess === 'paid') void loadPaidGames();
+    renderPage();
     return;
   }
 

@@ -726,44 +726,91 @@ ipcMain.handle('games:store-search', async (_event, request = {}) => {
   return true;
 });
 
-// Paid experiences: Roblox has no "paid only" sort, so search a set of terms
-// that surface paid-access games, then keep only rows that carry a price.
-ipcMain.handle('games:paid', async () => {
-  const queries = [
-    'paid access', 'early access', 'premium', 'buy', 'paid', 'robux',
-    'paid game', 'alpha access', 'beta access', 'supporter', 'paid experience',
-    'premium access', 'vip access', 'paid only', 'entry fee', 'paid entry'
-  ];
+// Paid experiences: Roblox exposes no "paid only" catalog or price filter, so
+// Vortex keeps its own growing index. Each scan searches a rotating slice of
+// paid-leaning queries, follows nextPageToken, and merges every priced game it
+// finds into a JSON file, so repeated scans keep adding new titles.
+const PAID_QUERY_POOL = [
+  'paid access', 'early access', 'premium', 'paid', 'robux', 'buy game',
+  'alpha access', 'beta access', 'supporter', 'paid experience', 'premium access',
+  'vip access', 'entry fee', 'paid entry', 'paid game', 'paid only',
+  'demo', 'playtest', 'support the developer', 'early alpha', 'closed beta',
+  'open beta', 'early release', 'paid alpha', 'buy access', 'purchase access',
+  'paid beta', 'early bird', 'founder pack', 'access pass', 'pay to play',
+  'premium experience', 'alpha test', 'beta test', 'early testing'
+];
+let paidGamesCache = { at: 0, data: [] };
+const PAID_CACHE_TTL = 10 * 60 * 1000;
+
+function paidIndexPath() { return path.join(app.getPath('userData'), 'paid-games.json'); }
+
+async function readPaidIndex() {
+  try {
+    const raw = JSON.parse(await fsp.readFile(paidIndexPath(), 'utf8'));
+    return Array.isArray(raw?.games) ? raw.games : [];
+  } catch { return []; }
+}
+
+async function writePaidIndex(games) {
+  try {
+    await fsp.writeFile(paidIndexPath(), JSON.stringify({ updatedAt: Date.now(), games: games.slice(0, 400) }), 'utf8');
+  } catch { /* index writes never break the section */ }
+}
+
+async function collectPaidUniverseIds() {
+  // Rotate through the pool so consecutive scans surface different games.
+  const shuffled = [...PAID_QUERY_POOL].sort(() => Math.random() - 0.5);
+  const queries = shuffled.slice(0, 18);
   const universeIds = new Set();
-  // Queries run in parallel batches so the section loads in one pass.
-  for (let index = 0; index < queries.length; index += 6) {
-    const batch = queries.slice(index, index + 6);
-    const pages = await Promise.all(batch.map(async (query) => {
-      try {
-        const url = new URL('https://apis.roblox.com/search-api/omni-search');
-        url.searchParams.set('searchQuery', query);
-        url.searchParams.set('sessionId', randomUUID());
-        url.searchParams.set('pageType', 'all');
-        const payload = await fetchCachedJson(url, 10000);
-        return Array.isArray(payload?.searchResults) ? payload.searchResults : [];
-      } catch { return []; }
-    }));
-    for (const groups of pages) {
-      for (const group of groups) {
+  const fetchPage = async (query, pageToken) => {
+    const url = new URL('https://apis.roblox.com/search-api/omni-search');
+    url.searchParams.set('searchQuery', query);
+    url.searchParams.set('sessionId', randomUUID());
+    url.searchParams.set('pageType', 'all');
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+    try { return await fetchCachedJson(url, 12000); } catch { return null; }
+  };
+  const runQuery = async (query) => {
+    let token = null;
+    for (let page = 0; page < 3; page += 1) {
+      const payload = await fetchPage(query, token);
+      if (!payload) return;
+      for (const group of (Array.isArray(payload.searchResults) ? payload.searchResults : [])) {
         if (String(group?.contentGroupType || '').toLowerCase() !== 'game') continue;
         for (const row of (Array.isArray(group?.contents) ? group.contents : [])) {
           const id = String(row?.universeId ?? '');
           if (/^\d{1,20}$/.test(id)) universeIds.add(id);
         }
       }
+      token = payload.nextPageToken || null;
+      if (!token) return;
     }
+  };
+  for (let index = 0; index < queries.length; index += 5) {
+    await Promise.all(queries.slice(index, index + 5).map(runQuery));
   }
-  if (!universeIds.size) return [];
-  const details = await getGameDetailsByUniverse([...universeIds].slice(0, 500));
-  return details
-    .filter((game) => Number(game.price) > 0 && game.availability !== 'unavailable')
-    .sort((a, b) => Number(a.price) - Number(b.price))
-    .slice(0, 48);
+  return [...universeIds];
+}
+
+ipcMain.handle('games:paid', async (_event, request = {}) => {
+  const force = request && request.force === true;
+  if (!force && paidGamesCache.data.length && Date.now() - paidGamesCache.at < PAID_CACHE_TTL) {
+    return paidGamesCache.data;
+  }
+  const stored = await readPaidIndex();
+  const universeIds = await collectPaidUniverseIds();
+  const fresh = universeIds.length ? await getGameDetailsByUniverse(universeIds.slice(0, 1200)) : [];
+  const priced = fresh.filter((game) => Number(game.price) > 0 && game.availability !== 'unavailable');
+  // Merge with everything found by earlier scans, newest price winning.
+  const merged = new Map();
+  for (const game of stored) if (game && game.id) merged.set(String(game.id), game);
+  for (const game of priced) merged.set(String(game.id), game);
+  const all = [...merged.values()]
+    .filter((game) => Number(game.price) > 0)
+    .sort((a, b) => Number(a.price) - Number(b.price));
+  if (priced.length) await writePaidIndex(all);
+  if (all.length) paidGamesCache = { at: Date.now(), data: all };
+  return all;
 });
 
 ipcMain.handle('shell:open-external', async (_event, value) => {
@@ -1517,6 +1564,12 @@ ipcMain.on('tray:open', () => { if (trayWindow && !trayWindow.isDestroyed()) tra
 ipcMain.on('tray:dismiss', () => { if (trayWindow && !trayWindow.isDestroyed()) trayWindow.hide(); });
 ipcMain.on('tray:quit', () => app.exit(0));
 ipcMain.handle('tray:get-games', () => ({ games: recentGamesForTray, nowPlaying: nowPlayingForTray }));
+// Diagnostics: lets the renderer confirm what the tray is currently showing.
+ipcMain.handle('tray:state', () => ({
+  games: recentGamesForTray.length,
+  nowPlaying: nowPlayingForTray,
+  watcher: Boolean(robloxRunningTimer)
+}));
 ipcMain.on('tray:launch', (_event, placeId) => { void launchFromTray(placeId); });
 
 app.whenReady().then(async () => {

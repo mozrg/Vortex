@@ -44,6 +44,8 @@
       .version { margin-top: 12px; color: #6d6878; font-size: 8.5px; letter-spacing: .06em; }
 
       /* Multi-stage checklist shown while an update runs. */
+      /* `display: grid` overrides the browser's [hidden] rule, so hide explicitly. */
+      .stages[hidden] { display: none !important; }
       .stages { display: grid; gap: 5px; width: 100%; margin: 12px 0 0; padding: 0; list-style: none; }
       .stages li { display: flex; align-items: center; gap: 9px; color: #6f6a7c; font-size: 9.5px; letter-spacing: .01em; transition: color .25s ease; }
       .stages li i { display: grid; width: 14px; height: 14px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(190,169,255,.22); border-radius: 50%; background: rgba(255,255,255,.02); transition: border-color .25s ease, background .25s ease; }

@@ -585,16 +585,22 @@ async function getThumbnails(universeIds) {
 }
 
 function mapGame(game, thumbnail = '', launchPlaceId = game.rootPlaceId) {
+  const price = Math.max(0, Number(game.price) || 0);
+  const titleUnavailable = /^\[?\s*title\s+unavailable\s*\]?$/i.test(String(game.name ?? '').trim()) || Number(game.id) === 0;
   return {
     id: String(launchPlaceId ?? game.rootPlaceId ?? ''),
     universeId: String(game.id ?? game.universeId ?? ''),
     title: String(game.name ?? 'Roblox experience').slice(0, 100),
     description: String(game.description ?? '').replace(/\s+/g, ' ').trim().slice(0, 240),
     creator: String(game.creator?.name ?? game.creatorName ?? '').slice(0, 70),
+    creatorVerified: Boolean(game.creator?.hasVerifiedBadge ?? game.creatorHasVerifiedBadge),
     genre: String(game.genreL1 ?? game.genre ?? '').slice(0, 50),
     playerCount: Math.max(0, Number(game.playing ?? game.playerCount) || 0),
     upVotes: Math.max(0, Number(game.upVotes ?? game.totalUpVotes) || 0),
     downVotes: Math.max(0, Number(game.downVotes ?? game.totalDownVotes) || 0),
+    price,
+    isPaid: price > 0,
+    availability: titleUnavailable || game.isContentRestricted ? 'unavailable' : 'available',
     thumbnail: cleanThumbnail(thumbnail)
   };
 }
@@ -704,6 +710,12 @@ ipcMain.handle('games:details', async (_event, request = {}) => {
   const base = mapGame(row, thumbs.get(resolvedUniverseId), placeId || row.rootPlaceId);
   const voteData = votes.status === 'fulfilled' ? votes.value || {} : {};
   void recordPlaceUpdate(resolvedUniverseId, row.updated || '', row.name);
+  // Roblox hides a closed/removed place behind a placeholder title and marks it
+  // content-restricted; paid access exposes `price` (in Robux) and `hasPaidAccess`.
+  const rawPrice = Number(row.price) || 0;
+  const titleUnavailable = /^\[?\s*title\s+unavailable\s*\]?$/i.test(String(row.name || '').trim()) || Number(row.id) === 0;
+  const availability = titleUnavailable || row.isContentRestricted ? 'unavailable'
+    : Number(row.playing) === 0 && !row.creator?.id ? 'unknown' : 'available';
   return { ok: true, game: {
     ...base, description: String(row.description ?? base.description), universeId: resolvedUniverseId, placeId: String(row.rootPlaceId || placeId || ''),
     visits: Number(row.visits) || 0, favorites: Number(row.favoritedCount ?? row.favorites) || 0,
@@ -711,6 +723,11 @@ ipcMain.handle('games:details', async (_event, request = {}) => {
     playing: Number(row.playing) || 0, upVotes: Number(voteData.upVotes ?? base.upVotes) || 0,
     downVotes: Number(voteData.downVotes ?? base.downVotes) || 0,
     creatorId: String(row.creator?.id ?? ''), creator: String(row.creator?.name ?? base.creator),
+    creatorVerified: Boolean(row.creator?.hasVerifiedBadge),
+    creatorType: String(row.creator?.type ?? ''),
+    price: rawPrice,
+    isPaid: rawPrice > 0,
+    availability,
     genre: String(row.genreL1 ?? row.genre ?? base.genre),
     badges: badges.status === 'fulfilled' && Array.isArray(badges.value?.data) ? badges.value.data.map((badge) => ({ id: String(badge.id), name: String(badge.name || ''), description: String(badge.description || ''), icon: String(badge.iconImageId || '') })) : [],
     socialLinks: social.status === 'fulfilled' && Array.isArray(social.value?.data) ? social.value.data : [],
@@ -1347,14 +1364,21 @@ app.whenReady().then(async () => {
   });
 });
 
-// Discord Rich Presence over the local IPC pipe. The discord-rpc style handshake
-// is small enough to speak directly, so no extra dependency is needed.
+// Discord Rich Presence over the local IPC pipe. The discord-rpc handshake is
+// small enough to speak directly, so no extra dependency is needed.
+// DISCORD_CLIENT_ID must be the Application ID from the Discord Developer Portal;
+// presence will not appear until a real ID is configured.
 let discordSocket = null;
 let discordReady = false;
 let discordReconnectTimer = null;
 let discordActivity = null;
 let discordEnabled = false;
-const DISCORD_CLIENT_ID = '1030000000000000000';
+let discordLastError = '';
+let discordAccount = null;
+const DISCORD_CLIENT_ID = process.env.VORTEX_DISCORD_CLIENT_ID || '';
+
+let discordPending = Buffer.alloc(0);
+let discordHandshakeSent = false;
 
 function discordPipePath(index) {
   return process.platform === 'win32' ? `\\\\?\\pipe\\discord-ipc-${index}` : path.join(process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || '/tmp', `discord-ipc-${index}`);
@@ -1368,32 +1392,50 @@ function discordFrame(opcode, payload) {
   return Buffer.concat([header, body]);
 }
 
-let discordPending = Buffer.alloc(0);
-
 function connectDiscord() {
-  if (discordSocket || !DISCORD_CLIENT_ID) return;
-  const attempts = [0, 1, 2, 3];
-  const tryIndex = (position) => {
-    if (position >= attempts.length) { scheduleDiscordReconnect(); return; }
-    const socket = net.createConnection(discordPipePath(attempts[position]));
+  if (discordSocket) return;
+  if (!DISCORD_CLIENT_ID) {
+    discordLastError = 'client-id-missing';
+    return;
+  }
+  const tryIndex = (index) => {
+    if (index > 9) { discordLastError = 'discord-not-running'; scheduleDiscordReconnect(); return; }
+    const socket = net.createConnection(discordPipePath(index));
+    let settled = false;
     socket.once('connect', () => {
+      settled = true;
       discordSocket = socket;
       discordReady = false;
+      discordLastError = '';
+      discordPending = Buffer.alloc(0);
       socket.write(discordFrame(0, { v: 1, client_id: DISCORD_CLIENT_ID }));
       socket.on('data', (chunk) => {
         discordPending = Buffer.concat([discordPending, chunk]);
         while (discordPending.length >= 8) {
+          const opcode = discordPending.readInt32LE(0);
           const length = discordPending.readInt32LE(4);
           if (discordPending.length < 8 + length) break;
-          const body = JSON.parse(discordPending.subarray(8, 8 + length).toString('utf8'));
+          const raw = discordPending.subarray(8, 8 + length).toString('utf8');
           discordPending = discordPending.subarray(8 + length);
-          if (body.cmd === 'DISPATCH' && body.evt === 'READY') { discordReady = true; pushDiscordActivity(); }
+          let body = null;
+          try { body = JSON.parse(raw); } catch { continue; }
+          if (opcode === 2) { discordLastError = String(body?.message || 'discord-error'); continue; }
+          if (body?.cmd === 'DISPATCH' && body.evt === 'READY') {
+            discordReady = true;
+            discordLastError = '';
+            discordAccount = body.data?.user ? { name: body.data.user.username || '', id: body.data.user.id || '' } : null;
+            pushDiscordActivity();
+          }
         }
       });
-      socket.on('error', () => cleanupDiscord());
+      socket.on('error', (error) => { discordLastError = String(error?.message || 'socket-error'); cleanupDiscord(); });
       socket.on('close', () => cleanupDiscord());
     });
-    socket.once('error', () => { socket.destroy(); tryIndex(position + 1); });
+    socket.once('error', () => {
+      if (settled) return;
+      socket.destroy();
+      tryIndex(index + 1);
+    });
   };
   tryIndex(0);
 }
@@ -1402,6 +1444,7 @@ function cleanupDiscord() {
   if (discordSocket) { try { discordSocket.destroy(); } catch { /* already closed */ } }
   discordSocket = null;
   discordReady = false;
+  discordAccount = null;
   discordPending = Buffer.alloc(0);
   scheduleDiscordReconnect();
 }
@@ -1414,8 +1457,10 @@ function scheduleDiscordReconnect() {
 
 function pushDiscordActivity() {
   if (!discordSocket || !discordReady) return;
-  const activity = discordEnabled && discordActivity
-    ? { details: String(discordActivity.details || '').slice(0, 128), state: String(discordActivity.state || '').slice(0, 128), assets: { large_text: 'Vortex Launcher' } }
+  const details = String(discordActivity?.details || '').slice(0, 128);
+  const state = String(discordActivity?.state || '').slice(0, 128);
+  const activity = discordEnabled && (details || state)
+    ? { details: details || undefined, state: state || undefined, assets: { large_text: 'Vortex Launcher' }, instance: false }
     : null;
   try {
     discordSocket.write(discordFrame(1, { cmd: 'SET_ACTIVITY', args: { pid: process.pid, activity }, nonce: randomUUID() }));
@@ -1425,13 +1470,21 @@ function pushDiscordActivity() {
 ipcMain.handle('discord:set-enabled', (_event, enabled) => {
   discordEnabled = Boolean(enabled);
   if (discordEnabled) connectDiscord(); else pushDiscordActivity();
-  return { enabled: discordEnabled, connected: discordReady };
+  return { enabled: discordEnabled, connected: discordReady, error: discordLastError, account: discordAccount };
 });
+
+ipcMain.handle('discord:status', () => ({
+  enabled: discordEnabled,
+  connected: discordReady,
+  hasClientId: Boolean(DISCORD_CLIENT_ID),
+  error: discordLastError,
+  account: discordAccount
+}));
 
 ipcMain.handle('discord:set-activity', (_event, activity) => {
   discordActivity = activity && typeof activity === 'object' ? activity : null;
   pushDiscordActivity();
-  return { connected: discordReady };
+  return { connected: discordReady, error: discordLastError };
 });
 
 // Fires a Windows toast when a friend starts playing one of your favourites.

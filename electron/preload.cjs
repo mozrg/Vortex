@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
   openExternalUrl: (url) => ipcRenderer.invoke('shell:open-external', url),
   getRobloxApiStatus: () => ipcRenderer.invoke('roblox:api-status'),
   setDiscordEnabled: (enabled) => ipcRenderer.invoke('discord:set-enabled', enabled),
+  getDiscordStatus: () => ipcRenderer.invoke('discord:status'),
   setDiscordActivity: (activity) => ipcRenderer.invoke('discord:set-activity', activity),
   notifyFriendPlaying: (payload) => ipcRenderer.invoke('notifications:friend-playing', payload),
   discoverGames: (request) => ipcRenderer.invoke('games:discover', request),

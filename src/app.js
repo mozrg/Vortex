@@ -600,6 +600,12 @@ function renderGameDetail() {
   const voteBar = likesTotal ? `<div class="detail-like-bar" role="img" aria-label="${t('game.likeRatio')} ${likePercent}%"><span class="detail-like-positive" style="width:${likePercent}%"></span><span class="detail-like-negative" style="width:${dislikePercent}%"></span></div><div class="detail-like-legend"><span><i class="like-dot"></i>${likePercent}% · ${t('game.likeRatio')} (${formatCount(game.upVotes)})</span><span><i class="dislike-dot"></i>${dislikePercent}% · ${t('game.dislikeRatio')} (${formatCount(game.downVotes)})</span></div>` : '';
   const playtime = renderPlaytimeBadge(game.id) || t('stats.noData');
   const description = String(game.description || t('game.fallbackDescription')).trim();
+  const isUnavailable = game.availability === 'unavailable';
+  const canPlay = !isUnavailable && Boolean(game.id);
+  const priceLabel = Number(game.price) > 0 ? `${formatCount(game.price)} R$` : '';
+  const badgeRow = (isUnavailable || Number(game.price) > 0)
+    ? `<div class="detail-tags">${isUnavailable ? `<span class="detail-tag detail-tag-bad">${icon('close', 11)} ${t('game.notAvailable')}</span>` : ''}${Number(game.price) > 0 ? `<span class="detail-tag detail-tag-price">${t('game.paid', { price: priceLabel })}</span>` : ''}</div>`
+    : '';
   const allBadges = Array.isArray(game.badges) ? game.badges : [];
   const visibleBadges = detailBadgesExpanded ? allBadges.slice(0, detailBadgeCount) : [];
   const badges = allBadges.length ? `<section class="detail-section"><div class="detail-section-heading"><h2>${t('game.badges')}</h2><button class="ghost-button" data-action="toggle-badges">${t(detailBadgesExpanded ? 'game.hideBadges' : 'game.showBadges')}</button></div>${detailBadgesExpanded ? `<div class="detail-badges">${visibleBadges.map((badge) => `<span class="detail-badge"><strong>${escapeHtml(badge.name)}</strong>${badge.description ? `<small>${escapeHtml(badge.description)}</small>` : ''}</span>`).join('')}</div>${visibleBadges.length < allBadges.length ? `<button class="ghost-button" data-action="show-more-badges">${t('game.showMoreBadges')}</button>` : ''}` : ''}</section>` : '';
@@ -623,12 +629,12 @@ function renderGameDetail() {
   const similar = Array.isArray(game.similar) && game.similar.length ? `<section class="detail-section"><h2>${t('game.similar')}</h2><div class="game-grid detail-similar-grid">${game.similar.map(renderGameCard).join('')}</div></section>` : '';
   return `<button class="detail-back icon-button" data-action="detail-back" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)}</button>
     <article class="game-detail">
-      <header class="detail-hero"><div class="detail-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(game.title)}" />` : ''}</div><div class="detail-hero-copy"><div class="eyebrow"><span class="eyebrow-mark"></span>${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p>${escapeHtml(game.creator || t('game.unknownCreator'))}</p><div class="detail-actions"><button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button><button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button></div></div></header>
+      <header class="detail-hero"><div class="detail-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(game.title)}" />` : ''}</div><div class="detail-hero-copy"><div class="eyebrow"><span class="eyebrow-mark"></span>${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p class="detail-creator-line">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge" title="${t('game.verifiedCreator')}" aria-label="${t('game.verifiedCreator')}">${icon('check', 11)}</span>` : ''}</p>${badgeRow}<div class="detail-actions">${canPlay ? `<button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button>` : `<button class="primary-button" disabled>${icon('close', 14)} ${t('game.notAvailable')}</button>`}<button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button></div></div></header>
       ${detailStatus === 'loading' ? `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('game.loadingDetails')}</strong></div>` : ''}
       ${detailStatus === 'error' ? `<p class="catalog-disclaimer">${t('game.detailsUnavailable')}</p>` : ''}
       <section class="detail-stats"><div><strong>${formatCount(game.playing ?? game.playerCount)}</strong><span>${t('game.online')}</span></div><div class="detail-like-stat"><strong>${likePercent === null ? '—' : `${likePercent}%`}</strong><span>${t('game.likeRatio')} · ${formatCount(game.upVotes)} / ${formatCount(game.downVotes)}</span>${voteBar}</div><div><strong>${formatCount(game.visits)}</strong><span>${t('game.visits')}</span></div><div><strong>${formatCount(game.favorites)}</strong><span>${t('game.favorites')}</span></div></section>
       <section class="detail-section"><h2>${t('game.description')}</h2><p class="detail-description ${detailDescriptionExpanded ? 'expanded' : 'collapsed'}">${escapeHtml(description)}</p>${description.length > 420 ? `<button class="ghost-button detail-description-toggle" data-action="toggle-detail-description">${t(detailDescriptionExpanded ? 'card.readLess' : 'card.readMore')}</button>` : ''}</section>
-      <section class="detail-section detail-meta"><div><span>${t('game.author')}</span><strong>${escapeHtml(game.creator || t('game.unknownCreator'))}</strong></div><div><span>${t('game.genre')}</span><strong>${escapeHtml(game.genre || t('genre.other'))}</strong></div><div><span>${t('game.updated')}</span><strong>${game.updated ? escapeHtml(new Date(game.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU')) : '—'}</strong></div><div><span>${t('game.playtime')}</span><strong>${playtime}</strong></div></section>
+      <section class="detail-section detail-meta"><div><span>${t('game.author')}</span><strong class="meta-creator">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge small" title="${t('game.verifiedCreator')}">${icon('check', 10)}</span>` : ''}</strong></div><div><span>${t('game.genre')}</span><strong>${escapeHtml(game.genre || t('genre.other'))}</strong></div><div><span>${t('game.access')}</span><strong>${isUnavailable ? t('game.notAvailable') : Number(game.price) > 0 ? t('game.paid', { price: priceLabel }) : t('game.free')}</strong></div><div><span>${t('game.updated')}</span><strong>${game.updated ? escapeHtml(new Date(game.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU')) : '—'}</strong></div></section>
       ${gallery}${badges}${social}${releaseHistory}${similar}
     </article>`;
 }
@@ -642,6 +648,9 @@ function renderGameCard(game) {
   const likes = Number(game.upVotes) + Number(game.downVotes) > 0 ? Math.round((Number(game.upVotes) / (Number(game.upVotes) + Number(game.downVotes))) * 100) : null;
   const liveStats = game.live ? `<div class="game-live-stats"><span>${icon('users', 12)} ${t('search.players', { count: formatCount(game.playerCount) })}</span>${likes === null ? '' : `<span>${icon('thumb', 12)} ${t('search.likes', { percent: likes })}</span>`}</div>` : '';
   const creatorLabel = game.creator ? t('game.creator', { creator: escapeHtml(game.creator) }) : '';
+  const cardVerified = game.creatorVerified ? `<span class="verified-badge small" title="${t('game.verifiedCreator')}">${icon('check', 10)}</span>` : '';
+  const cardPrice = Number(game.price) > 0 ? `<span class="card-price-tag">${formatCount(game.price)} R$</span>` : '';
+  const cardUnavailable = game.availability === 'unavailable' ? `<span class="card-unavailable-tag">${t('game.notAvailable')}</span>` : '';
   const description = String(game.description || t('game.fallbackDescription')).trim();
   const category = game.genre ? `<span class="game-category"><i></i>${escapeHtml(game.genre)}</span>` : '<span></span>';
   const expandedDescription = expandedDescriptions.has(String(game.id));
@@ -650,10 +659,11 @@ function renderGameCard(game) {
     <div class="game-cover art-${art} ${thumbnail ? 'has-thumbnail' : ''}" data-action="open-details" data-id="${id}">
       ${thumbnail ? `<img class="game-thumbnail" src="${escapeHtml(thumbnail)}" alt="" loading="eager" decoding="async" />` : ''}
       <span class="cover-shine"></span>
+      ${cardPrice}${cardUnavailable}
       <button class="favorite-button ${isFavorite ? 'is-favorite' : ''}" data-action="favorite" data-id="${id}" aria-label="${isFavorite ? t('card.favoriteRemove') : t('card.favoriteAdd')}" aria-pressed="${isFavorite}">${icon('heart', 15)}</button>
     </div>
     <div class="game-info">
-      <div class="game-title-row"><h3 class="game-title" data-action="open-details" data-id="${id}">${escapeHtml(game.title)}</h3></div>
+      <div class="game-title-row"><h3 class="game-title" data-action="open-details" data-id="${id}">${escapeHtml(game.title)}</h3>${cardVerified}</div>
       ${preferences.cardShowDescription ? `<p class="game-description ${expandedDescription ? 'expanded' : ''}" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
       ${canExpandDescription ? `<button class="description-more" data-action="toggle-description" data-id="${id}" aria-expanded="${expandedDescription}">${t(expandedDescription ? 'card.readLess' : 'card.readMore')}</button>` : ''}` : ''}
       ${preferences.cardShowLikes ? liveStats : ''}
@@ -1727,6 +1737,8 @@ function previewMarkup(type, value, label) {
     const variant = { rise: 'rise', fade: 'fade', pop: 'pop', none: 'none' }[value] || 'rise';
     return `<div class="hover-preview-mock card-animation-mock ${variant}"><i></i><i></i><i></i></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
   }
+  if (type === 'animationSpeed') return previewAnimationSpeed(value, label);
+  if (type === 'animationEasing') return previewAnimationEasing(value, label);
   if (type === 'accent') {
     return `<div class="hover-preview-mock accent-mock" style="--mock-accent:${escapeHtml(value)}"><span class="mock-chip"></span><span class="mock-bar"></span><span class="mock-bar short"></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
   }
@@ -1779,6 +1791,18 @@ function previewUiPart(part, label) {
     default:
       return shell(spark, true);
   }
+}
+
+// Speed preview: three dots that travel the same track at the chosen tempo.
+function previewAnimationSpeed(value, label) {
+  const duration = { slow: 2.1, normal: 1.3, fast: 0.7 }[value] || 1.3;
+  return `<div class="hover-preview-mock speed-mock speed-${escapeHtml(value)}"><span class="mock-track"><i style="animation-duration:${duration}s"></i></span><span class="mock-track"><i style="animation-duration:${duration}s;animation-delay:.12s"></i></span><span class="mock-track"><i style="animation-duration:${duration}s;animation-delay:.24s"></i></span><span class="mock-track"><i style="animation-duration:${duration}s;animation-delay:.36s"></i></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+}
+
+// Easing preview: one square jumping along a path with the real timing curve.
+function previewAnimationEasing(value, label) {
+  const curve = { smooth: 'cubic-bezier(.2,.72,.25,1)', spring: 'cubic-bezier(.16,1.2,.3,1)', linear: 'linear' }[value] || 'cubic-bezier(.2,.72,.25,1)';
+  return `<div class="hover-preview-mock easing-mock"><span class="mock-ease-track"><i style="animation-timing-function:${curve}"></i><b style="animation-timing-function:${curve};animation-delay:.25s"></b></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
 }
 
 function previewTarget(event) {
@@ -1836,8 +1860,8 @@ function renderEffectSettings() {
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.transitionStyle')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('pageTransition', 'fade', t('settings.transition.fade'), preferences.pageTransition === 'fade')}${renderAnimationOption('pageTransition', 'slide', t('settings.transition.slide'), preferences.pageTransition === 'slide')}${renderAnimationOption('pageTransition', 'zoom', t('settings.transition.zoom'), preferences.pageTransition === 'zoom')}${renderAnimationOption('pageTransition', 'none', t('settings.transition.none'), preferences.pageTransition === 'none')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardAnimation')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('cardAnimation', 'rise', t('settings.cards.rise'), preferences.cardAnimation === 'rise')}${renderAnimationOption('cardAnimation', 'fade', t('settings.cards.fade'), preferences.cardAnimation === 'fade')}${renderAnimationOption('cardAnimation', 'pop', t('settings.cards.pop'), preferences.cardAnimation === 'pop')}${renderAnimationOption('cardAnimation', 'none', t('settings.cards.none'), preferences.cardAnimation === 'none')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.contrast.title')}</strong><small>${t('settings.contrast.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.contrast}" data-toggle="contrast" aria-label="${t('settings.contrast.title')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.animationSpeed.title')}</strong><small>${t('settings.animationSpeed.body')}</small></div><div class="segmented">${[['slow', t('settings.animationSpeed.slow')], ['normal', t('settings.animationSpeed.normal')], ['fast', t('settings.animationSpeed.fast')]].map(([value, label]) => `<button class="segment ${preferences.animationSpeed === value ? 'active' : ''}" data-pref="animationSpeed" data-value="${value}">${label}</button>`).join('')}</div></div>
-       <div class="setting-line"><div class="setting-label"><strong>${t('settings.effects.easing')}</strong><small>${t('settings.effects.easingHint')}</small></div><div class="segmented">${[['smooth', t('settings.effects.easingSmooth')], ['spring', t('settings.effects.easingSpring')], ['linear', t('settings.effects.easingLinear')]].map(([value, label]) => `<button class="segment ${preferences.animationEasing === value ? 'active' : ''}" data-pref="animationEasing" data-value="${value}">${label}</button>`).join('')}</div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.animationSpeed.title')}</strong><small>${t('settings.animationSpeed.body')}</small></div><div class="segmented">${[['slow', t('settings.animationSpeed.slow')], ['normal', t('settings.animationSpeed.normal')], ['fast', t('settings.animationSpeed.fast')]].map(([value, label]) => `<button class="segment ${preferences.animationSpeed === value ? 'active' : ''}" data-pref="animationSpeed" data-value="${value}" data-preview="animationSpeed:${value}" data-preview-label="${escapeHtml(label)}">${label}</button>`).join('')}</div></div>
+       <div class="setting-line"><div class="setting-label"><strong>${t('settings.effects.easing')}</strong><small>${t('settings.effects.easingHint')}</small></div><div class="segmented">${[['smooth', t('settings.effects.easingSmooth')], ['spring', t('settings.effects.easingSpring')], ['linear', t('settings.effects.easingLinear')]].map(([value, label]) => `<button class="segment ${preferences.animationEasing === value ? 'active' : ''}" data-pref="animationEasing" data-value="${value}" data-preview="animationEasing:${value}" data-preview-label="${escapeHtml(label)}">${label}</button>`).join('')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.effects.pageSpeed')}</strong><small>${t('settings.effects.pageSpeedHint')}</small></div><label class="range-control"><input type="range" min="50" max="200" step="10" value="${Math.round((preferences.animationDuration || 1) * 100)}" data-animation-duration /><span class="range-value" data-animation-duration-value>${Math.round((preferences.animationDuration || 1) * 100)}%</span></label></div>
     </section><p class="catalog-disclaimer">${t('settings.savedLocally')}</p>`;
 }
@@ -2069,6 +2093,24 @@ function renderUpdateSettings() {
   </section>`;
 }
 
+let discordStatusCache = null;
+
+function discordStatusText() {
+  const status = discordStatusCache;
+  if (!status) return preferences.discordPresence ? t('discord.status.connecting') : t('discord.status.off');
+  if (status.connected) return t('discord.status.connected', { account: status.account?.name || 'Discord' });
+  if (!status.hasClientId) return t('discord.status.noClientId');
+  if (status.error === 'discord-not-running') return t('discord.status.notRunning');
+  if (status.error) return t('discord.status.error', { error: status.error });
+  return t('discord.status.connecting');
+}
+
+async function refreshDiscordStatus() {
+  try { discordStatusCache = await window.vortexDesktop?.getDiscordStatus?.(); } catch { discordStatusCache = null; }
+  const host = document.querySelector('[data-discord-status]');
+  if (host) host.textContent = discordStatusText();
+}
+
 function applyDiscordPresence() {
   window.vortexDesktop?.setDiscordEnabled?.(Boolean(preferences.discordPresence));
   if (!preferences.discordPresence) return;
@@ -2077,6 +2119,7 @@ function applyDiscordPresence() {
     details: viewing ? t('discord.viewing', { game: viewing }) : t('discord.browsing'),
     state: viewing ? t('discord.inVortex') : t('discord.launcher')
   });
+  setTimeout(refreshDiscordStatus, 1200);
 }
 
 function formatBytes(bytes) {
@@ -2167,6 +2210,7 @@ function renderGeneralSettings() {
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.integrations.title')}</h2><p>${t('settings.integrations.body')}</p></div>${icon('sparkle', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.discord')}</strong><small>${t('settings.integrations.discordBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.discordPresence}" data-toggle="discordPresence" aria-label="${t('settings.integrations.discord')}"></button></div>
+      <p class="catalog-disclaimer discord-status" data-discord-status>${discordStatusText()}</p>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.friendAlerts')}</strong><small>${t('settings.integrations.friendAlertsBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.friendFavoriteAlerts}" data-toggle="friendFavoriteAlerts" aria-label="${t('settings.integrations.friendAlerts')}"></button></div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.hotkeys.title')}</h2><p>${t('settings.hotkeys.body')}</p></div>${icon('keyboard', 18)}</div>
@@ -2239,6 +2283,7 @@ function renderPage() {
   const pages = { home: renderHome, catalog: renderCatalog, 'game-detail': renderGameDetail, favorites: renderFavorites, recent: renderRecent, friends: renderFriends, plans: renderPlans, settings: renderSettings };
   pageContent.innerHTML = (pages[currentView] || renderHome)();
   mountIcons(pageContent);
+  if (currentView === 'settings') refreshDiscordStatus();
   if (preferences.discordPresence) applyDiscordPresence();
   if (pageContent.dataset.renderedView !== currentView) {
     pageContent.dataset.renderedView = currentView;
@@ -3301,7 +3346,7 @@ document.addEventListener('click', async (event) => {
     const key = toggle.dataset.toggle;
     preferences[key] = !preferences[key];
     savePreferences();
-    if (key === 'discordPresence') applyDiscordPresence();
+    if (key === 'discordPresence') { applyDiscordPresence(); showToast(t(preferences.discordPresence ? 'settings.integrations.discordOn' : 'settings.integrations.discordOff')); }
     renderPage();
     return;
   }
@@ -3586,20 +3631,22 @@ document.addEventListener('keydown', (event) => {
   if (event.key === '/' && !isTyping) {
     event.preventDefault();
     searchInput.focus();
+    return;
   }
-  // Documented shortcuts: Ctrl+, opens Settings, Ctrl+Shift+F opens Friends,
-  // Escape leaves the place detail page.
+  // Ctrl-combinations work even while a text field has focus.
   if ((event.ctrlKey || event.metaKey) && event.key === ',') {
     event.preventDefault();
+    if (paletteOpen()) closeCommandPalette();
     setView('settings');
     return;
   }
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
     event.preventDefault();
+    if (paletteOpen()) closeCommandPalette();
     setView('friends');
     return;
   }
-  if (event.key === 'Escape' && currentView === 'game-detail' && !isTyping) {
+  if (event.key === 'Escape' && !isTyping && currentView === 'game-detail') {
     event.preventDefault();
     currentView = 'catalog';
     restoreCatalogScroll();
@@ -3798,6 +3845,7 @@ window.vortexDesktop?.getUpdateState?.().then(renderUpdateBanner).catch(() => {}
 hydrateFeaturedGames();
 loadDiscoveryCatalog(activeDiscoverySort);
 applyDiscordPresence();
+if (preferences.discordPresence) refreshDiscordStatus();
 }
 
 bootVortex();

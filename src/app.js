@@ -629,7 +629,7 @@ function renderGameDetail() {
   const similar = Array.isArray(game.similar) && game.similar.length ? `<section class="detail-section"><h2>${t('game.similar')}</h2><div class="game-grid detail-similar-grid">${game.similar.map(renderGameCard).join('')}</div></section>` : '';
   return `<button class="detail-back icon-button" data-action="detail-back" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)}</button>
     <article class="game-detail">
-      <header class="detail-hero"><div class="detail-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(game.title)}" />` : ''}</div><div class="detail-hero-copy"><div class="eyebrow"><span class="eyebrow-mark"></span>${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p class="detail-creator-line">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge" title="${t('game.verifiedCreator')}" aria-label="${t('game.verifiedCreator')}">${icon('check', 11)}</span>` : ''}</p>${badgeRow}<div class="detail-actions">${canPlay ? `<button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button>` : `<button class="primary-button" disabled>${icon('close', 14)} ${t('game.notAvailable')}</button>`}<button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button></div></div></header>
+      <header class="detail-hero"><div class="detail-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(game.title)}" />` : ''}</div><div class="detail-hero-copy"><div class="eyebrow">${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p class="detail-creator-line">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge" title="${t('game.verifiedCreator')}" aria-label="${t('game.verifiedCreator')}">${icon('check', 11)}</span>` : ''}</p>${badgeRow}<div class="detail-actions">${canPlay ? `<button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button>` : `<button class="primary-button" disabled>${icon('close', 14)} ${t('game.notAvailable')}</button>`}<button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button></div></div></header>
       ${detailStatus === 'loading' ? `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('game.loadingDetails')}</strong></div>` : ''}
       ${detailStatus === 'error' ? `<p class="catalog-disclaimer">${t('game.detailsUnavailable')}</p>` : ''}
       <section class="detail-stats"><div><strong>${formatCount(game.playing ?? game.playerCount)}</strong><span>${t('game.online')}</span></div><div class="detail-like-stat"><strong>${likePercent === null ? '—' : `${likePercent}%`}</strong><span>${t('game.likeRatio')} · ${formatCount(game.upVotes)} / ${formatCount(game.downVotes)}</span>${voteBar}</div><div><strong>${formatCount(game.visits)}</strong><span>${t('game.visits')}</span></div><div><strong>${formatCount(game.favorites)}</strong><span>${t('game.favorites')}</span></div></section>
@@ -680,7 +680,7 @@ function renderGrid(list, emptyTitle, emptyText, emptyAction = 'catalog') {
 }
 
 function pageHeading(eyebrow, title, description, action = '') {
-  return `<div class="page-heading"><div><div class="eyebrow"><span class="eyebrow-mark"></span>${eyebrow}</div><h1>${title}</h1><p>${description}</p></div>${action ? `<div class="heading-actions">${action}</div>` : ''}</div>`;
+  return `<div class="page-heading"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><p>${description}</p></div>${action ? `<div class="heading-actions">${action}</div>` : ''}</div>`;
 }
 
 // "Most played" strip for the home page: top games by banked playtime.
@@ -3691,9 +3691,24 @@ function paletteCommands() {
     icon: ic, title: t(`settings.${theme}`), hint: t('palette.theme'), run: () => { preferences.theme = theme; savePreferences(); applyPreferences(); renderPage(); }
   }));
   // Motion toggle
-  commands.push({ icon: 'motion', title: t('settings.motion.title'), hint: t('palette.toggle'), run: () => { preferences.motion = !preferences.motion; savePreferences(); applyPreferences(); renderPage(); showToast(preferences.motion ? t('settings.motion.title') + ': on' : t('settings.motion.title') + ': off'); } });
+  commands.push({ icon: 'motion', title: t('settings.motion.title'), hint: t('palette.toggle'), run: () => { preferences.motion = !preferences.motion; savePreferences(); applyPreferences(); renderPage(); showToast(`${t('settings.motion.title')}: ${t(preferences.motion ? 'palette.on' : 'palette.off')}`); } });
   // Descriptions toggle (card element)
-  commands.push({ icon: 'grid', title: t('settings.cardTuning.description'), hint: t('palette.toggle'), run: () => { preferences.cardShowDescription = !preferences.cardShowDescription; savePreferences(); renderPage(); } });
+  commands.push({ icon: 'grid', title: t('settings.cardTuning.description'), hint: t('palette.toggle'), run: () => { preferences.cardShowDescription = !preferences.cardShowDescription; savePreferences(); renderPage(); showToast(`${t('settings.cardTuning.description')}: ${t(preferences.cardShowDescription ? 'palette.on' : 'palette.off')}`); } });
+  // Playtime badge on cards
+  commands.push({ icon: 'clock', title: t('settings.cardTuning.playtime'), hint: t('palette.toggle'), run: () => { preferences.cardShowPlaytime = !preferences.cardShowPlaytime; savePreferences(); renderPage(); showToast(`${t('settings.cardTuning.playtime')}: ${t(preferences.cardShowPlaytime ? 'palette.on' : 'palette.off')}`); } });
+  // Like badges on cards
+  commands.push({ icon: 'thumb', title: t('settings.cardTuning.likes'), hint: t('palette.toggle'), run: () => { preferences.cardShowLikes = !preferences.cardShowLikes; savePreferences(); renderPage(); showToast(`${t('settings.cardTuning.likes')}: ${t(preferences.cardShowLikes ? 'palette.on' : 'palette.off')}`); } });
+  // Discord Rich Presence
+  commands.push({ icon: 'sparkle', title: t('settings.integrations.discord'), hint: t('palette.toggle'), run: () => { preferences.discordPresence = !preferences.discordPresence; savePreferences(); applyDiscordPresence(); renderPage(); showToast(`${t('settings.integrations.discord')}: ${t(preferences.discordPresence ? 'palette.on' : 'palette.off')}`); } });
+  // Friend alerts
+  commands.push({ icon: 'bell', title: t('settings.integrations.friendAlerts'), hint: t('palette.toggle'), run: () => { preferences.friendFavoriteAlerts = !preferences.friendFavoriteAlerts; savePreferences(); renderPage(); showToast(`${t('settings.integrations.friendAlerts')}: ${t(preferences.friendFavoriteAlerts ? 'palette.on' : 'palette.off')}`); } });
+  // Catalog view switch
+  commands.push({ icon: 'grid', title: t('catalog.gridView'), hint: t('palette.view'), run: () => { preferences.catalogView = 'grid'; savePreferences(); setView('catalog'); } });
+  commands.push({ icon: 'layout', title: t('catalog.listView'), hint: t('palette.view'), run: () => { preferences.catalogView = 'list'; savePreferences(); setView('catalog'); } });
+  // Cache sweep
+  commands.push({ icon: 'rotate', title: t('settings.cacheClear'), hint: t('palette.action'), run: () => { for (const key of Object.keys(localStorage)) if (key.startsWith('vortex.') && !key.startsWith('vortex.preferences') && !key.startsWith('vortex.profiles')) localStorage.removeItem(key); showToast(t('settings.cache.cleared')); renderPage(); } });
+  // Update check
+  commands.push({ icon: 'download', title: t('updates.checkNow'), hint: t('palette.action'), run: () => { preferences.settingsTab = 'version'; savePreferences(); setView('settings'); window.vortexDesktop?.retryUpdateCheck?.(); } });
   return commands;
 }
 

@@ -183,7 +183,6 @@ body.light-theme .search-page-field { background: #fff; box-shadow: 0 12px 30px 
 .avatar-small { width: 32px; height: 32px; cursor: pointer; }
 .page-content { width: 100%; max-width: 1520px; min-height: calc(100vh - var(--window-titlebar-height) - 76px); padding: 34px clamp(18px, 2.6vw, 42px) 56px; margin: 0 auto; }
 .eyebrow { display: flex; align-items: center; gap: 8px; color: var(--accent-text); font-size: 9px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
-.eyebrow-mark { display: inline-block; width: 6px; height: 6px; border-radius: 2px; background: var(--accent); transform: rotate(45deg); }
 .page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin: 0 0 16px; }
 .page-heading h1 { margin: 9px 0 0; font: 700 28px/1.18 var(--font-display); letter-spacing: -.045em; }
 .heading-inline-icon { display: inline-flex; align-items: center; margin-right: 8px; color: var(--accent-text); vertical-align: -2px; }
@@ -619,7 +618,7 @@ body[data-card-animation="none"] .game-card { animation: none; }
 @keyframes page-slide { from { opacity: 0; transform: translateX(13px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes page-zoom { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: scale(1); } }
 body.no-motion *, body.no-motion *::before, body.no-motion *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
-body.no-glow .ambient, body.no-glow .brand-logo, body.no-glow .status-dot, body.no-glow .eyebrow-mark { box-shadow: none !important; }
+body.no-glow .ambient, body.no-glow .brand-logo, body.no-glow .status-dot { box-shadow: none !important; }
 body.high-contrast { --line: rgba(255, 255, 255, .15); --line-strong: rgba(255, 255, 255, .24); --muted: #b4b6c0; }
 body.high-contrast .game-description, body.high-contrast .setting-label small, body.high-contrast .roadmap-card p { color: #aeb0bb; }
 body.light-theme { color-scheme: light; }

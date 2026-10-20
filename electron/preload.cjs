@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
   searchGames: (request) => ipcRenderer.invoke('games:search', request),
   getGameDetails: (request) => ipcRenderer.invoke('games:details', request),
   getSimilarGames: (request) => ipcRenderer.invoke('games:similar', request),
+  getPaidGames: () => ipcRenderer.invoke('games:paid'),
   getReleaseHistory: (universeId) => ipcRenderer.invoke('games:release-history', universeId),
   openExternalUrl: (url) => ipcRenderer.invoke('shell:open-external', url),
   getRobloxApiStatus: () => ipcRenderer.invoke('roblox:api-status'),

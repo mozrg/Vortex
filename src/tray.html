@@ -55,15 +55,16 @@
 
     .tray-sep { height: 1px; margin: 0; border: 0; background: var(--line); }
 
-    /* Mini-player: the game launched from the launcher, with a live timer. */
-    .tray-now-playing { display: flex; align-items: center; gap: calc(9px * var(--scale)); padding: calc(9px * var(--scale)) calc(12px * var(--scale)); border-bottom: 1px solid var(--line); background: linear-gradient(100deg, rgba(var(--accent-rgb), .16), transparent); }
-    .tray-np-art { display: grid; width: calc(32px * var(--scale)); height: calc(32px * var(--scale)); flex: 0 0 auto; overflow: hidden; place-items: center; border-radius: calc(4px * var(--scale)); background: linear-gradient(140deg, rgba(var(--accent-rgb), .4), rgba(0,0,0,.45)); }
+    /* Mini-player: one compact line with the launched game and a live timer. */
+    .tray-now-playing { display: flex; align-items: center; gap: calc(7px * var(--scale)); padding: calc(6px * var(--scale)) calc(10px * var(--scale)); border-bottom: 1px solid var(--line); background: linear-gradient(100deg, rgba(var(--accent-rgb), .14), transparent); }
+    .tray-now-playing[hidden] { display: none; }
+    .tray-np-art { display: grid; width: calc(20px * var(--scale)); height: calc(20px * var(--scale)); flex: 0 0 auto; overflow: hidden; place-items: center; border-radius: calc(3px * var(--scale)); background: rgba(var(--accent-rgb), .25); }
     .tray-np-art img { width: 100%; height: 100%; object-fit: cover; }
-    .tray-np-copy { display: grid; min-width: 0; flex: 1; gap: 1px; }
-    .tray-np-copy strong { overflow: hidden; font-size: calc(11.5px * var(--scale)); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-    .tray-np-copy small { color: var(--accent-text); font-size: calc(8.5px * var(--scale)); font-variant-numeric: tabular-nums; }
-    .tray-np-live { width: calc(7px * var(--scale)); height: calc(7px * var(--scale)); flex: 0 0 auto; border-radius: 50%; background: #33cd7c; box-shadow: 0 0 calc(6px * var(--scale)) rgba(51,205,124,.7); animation: tray-pulse 1.6s ease-in-out infinite; }
-    @keyframes tray-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+    .tray-np-copy { display: flex; min-width: 0; flex: 1; align-items: baseline; gap: calc(6px * var(--scale)); }
+    .tray-np-copy strong { overflow: hidden; font-size: calc(10.5px * var(--scale)); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .tray-np-copy small { flex: 0 0 auto; color: var(--accent-text); font-size: calc(9px * var(--scale)); font-variant-numeric: tabular-nums; }
+    .tray-np-live { width: calc(6px * var(--scale)); height: calc(6px * var(--scale)); flex: 0 0 auto; border-radius: 50%; background: #33cd7c; box-shadow: 0 0 calc(5px * var(--scale)) rgba(51,205,124,.65); animation: tray-pulse 1.6s ease-in-out infinite; }
+    @keyframes tray-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 
     /* Steam-style actions: full-width rows, not floating buttons. */
     .tray-actions { display: flex; flex-direction: column; border-top: 1px solid var(--line); }

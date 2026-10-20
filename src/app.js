@@ -214,6 +214,9 @@ const PLAYTIME_SESSION_CAP_SECONDS = 3 * 60 * 60;
 const PLAYTIME_SESSION_KEY = 'vortex.playSession';
 let playSessionStart = null;
 let playSessionGameId = null;
+// Snapshot of the game launched from Vortex: drives the tray mini-player, so it
+// works even when the title came from a friend's server rather than the catalog.
+let nowPlayingSnapshot = null;
 let dynamicGames = readStored('vortex.discovered', []);
 const expandedDescriptions = new Set();
 let currentView = 'home';
@@ -258,6 +261,7 @@ const searchInput = document.getElementById('global-search');
 const breadcrumbCurrent = document.getElementById('breadcrumb-current');
 let latestUpdateState = null;
 let lastUpdateCheckAt = 0;
+let retryUpdateBusy = false;
 let pendingScrollRestore = null;
 const DETAIL_CACHE_TTL = 5 * 60 * 1000;
 const detailCache = new Map();
@@ -676,21 +680,22 @@ function renderGameDetail() {
     : '';
   const allBadges = Array.isArray(game.badges) ? game.badges : [];
   const visibleBadges = detailBadgesExpanded ? allBadges.slice(0, detailBadgeCount) : [];
-  const badges = allBadges.length ? `<section class="detail-section"><div class="detail-section-heading"><h2>${t('game.badges')}</h2><button class="ghost-button" data-action="toggle-badges">${t(detailBadgesExpanded ? 'game.hideBadges' : 'game.showBadges')}</button></div>${detailBadgesExpanded ? `<div class="detail-badges">${visibleBadges.map((badge) => `<span class="detail-badge"><strong>${escapeHtml(badge.name)}</strong>${badge.description ? `<small>${escapeHtml(badge.description)}</small>` : ''}</span>`).join('')}</div>${visibleBadges.length < allBadges.length ? `<button class="ghost-button" data-action="show-more-badges">${t('game.showMoreBadges')}</button>` : ''}` : ''}</section>` : '';
-  const social = Array.isArray(game.socialLinks) && game.socialLinks.length ? `<section class="detail-section"><h2>${t('game.socialLinks')}</h2><div class="detail-social-links">${game.socialLinks.map((link) => {
+  const badges = allBadges.length ? `<section class="detail-section"><div class="detail-section-heading"><h2>${icon('award', 15)} ${t('game.badges')}</h2><button class="ghost-button" data-action="toggle-badges">${t(detailBadgesExpanded ? 'game.hideBadges' : 'game.showBadges')}</button></div>${detailBadgesExpanded ? `<div class="detail-badges">${visibleBadges.map((badge) => `<span class="detail-badge"><strong>${escapeHtml(badge.name)}</strong>${badge.description ? `<small>${escapeHtml(badge.description)}</small>` : ''}</span>`).join('')}</div>${visibleBadges.length < allBadges.length ? `<button class="ghost-button" data-action="show-more-badges">${t('game.showMoreBadges')}</button>` : ''}` : ''}</section>` : '';
+  const social = Array.isArray(game.socialLinks) && game.socialLinks.length ? `<section class="detail-section"><h2>${icon('link', 15)} ${t('game.socialLinks')}</h2><div class="detail-social-links">${game.socialLinks.map((link) => {
     const href = safeExternalUrl(link.url);
     if (!href) return '';
     const label = link.title || link.type || new URL(href).hostname.replace(/^www\./, '');
     const platform = String(link.type || label).toLowerCase();
     const platformLabel = /discord/.test(platform) ? 'Discord' : /youtube|video/.test(platform) ? 'YouTube' : /twitter|x\.com/.test(platform) ? 'X' : /tiktok/.test(platform) ? 'TikTok' : /roblox/.test(platform) ? 'Roblox' : label;
-    return `<button class="detail-social-card" type="button" data-action="open-social-link" data-url="${escapeHtml(href)}"><span class="social-platform-icon">${icon(/youtube|video/.test(platform) ? 'play' : /discord/.test(platform) ? 'users' : 'arrowUpRight', 20)}</span><span><strong>${escapeHtml(platformLabel)}</strong><small>${escapeHtml(href.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</small></span></button>`;
+    const platformIcon = /discord/.test(platform) ? 'discord' : /youtube|video/.test(platform) ? 'youtube' : /twitter|x\.com/.test(platform) ? 'twitter' : /tiktok/.test(platform) ? 'tiktok' : /roblox/.test(platform) ? 'roblox' : 'link';
+    return `<button class="detail-social-card" type="button" data-action="open-social-link" data-url="${escapeHtml(href)}"><span class="social-platform-icon">${icon(platformIcon, 20)}</span><span><strong>${escapeHtml(platformLabel)}</strong><small>${escapeHtml(href.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</small></span></button>`;
   }).join('')}</div></section>` : '';
   const galleryItems = [...videos.map((item) => ({ ...item, kind: 'video' })), ...screenshots.map((item) => ({ ...item, kind: 'image' }))];
   detailGalleryCount = galleryItems.length;
   detailGalleryIndex = Math.min(detailGalleryIndex, Math.max(0, galleryItems.length - 1));
   const currentMedia = galleryItems[detailGalleryIndex];
   const galleryTitle = videos.length ? t('game.media') : t('game.screenshots');
-  const gallery = currentMedia ? `<section class="detail-section"><div class="detail-section-heading"><div><h2>${galleryTitle}</h2><p>${detailGalleryIndex + 1} / ${galleryItems.length}</p></div>${galleryItems.length > 1 ? `<div class="detail-gallery-controls"><button class="icon-button" data-action="gallery-prev" aria-label="${t('game.previousMedia')}">${icon('arrowLeft', 16)}</button><button class="icon-button" data-action="gallery-next" aria-label="${t('game.nextMedia')}">${icon('arrow', 16)}</button></div>` : ''}</div><div class="detail-gallery"><div class="detail-gallery-slide">${currentMedia.kind === 'video' ? `<video controls preload="metadata" poster="${escapeHtml(currentMedia.thumbnail || '')}"><source src="${escapeHtml(currentMedia.url)}" type="video/mp4" /></video>` : `<img src="${escapeHtml(currentMedia.url)}" alt="${escapeHtml(currentMedia.title || game.title)}" />`}</div>${galleryItems.length > 1 ? `<div class="detail-gallery-dots">${galleryItems.map((_, index) => `<button class="gallery-dot ${index === detailGalleryIndex ? 'active' : ''}" data-action="gallery-goto" data-index="${index}" aria-label="${index + 1}"></button>`).join('')}</div>` : ''}</div></section>` : '';
+  const gallery = currentMedia ? `<section class="detail-section"><div class="detail-section-heading"><div><h2>${icon(videos.length ? 'film' : 'image', 15)} ${galleryTitle}</h2><p>${detailGalleryIndex + 1} / ${galleryItems.length}</p></div>${galleryItems.length > 1 ? `<div class="detail-gallery-controls"><button class="icon-button" data-action="gallery-prev" aria-label="${t('game.previousMedia')}">${icon('arrowLeft', 16)}</button><button class="icon-button" data-action="gallery-next" aria-label="${t('game.nextMedia')}">${icon('arrow', 16)}</button></div>` : ''}</div><div class="detail-gallery"><div class="detail-gallery-slide">${currentMedia.kind === 'video' ? `<video controls preload="metadata" poster="${escapeHtml(currentMedia.thumbnail || '')}"><source src="${escapeHtml(currentMedia.url)}" type="video/mp4" /></video>` : `<img src="${escapeHtml(currentMedia.url)}" alt="${escapeHtml(currentMedia.title || game.title)}" />`}</div>${galleryItems.length > 1 ? `<div class="detail-gallery-dots">${galleryItems.map((_, index) => `<button class="gallery-dot ${index === detailGalleryIndex ? 'active' : ''}" data-action="gallery-goto" data-index="${index}" aria-label="${index + 1}"></button>`).join('')}</div>` : ''}</div></section>` : '';
   const releaseHistory = Array.isArray(game.releaseHistory) && game.releaseHistory.length > 1
     ? `<section class="detail-section"><h2>${t('game.releaseHistory')}</h2><div class="release-history">${game.releaseHistory.slice(0, 8).map((entry) => `<div class="release-row"><span class="release-dot"></span><span><strong>${escapeHtml(new Date(entry.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: 'long', year: 'numeric' }))}</strong><small>${t('game.releaseSeen')}</small></span></div>`).join('')}</div><p class="catalog-disclaimer">${t('game.releaseHistoryHint')}</p></section>`
     : '';
@@ -938,7 +943,7 @@ let genreLoadingMore = false;
 let activeGenreRequestId = 0;
 let genreTermIndex = 0;
 
-function isGenreSearchActive() { return !searchQuery && activeCategory !== 'all'; }
+function isGenreSearchActive() { return !searchQuery && activeCategory !== 'all' && activeCategory !== 'paid'; }
 
 async function fetchGenreGames(append = false) {
   const genre = activeCategory;
@@ -1076,10 +1081,10 @@ function renderCustomSortSelect(isLiveSearch) {
 
 function renderGenreFilters() {
   const genres = ['all', 'adventure', 'horror', 'roleplay', 'fashion', 'parkour', 'action', 'simulator', 'survival'];
-  return `<div class="catalog-filter-group"><span class="catalog-filter-label">${t('search.genre')}</span><div class="filter-row genre-filter-row">${genres.map((genre) => `<button class="filter-chip ${activeCategory === genre ? 'active' : ''}" data-category="${genre}">${t(`genre.${genre}`)}</button>`).join('')}</div></div>`;
+  return `<div class="catalog-filter-group"><span class="catalog-filter-label">${t('search.genre')}</span><div class="filter-row genre-filter-row">${genres.map((genre) => `<button class="filter-chip ${activeCategory === genre ? 'active' : ''}" data-category="${genre}">${t(`genre.${genre}`)}</button>`).join('')}<button class="filter-chip filter-chip-paid ${activeCategory === 'paid' ? 'active' : ''}" data-category="paid">${icon('coin', 12)} ${t('catalog.paid')}</button></div></div>`;
 }
 function renderCatalogViewToggle() {
-  return `<div class="catalog-view-toggle" role="group" aria-label="${t('catalog.view')}"><button class="icon-button ${preferences.catalogView === 'grid' ? 'active' : ''}" data-catalog-view="grid" title="${t('catalog.gridView')}">${icon('grid', 14)}</button><button class="icon-button ${preferences.catalogView === 'list' ? 'active' : ''}" data-catalog-view="list" title="${t('catalog.listView')}">${icon('layout', 14)}</button></div>`;
+  return `<div class="catalog-view-toggle" role="group" aria-label="${t('catalog.view')}"><button class="icon-button ${preferences.catalogView === 'grid' ? 'active' : ''}" data-catalog-view="grid" title="${t('catalog.gridView')}">${icon('grid', 14)}</button><button class="icon-button ${preferences.catalogView === 'list' ? 'active' : ''}" data-catalog-view="list" title="${t('catalog.listView')}">${icon('list', 14)}</button></div>`;
 }
 
 // ---- Dedicated search tab ----
@@ -1143,6 +1148,7 @@ function submitSearchPage(value) {
 }
 
 function renderCatalog() {
+  if (activeCategory === 'paid' && paidStatus === 'idle') window.setTimeout(() => loadPaidGames(), 0);
   const list = filterGames();
   const availableSorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
   const selectedSort = availableSorts.find((sort) => sort.id === activeDiscoverySort) || availableSorts[0];
@@ -1161,6 +1167,17 @@ function renderCatalog() {
     resultsBody = `<p class="catalog-disclaimer"><strong>${t('search.errorTitle')}</strong> ${t('search.errorBody')}</p>${renderGrid(list, t('search.noMatches'), t('search.tryAnother'))}`;
   } else if (isLiveSearch && searchStatus === 'success') {
     resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list, t('search.noResults'), t('search.tryShorter'))}${isLoadingMore ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : searchPageToken ? `<button class="ghost-button load-more-button" data-action="load-more">${t('search.loadMore')} ${icon('arrow', 13)}</button>` : ''}`;
+  } else if (activeCategory === 'paid' && !searchQuery) {
+    // Paid experiences: a dedicated section inside the catalog, not a new page.
+    if (paidStatus === 'loading') {
+      resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.paidLoading')}</strong><small>${t('catalog.paidLoadingNote')}</small></div>`;
+    } else if (paidStatus === 'error') {
+      resultsBody = `<p class="catalog-disclaimer"><strong>${t('catalog.errorTitle')}</strong> ${t('catalog.paidError')}</p>`;
+    } else if (!paidGames.length) {
+      resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('coin', 20)}</div><h2>${t('catalog.paidEmptyTitle')}</h2><p>${t('catalog.paidEmptyBody')}</p></div>`;
+    } else {
+      resultsBody = `<div class="catalog-paid-head"><h2>${icon('coin', 15)} ${t('catalog.paid')}</h2><span>${paidGames.length}</span></div><p class="catalog-disclaimer">${t('catalog.paidHint')}</p>${renderGrid(paidGames, t('empty.noResults'), t('empty.filterHint'))}`;
+    }
   } else if (isGenreSearchActive()) {
     if (genreStatus === 'loading') {
       resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.loading')}</strong><small>${t('catalog.loadingNote')}</small></div>`;
@@ -1195,6 +1212,26 @@ function renderCatalog() {
 }
 
 let favoritesVisibleCount = 24;
+let paidGames = [];
+let paidStatus = 'idle';
+let paidRequestId = 0;
+
+async function loadPaidGames(force = false) {
+  if (!force && (paidStatus === 'loading' || paidGames.length)) return;
+  paidStatus = 'loading';
+  const requestId = ++paidRequestId;
+  if (currentView === 'catalog' && activeCategory === 'paid') renderPage();
+  try {
+    const list = await window.vortexDesktop?.getPaidGames?.();
+    if (requestId !== paidRequestId) return;
+    paidGames = Array.isArray(list) ? list : [];
+    paidStatus = 'success';
+  } catch {
+    if (requestId !== paidRequestId) return;
+    paidStatus = 'error';
+  }
+  if (currentView === 'catalog' && activeCategory === 'paid') renderPage();
+}
 
 function renderFavorites() {
   const list = allGames().filter((game) => favorites.has(game.id));
@@ -1408,8 +1445,8 @@ function renderPlans() {
 function settingsTabs() {
   const tabs = [
     ['home', 'home'], ['accent', 'palette'], ['cards', 'layout'], ['effects', 'motion'],
-    ['interface', 'sliders'], ['general', 'slidersHorizontal'], ['integrations', 'sparkle'],
-    ['data', 'database'], ['version', 'download']
+    ['interface', 'monitor'], ['general', 'settings'], ['integrations', 'sparkles'],
+    ['data', 'database'], ['version', 'refreshCw']
   ];
   return `<div class="settings-tabs">${tabs.map(([key, iconName]) => `<button class="settings-tab ${preferences.settingsTab === key ? 'active' : ''}" data-settings-tab="${key}"><span>${icon(iconName)}</span>${t(`settings.tab.${key}`)}</button>`).join('')}</div>`;
 }
@@ -2289,15 +2326,15 @@ function renderGeneralSettings() {
         <p class="presence-warning">${t('settings.presence.hint')}</p>
       </div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.history.title')}</h2><p>${t('settings.history.body')}</p></div>${icon('clock', 18)}</div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.history.title')}</h2><p>${t('settings.history.body')}</p></div>${icon('history', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.history.title')}</strong><small>${t('settings.history.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.saveHistory}" data-toggle="saveHistory" aria-label="${t('settings.history.title')}"></button></div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.profiles.title')}</h2><p>${t('settings.profiles.body')}</p></div>${icon('palette', 18)}</div>
       <div class="profile-actions">
         <input type="text" maxlength="32" placeholder="${t('settings.profiles.namePlaceholder')}" data-profile-name />
         <button class="primary-button" data-action="save-profile">${icon('check', 13)} ${t('settings.profiles.save')}</button>
-        <button class="ghost-button" data-action="export-profiles">${icon('download', 13)} ${t('settings.profiles.export')}</button>
-        <button class="ghost-button" data-action="import-profiles">${icon('upload', 13)} ${t('settings.profiles.import')}</button>
+        <button class="ghost-button" data-action="export-profiles">${icon('fileDown', 13)} ${t('settings.profiles.export')}</button>
+        <button class="ghost-button" data-action="import-profiles">${icon('fileUp', 13)} ${t('settings.profiles.import')}</button>
         <input type="file" accept=".json,application/json" data-profiles-file hidden />
       </div>
       <div class="profile-list">${Object.keys(readProfiles()).length ? Object.entries(readProfiles()).map(([name, profile]) => `
@@ -2330,14 +2367,14 @@ function renderSettings() {
 
 // Integrations tab: Discord presence, friend alerts and keyboard shortcuts.
 function renderIntegrationSettings() {
-  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.integrations.title')}</h2><p>${t('settings.integrations.body')}</p></div>${icon('sparkle', 18)}</div>
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.integrations.title')}</h2><p>${t('settings.integrations.body')}</p></div>${icon('sparkles', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.discord')}</strong><small>${t('settings.integrations.discordBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.discordPresence}" data-toggle="discordPresence" aria-label="${t('settings.integrations.discord')}"></button></div>
       <p class="catalog-disclaimer discord-status" data-discord-status>${discordStatusText()}</p>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.friendAlerts')}</strong><small>${t('settings.integrations.friendAlertsBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.friendFavoriteAlerts}" data-toggle="friendFavoriteAlerts" aria-label="${t('settings.integrations.friendAlerts')}"></button></div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.hotkeys.title')}</h2><p>${t('settings.hotkeys.body')}</p></div>${icon('keyboard', 18)}</div>
       <div class="hotkey-list">${HOTKEY_ACTIONS.map((action) => `<div class="hotkey-row"><span>${t(action.label)}</span><button class="hotkey-recorder" data-record-hotkey="${action.id}" aria-label="${t('settings.hotkeys.record')}">${formatHotkey(hotkeyCombo(action.id))}</button></div>`).join('')}</div>
-      <div class="data-actions"><button class="ghost-button" data-action="reset-hotkeys">${icon('rotate', 13)} ${t('settings.hotkeys.reset')}</button></div>
+      <div class="data-actions"><button class="ghost-button" data-action="reset-hotkeys">${icon('refreshCw', 13)} ${t('settings.hotkeys.reset')}</button></div>
       <p class="catalog-disclaimer">${t('settings.hotkeys.hint')}</p>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.title')}</h2><p>${t('settings.tray.body')}</p></div>${icon('tray', 18)}</div>
@@ -2348,27 +2385,27 @@ function renderIntegrationSettings() {
 
 // Data tab: caches, size limits and the Roblox API health probe.
 function renderDataSettings() {
-  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cache.title')}</h2><p>${t('settings.cache.body')}</p></div>${icon('search', 18)}</div>
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cache.title')}</h2><p>${t('settings.cache.body')}</p></div>${icon('database', 18)}</div>
       <div class="update-settings-meta">
         <span><small>${t('settings.cache.details')}</small><strong data-cache-size>${formatBytes(cacheFootprintBytes())}</strong></span>
         <span><small>${t('settings.cache.onlineHistory')}</small><strong data-history-size>${formatBytes(onlineHistoryBytes())}</strong></span>
       </div>
       <div class="data-actions">
-        <button class="ghost-button" data-action="clear-cache">${icon('close', 13)} ${t('settings.cacheClear')}</button>
-        <button class="ghost-button" data-action="clear-api-cache">${icon('rotate', 13)} ${t('settings.cache.clearApi')}</button>
-        <button class="ghost-button" data-action="clear-history-cache">${icon('clock', 13)} ${t('settings.cache.clearHistory')}</button>
+        <button class="ghost-button" data-action="clear-cache">${icon('trash', 13)} ${t('settings.cacheClear')}</button>
+        <button class="ghost-button" data-action="clear-api-cache">${icon('refreshCw', 13)} ${t('settings.cache.clearApi')}</button>
+        <button class="ghost-button" data-action="clear-history-cache">${icon('history', 13)} ${t('settings.cache.clearHistory')}</button>
       </div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cache.diskCache')}</strong><small>${t('settings.cache.diskCacheBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.diskCache}" data-toggle="diskCache" aria-label="${t('settings.cache.diskCache')}"></button></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cache.lazyImages')}</strong><small>${t('settings.cache.lazyImagesBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.lazyImages}" data-toggle="lazyImages" aria-label="${t('settings.cache.lazyImages')}"></button></div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.api.title')}</h2><p>${t('settings.api.body')}</p></div>${icon('sparkle', 18)}</div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.api.title')}</h2><p>${t('settings.api.body')}</p></div>${icon('activity', 18)}</div>
       <div class="api-status-list" data-api-status>${renderApiStatusPlaceholder()}</div>
-      <button class="ghost-button" data-action="check-api-status">${icon('rotate', 13)} ${t('settings.api.check')}</button>
+      <button class="ghost-button" data-action="check-api-status">${icon('refreshCw', 13)} ${t('settings.api.check')}</button>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.data.title')}</h2><p>${t('settings.data.body')}</p></div>${icon('download', 18)}</div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.data.title')}</h2><p>${t('settings.data.body')}</p></div>${icon('fileDown', 18)}</div>
       <div class="data-actions">
-        <button class="ghost-button" data-action="export-data">${icon('download', 13)} ${t('settings.data.export')}</button>
-        <button class="ghost-button" data-action="import-data">${icon('upload', 13)} ${t('settings.data.import')}</button>
+        <button class="ghost-button" data-action="export-data">${icon('fileDown', 13)} ${t('settings.data.export')}</button>
+        <button class="ghost-button" data-action="import-data">${icon('fileUp', 13)} ${t('settings.data.import')}</button>
       </div>
     </section>`;
 }
@@ -2414,12 +2451,16 @@ function renderUpdateBanner(state) {
     if (state.status !== 'checking') lastUpdateCheckAt = Date.now();
   }
   const banner = document.getElementById('update-banner');
-  if (!banner) return;
+  const updateSettingsCard = document.getElementById('update-settings-card');
+  const onVersionTab = currentView === 'settings' && preferences.settingsTab === 'version';
+  if (!banner) { if (updateSettingsCard && onVersionTab) updateSettingsCard.outerHTML = renderUpdateSettings(); return; }
   const status = latestUpdateState?.status;
   const visibleStatuses = ['downloading', 'downloaded', 'applying', 'error'];
   if (!visibleStatuses.includes(status) || !preferences.uiUpdateBanner) {
     banner.hidden = true;
     banner.innerHTML = '';
+    // The settings card mirrors every status, including "checking" and "current".
+    if (updateSettingsCard && onVersionTab) updateSettingsCard.outerHTML = renderUpdateSettings();
     return;
   }
   const progress = Math.max(0, Math.min(100, Number(latestUpdateState.progress) || 0));
@@ -2433,8 +2474,7 @@ function renderUpdateBanner(state) {
   banner.dataset.status = status;
   banner.hidden = false;
   banner.innerHTML = `<span class="update-banner-icon">${icon(status === 'error' ? 'close' : status === 'downloaded' ? 'check' : 'sparkle', 18)}</span><span class="update-banner-copy"><strong>${title}</strong><small>${message}</small></span>${status === 'error' ? `<button class="ghost-button" data-action="retry-update">${t('updates.retry')}</button>` : `<span class="update-banner-progress" aria-label="${progress}%"><i style="--progress:${status === 'applying' || status === 'downloaded' ? 100 : progress}%"></i></span>`}`;
-  const updateSettingsCard = document.getElementById('update-settings-card');
-  if (updateSettingsCard && currentView === 'settings' && preferences.settingsTab === 'version') updateSettingsCard.outerHTML = renderUpdateSettings();
+  if (updateSettingsCard && onVersionTab) updateSettingsCard.outerHTML = renderUpdateSettings();
 }
 
 let toastTimer;
@@ -2565,18 +2605,18 @@ function reportRecentGamesToTray() {
       thumbnail: safeThumbnail(game.thumbnail) || '',
       lastPlayed: Number(playStats && playStats[game.id] && playStats[game.id].lastPlayed) || 0
     }));
-  // Mini-player feeds the tray's "now playing" row; only sent when enabled.
+  // Mini-player: only while a game launched from Vortex is still playing.
+  // A Roblox process alone is not enough — the row stays hidden otherwise.
   let nowPlaying = null;
-  if (preferences.trayMiniPlayer && playSessionGameId) {
-    const playing = getGame(playSessionGameId);
-    if (playing) {
-      nowPlaying = {
-        id: String(playing.id),
-        title: String(playing.title || ''),
-        thumbnail: safeThumbnail(playing.thumbnail) || '',
-        startedAt: Number(playSessionStart) || Date.now()
-      };
-    }
+  const sessionActive = Boolean(playSessionStart && playSessionGameId && nowPlayingSnapshot);
+  const sessionAgeMs = sessionActive ? Date.now() - Number(playSessionStart) : 0;
+  if (preferences.trayMiniPlayer && sessionActive && sessionAgeMs < PLAYTIME_SESSION_CAP_SECONDS * 1000) {
+    nowPlaying = {
+      id: String(nowPlayingSnapshot.id),
+      title: String(nowPlayingSnapshot.title || ''),
+      thumbnail: nowPlayingSnapshot.thumbnail || '',
+      startedAt: Number(nowPlayingSnapshot.startedAt) || playSessionStart
+    };
   }
   window.vortexDesktop.reportRecentGames({ games, style: trayStylePayload(), nowPlaying });
 }
@@ -2603,7 +2643,10 @@ function bankPlaySession(resetSession = true) {
   if (resetSession) {
     playSessionStart = null;
     playSessionGameId = null;
+    // The mini-player only exists while a Vortex-launched session is active.
+    nowPlayingSnapshot = null;
     localStorage.removeItem(PLAYTIME_SESSION_KEY);
+    reportRecentGamesToTray();
   } else {
     playSessionStart = Date.now();
     localStorage.setItem(PLAYTIME_SESSION_KEY, JSON.stringify({ gameId: playSessionGameId, startedAt: playSessionStart }));
@@ -2625,10 +2668,17 @@ function openGame(id, gameId = '', accessCode = '') {
   if (preferences.saveHistory) {
     recentGames = [game.id, ...recentGames.filter((recentId) => recentId !== game.id)].slice(0, 12);
     localStorage.setItem('vortex.recent', JSON.stringify(recentGames));
-    reportRecentGamesToTray();
   }
   playSessionStart = Date.now();
   playSessionGameId = String(game.id);
+  nowPlayingSnapshot = {
+    id: String(game.id),
+    title: String(game.title || ''),
+    thumbnail: safeThumbnail(game.thumbnail) || '',
+    startedAt: playSessionStart
+  };
+  // Sent after the snapshot exists, so the tray mini-player appears immediately.
+  reportRecentGamesToTray();
   localStorage.setItem(PLAYTIME_SESSION_KEY, JSON.stringify({ gameId: playSessionGameId, startedAt: playSessionStart }));
   // The launch count is persisted immediately; duration is banked on hide,
   // next launch or app close. This also survives a crash/restart.
@@ -3078,8 +3128,19 @@ document.addEventListener('click', async (event) => {
     }
     if (action.dataset.action === 'notifications') showToast(t('toast.notifications'));
     if (action.dataset.action === 'retry-update') {
+      if (retryUpdateBusy) return;
+      retryUpdateBusy = true;
+      const card = action.closest('.settings-card');
+      const label = action.querySelector('span') || action;
+      const original = label.textContent;
+      label.textContent = t('updates.checkingShort');
+      action.disabled = true;
       renderUpdateBanner({ status: 'checking', progress: 0 });
-      window.vortexDesktop?.retryUpdateCheck?.().catch(() => {});
+      Promise.resolve(window.vortexDesktop?.retryUpdateCheck?.()).catch(() => {}).finally(() => {
+        retryUpdateBusy = false;
+        if (label.isConnected) { label.textContent = original; action.disabled = false; }
+      });
+      window.setTimeout(() => { if (latestUpdateState?.status === 'checking') renderUpdateBanner({ status: latestUpdateState.status }); }, 100);
     }
     if (action.dataset.action === 'clear-cache') {
       Object.keys(localStorage).filter((key) => key.startsWith(SEARCH_CACHE_PREFIX)).forEach((key) => localStorage.removeItem(key));
@@ -3201,6 +3262,7 @@ document.addEventListener('click', async (event) => {
     savePreferences();
     // Full reset of genre pagination when the user switches filters.
     genreResults = []; genrePageToken = null; genreStatus = 'idle'; genreLoadingMore = false; genreTermIndex = 0;
+    if (activeCategory === 'paid') { void loadPaidGames(); renderPage(); return; }
     if (isGenreSearchActive()) fetchGenreGames(false);
     else renderPage();
     return;

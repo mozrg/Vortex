@@ -5,7 +5,7 @@ const fsp = require('node:fs/promises');
 const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { createHash, randomUUID } = require('node:crypto');
-const { spawn } = require('node:child_process');
+const { spawn, execFile } = require('node:child_process');
 const net = require('node:net');
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 // Dev escape hatch: VORTEX_REMOTE_DEBUGGING=9222 opens a CDP port for UI tests.
@@ -726,6 +726,46 @@ ipcMain.handle('games:store-search', async (_event, request = {}) => {
   return true;
 });
 
+// Paid experiences: Roblox has no "paid only" sort, so search a set of terms
+// that surface paid-access games, then keep only rows that carry a price.
+ipcMain.handle('games:paid', async () => {
+  const queries = [
+    'paid access', 'early access', 'premium', 'buy', 'paid', 'robux',
+    'paid game', 'alpha access', 'beta access', 'supporter', 'paid experience',
+    'premium access', 'vip access', 'paid only', 'entry fee', 'paid entry'
+  ];
+  const universeIds = new Set();
+  // Queries run in parallel batches so the section loads in one pass.
+  for (let index = 0; index < queries.length; index += 6) {
+    const batch = queries.slice(index, index + 6);
+    const pages = await Promise.all(batch.map(async (query) => {
+      try {
+        const url = new URL('https://apis.roblox.com/search-api/omni-search');
+        url.searchParams.set('searchQuery', query);
+        url.searchParams.set('sessionId', randomUUID());
+        url.searchParams.set('pageType', 'all');
+        const payload = await fetchCachedJson(url, 10000);
+        return Array.isArray(payload?.searchResults) ? payload.searchResults : [];
+      } catch { return []; }
+    }));
+    for (const groups of pages) {
+      for (const group of groups) {
+        if (String(group?.contentGroupType || '').toLowerCase() !== 'game') continue;
+        for (const row of (Array.isArray(group?.contents) ? group.contents : [])) {
+          const id = String(row?.universeId ?? '');
+          if (/^\d{1,20}$/.test(id)) universeIds.add(id);
+        }
+      }
+    }
+  }
+  if (!universeIds.size) return [];
+  const details = await getGameDetailsByUniverse([...universeIds].slice(0, 500));
+  return details
+    .filter((game) => Number(game.price) > 0 && game.availability !== 'unavailable')
+    .sort((a, b) => Number(a.price) - Number(b.price))
+    .slice(0, 48);
+});
+
 ipcMain.handle('shell:open-external', async (_event, value) => {
   try {
     const url = new URL(String(value || ''));
@@ -1252,6 +1292,47 @@ let trayWindow = null;
 let trayIcon = null;
 let recentGamesForTray = [];
 let nowPlayingForTray = null;
+let robloxRunningTimer = null;
+
+// Roblox client processes that mean "a game is actually running".
+const ROBLOX_PROCESS_NAMES = ['RobloxPlayerBeta.exe', 'RobloxPlayerLauncher.exe'];
+
+function isRobloxProcessRunning() {
+  return new Promise((resolve) => {
+    try {
+      // tasklist is present on every supported Windows build and needs no deps.
+      execFile('tasklist', ['/FI', 'IMAGENAME eq RobloxPlayerBeta.exe', '/NH'], { windowsHide: true, timeout: 4000 }, (error, stdout) => {
+        if (error) return resolve(false);
+        resolve(ROBLOX_PROCESS_NAMES.some((name) => String(stdout).toLowerCase().includes(name.toLowerCase())));
+      });
+    } catch { resolve(false); }
+  });
+}
+
+// Poll while a launch session is active: when Roblox exits, the mini-player
+// disappears even though Vortex is still open. The first 90 seconds are a grace
+// period — the client needs time to boot before the process exists.
+function startRobloxWatch() {
+  if (robloxRunningTimer) return;
+  robloxRunningTimer = setInterval(async () => {
+    if (!nowPlayingForTray) return;
+    const sessionAgeMs = Date.now() - Number(nowPlayingForTray.startedAt || 0);
+    if (sessionAgeMs < 90000) return;
+    const running = await isRobloxProcessRunning();
+    if (!running) {
+      nowPlayingForTray = null;
+      stopRobloxWatch();
+      if (trayWindow && !trayWindow.isDestroyed()) {
+        trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle, null);
+        setTimeout(fitTrayWindowToContent, 60);
+      }
+    }
+  }, 15000);
+}
+
+function stopRobloxWatch() {
+  if (robloxRunningTimer) { clearInterval(robloxRunningTimer); robloxRunningTimer = null; }
+}
 // The tray panel mirrors the launcher's appearance; the renderer pushes this
 // palette whenever settings change (accent, theme, tray scale, language).
 const TRAY_SCALES = { compact: 0.9, normal: 1, large: 1.1 };
@@ -1421,6 +1502,9 @@ ipcMain.on('tray:recent-games', (_event, payload = []) => {
       }
     : null;
   if (request.style && typeof request.style === 'object') trayStyle = sanitizeTrayStyle(request.style);
+  // A mini-player session starts the process watcher; ending it stops the watcher.
+  if (nowPlayingForTray) startRobloxWatch();
+  else stopRobloxWatch();
   if (trayWindow && !trayWindow.isDestroyed()) {
     trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle, nowPlayingForTray);
     setTimeout(fitTrayWindowToContent, 60);

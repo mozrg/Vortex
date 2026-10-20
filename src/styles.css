@@ -1087,6 +1087,12 @@ body.no-motion .palette-panel { animation: none; }
 .load-more-row { display: flex; justify-content: center; padding: 22px 0 6px; }
 .heading-count { color: var(--muted); font-size: 11px; }
 .detail-section + .detail-section { margin-top: 16px; }
+/* Paid experiences section inside the catalog */
+.filter-chip-paid { display: inline-flex; align-items: center; gap: 5px; }
+.filter-chip-paid.active { border-color: var(--accent-border); background: var(--accent-wash); color: var(--accent-text); }
+.catalog-paid-head { display: flex; align-items: baseline; gap: 9px; margin: 4px 0 6px; }
+.catalog-paid-head h2 { display: flex; align-items: center; gap: 7px; margin: 0; font: 650 16px var(--font-display); letter-spacing: -.02em; }
+.catalog-paid-head span { color: var(--muted); font-size: 10.5px; }
 /* Animation-speed and easing previews */
 .speed-mock, .easing-mock { display: grid; gap: 6px; padding: 10px; }
 .speed-mock .mock-track, .easing-mock .mock-ease-track { position: relative; display: block; height: 8px; border-radius: 99px; background: rgba(255,255,255,.06); overflow: hidden; }

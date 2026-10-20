@@ -220,9 +220,13 @@ function restoreCatalogScroll() {
   if (!pendingScrollRestore || pendingScrollRestore.view !== 'catalog') return;
   const { top } = pendingScrollRestore;
   pendingScrollRestore = null;
+  // Two frames: the first paints the catalog markup, the second applies the
+  // offset once the grid has its final height (otherwise the browser clamps it).
   requestAnimationFrame(() => {
-    const area = document.querySelector('.main-area');
-    if (area) area.scrollTop = top;
+    requestAnimationFrame(() => {
+      const area = document.querySelector('.main-area');
+      if (area) area.scrollTop = top;
+    });
   });
 }
 
@@ -570,7 +574,7 @@ async function loadSimilarGames(requestId = detailRequestId) {
   if (!detailGame || !window.vortexDesktop?.getSimilarGames) return;
   try {
     const [list, history] = await Promise.all([
-      window.vortexDesktop.getSimilarGames({ universeId: detailGame.universeId, genre: detailGame.genre }).catch(() => []),
+      window.vortexDesktop.getSimilarGames({ universeId: detailGame.universeId, genre: detailGame.genre, title: detailGame.title }).catch(() => []),
       window.vortexDesktop.getReleaseHistory?.(detailGame.universeId).catch(() => [])
     ]);
     if (requestId !== detailRequestId || currentView !== 'game-detail') return;
@@ -595,6 +599,7 @@ function renderGameDetail() {
   const dislikePercent = likePercent === null ? 0 : 100 - likePercent;
   const voteBar = likesTotal ? `<div class="detail-like-bar" role="img" aria-label="${t('game.likeRatio')} ${likePercent}%"><span class="detail-like-positive" style="width:${likePercent}%"></span><span class="detail-like-negative" style="width:${dislikePercent}%"></span></div><div class="detail-like-legend"><span><i class="like-dot"></i>${likePercent}% · ${t('game.likeRatio')} (${formatCount(game.upVotes)})</span><span><i class="dislike-dot"></i>${dislikePercent}% · ${t('game.dislikeRatio')} (${formatCount(game.downVotes)})</span></div>` : '';
   const playtime = renderPlaytimeBadge(game.id) || t('stats.noData');
+  const description = String(game.description || t('game.fallbackDescription')).trim();
   const allBadges = Array.isArray(game.badges) ? game.badges : [];
   const visibleBadges = detailBadgesExpanded ? allBadges.slice(0, detailBadgeCount) : [];
   const badges = allBadges.length ? `<section class="detail-section"><div class="detail-section-heading"><h2>${t('game.badges')}</h2><button class="ghost-button" data-action="toggle-badges">${t(detailBadgesExpanded ? 'game.hideBadges' : 'game.showBadges')}</button></div>${detailBadgesExpanded ? `<div class="detail-badges">${visibleBadges.map((badge) => `<span class="detail-badge"><strong>${escapeHtml(badge.name)}</strong>${badge.description ? `<small>${escapeHtml(badge.description)}</small>` : ''}</span>`).join('')}</div>${visibleBadges.length < allBadges.length ? `<button class="ghost-button" data-action="show-more-badges">${t('game.showMoreBadges')}</button>` : ''}` : ''}</section>` : '';

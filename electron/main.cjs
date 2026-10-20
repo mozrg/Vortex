@@ -737,22 +737,34 @@ ipcMain.handle('game:open', async (_event, placeId, gameId, accessCode) => {
 
 ipcMain.handle('games:similar', async (_event, request = {}) => {
   const universeId = String(request.universeId ?? '').match(/^\d{1,20}$/)?.[0] || '';
-  const genre = String(request.genre ?? '').slice(0, 60);
+  const genre = String(request.genre ?? '').slice(0, 60).trim();
+  const title = String(request.title ?? '').slice(0, 60).trim();
   if (!universeId) return [];
   try {
-    // Roblox has no direct "similar games" endpoint: reuse the games list sorted
-    // by popularity, then drop the current place and prefer the same genre.
-    const url = new URL('https://games.roblox.com/v1/games/sorts');
-    url.searchParams.set('model', 'games');
-    url.searchParams.set('alias', 'TopPlayingNow');
-    url.searchParams.set('limit', '30');
+    // Roblox has no "similar games" endpoint, so run an omni-search on the
+    // genre (or the title as a fallback) and drop the current place.
+    const sessionId = randomUUID();
+    const query = genre || title || 'popular';
+    const url = new URL('https://apis.roblox.com/search-api/omni-search');
+    url.searchParams.set('searchQuery', query);
+    url.searchParams.set('sessionId', sessionId);
+    url.searchParams.set('pageType', 'all');
     const payload = await fetchCachedJson(url, 12000);
-    const rows = Array.isArray(payload?.data) ? payload.data : [];
-    const candidates = rows.filter((row) => String(row.id) !== universeId);
-    const sameGenre = genre ? candidates.filter((row) => String(row.genre_l1 || row.genreL1 || row.genre || '').toLowerCase() === genre.toLowerCase()) : [];
-    const ordered = [...sameGenre, ...candidates.filter((row) => !sameGenre.includes(row))].slice(0, 12);
-    const thumbnails = await getThumbnails(ordered.map((row) => row.id));
-    return ordered.map((row) => mapGame(row, thumbnails.get(String(row.id))));
+    const games = [];
+    const targetUniverse = String(request.universeId || '');
+    for (const group of (Array.isArray(payload?.searchResults) ? payload.searchResults : [])) {
+      if (String(group?.contentGroupType || '').toLowerCase() !== 'game') continue;
+      for (const row of (Array.isArray(group?.contents) ? group.contents : [])) {
+        // Omni-search game rows carry `universeId` plus `rootPlaceId`, not `id`.
+        const candidateUniverse = String(row?.universeId ?? '');
+        if (!/^\d{1,20}$/.test(candidateUniverse) || candidateUniverse === targetUniverse) continue;
+        games.push(candidateUniverse);
+      }
+    }
+    const unique = [...new Set(games)].slice(0, 12);
+    if (!unique.length) return [];
+    const details = await getGameDetailsByUniverse(unique);
+    return details.filter((game) => String(game.universeId || game.id) !== targetUniverse).slice(0, 12);
   } catch { return []; }
 });
 

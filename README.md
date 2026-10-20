@@ -2,7 +2,7 @@
 
 Vortex — десктопный лаунчер для Windows: поиск плейсов Roblox, избранное, учёт времени игры, статусы друзей и переход на их серверы — всё вне браузера.
 
-![Версия](https://img.shields.io/badge/version-1.0.20-9b7cff) ![Платформа](https://img.shields.io/badge/platform-Windows-0078D6)
+![Версия](https://img.shields.io/badge/version-1.0.21-9b7cff) ![Платформа](https://img.shields.io/badge/platform-Windows-0078D6)
 
 **Скачать:** [сайт проекта](https://vortex.mivermiver51.workers.dev) — прямая ссылка на установщик, размер файла и контрольная сумма SHA-256.
 

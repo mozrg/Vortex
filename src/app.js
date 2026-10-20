@@ -3799,6 +3799,12 @@ document.addEventListener('dblclick', (event) => {
 
 document.addEventListener('keydown', (event) => {
   const isTyping = event.target instanceof HTMLElement && (event.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName));
+  // Escape always closes the palette, no matter where focus currently is.
+  if (event.key === 'Escape' && paletteOpen()) {
+    event.preventDefault();
+    closeCommandPalette();
+    return;
+  }
   const openMenu = document.querySelector('[data-custom-select] .custom-select-menu:not([hidden])');
   if (event.key === 'Escape' && openMenu) {
     event.preventDefault();
@@ -3877,7 +3883,7 @@ function paletteCommands() {
   // Settings tabs
   const tabs = [
     ['home', 'settings.home.title', 'home'], ['cards', 'settings.cardTuning.title', 'grid'], ['effects', 'settings.effects.title', 'wand'],
-    ['interface', 'settings.ui.navTitle', 'layout'], ['general', 'settings.language.title', 'message'], ['version', 'updates.settingsTitle', 'download'], ['accent', 'settings.theme.title', 'palette']
+    ['interface', 'settings.ui.navTitle', 'monitor'], ['general', 'settings.language.title', 'message'], ['integrations', 'settings.integrations.title', 'sparkles'], ['data', 'settings.cache.title', 'database'], ['version', 'updates.settingsTitle', 'refreshCw'], ['accent', 'settings.theme.title', 'palette']
   ];
   tabs.forEach(([tab, key, ic]) => commands.push({
     icon: ic, title: t(key), hint: t('palette.openSettings'), run: () => { preferences.settingsTab = tab; savePreferences(); setView('settings'); }

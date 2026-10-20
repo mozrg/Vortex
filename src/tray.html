@@ -55,6 +55,16 @@
 
     .tray-sep { height: 1px; margin: 0; border: 0; background: var(--line); }
 
+    /* Mini-player: the game launched from the launcher, with a live timer. */
+    .tray-now-playing { display: flex; align-items: center; gap: calc(9px * var(--scale)); padding: calc(9px * var(--scale)) calc(12px * var(--scale)); border-bottom: 1px solid var(--line); background: linear-gradient(100deg, rgba(var(--accent-rgb), .16), transparent); }
+    .tray-np-art { display: grid; width: calc(32px * var(--scale)); height: calc(32px * var(--scale)); flex: 0 0 auto; overflow: hidden; place-items: center; border-radius: calc(4px * var(--scale)); background: linear-gradient(140deg, rgba(var(--accent-rgb), .4), rgba(0,0,0,.45)); }
+    .tray-np-art img { width: 100%; height: 100%; object-fit: cover; }
+    .tray-np-copy { display: grid; min-width: 0; flex: 1; gap: 1px; }
+    .tray-np-copy strong { overflow: hidden; font-size: calc(11.5px * var(--scale)); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .tray-np-copy small { color: var(--accent-text); font-size: calc(8.5px * var(--scale)); font-variant-numeric: tabular-nums; }
+    .tray-np-live { width: calc(7px * var(--scale)); height: calc(7px * var(--scale)); flex: 0 0 auto; border-radius: 50%; background: #33cd7c; box-shadow: 0 0 calc(6px * var(--scale)) rgba(51,205,124,.7); animation: tray-pulse 1.6s ease-in-out infinite; }
+    @keyframes tray-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
     /* Steam-style actions: full-width rows, not floating buttons. */
     .tray-actions { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
     .tray-button { display: flex; align-items: center; gap: calc(9px * var(--scale)); width: 100%; min-height: calc(34px * var(--scale)); padding: 0 calc(12px * var(--scale)); border: 0; background: transparent; color: var(--text); font-size: calc(11px * var(--scale)); font-weight: 500; cursor: pointer; transition: background .12s ease; }
@@ -69,6 +79,11 @@
 </head>
 <body>
   <div class="tray-panel">
+    <div class="tray-now-playing" id="tray-now-playing" hidden>
+      <span class="tray-np-art" id="tray-np-art"></span>
+      <span class="tray-np-copy"><strong id="tray-np-title"></strong><small id="tray-np-time"></small></span>
+      <span class="tray-np-live" aria-hidden="true"></span>
+    </div>
     <div class="tray-games" id="tray-games"></div>
     <hr class="tray-sep" />
     <div class="tray-actions">
@@ -91,6 +106,7 @@
         'tray.open': 'Открыть приложение',
         'tray.quit': 'Закрыть полностью',
         'tray.launch': 'Запустить',
+        'tray.playing': 'Играет',
         'tray.empty': 'Пока пусто — запусти игру,<br />и она появится здесь'
       },
       en: {
@@ -99,6 +115,7 @@
         'tray.open': 'Open app',
         'tray.quit': 'Quit completely',
         'tray.launch': 'Launch',
+        'tray.playing': 'Playing',
         'tray.empty': 'Nothing yet — launch a game<br />and it will show up here'
       }
     };
@@ -207,6 +224,31 @@
             ${strings('tray.empty')}
           </div>`;
     }
+    // Mini-player row: shown only while a launch session is active.
+    let nowPlayingState = null;
+    let npTimer = null;
+    function renderNowPlaying(nowPlaying) {
+      const host = document.getElementById('tray-now-playing');
+      if (!host) return;
+      nowPlayingState = nowPlaying && nowPlaying.id ? nowPlaying : null;
+      if (!nowPlayingState) {
+        host.hidden = true;
+        if (npTimer) { clearInterval(npTimer); npTimer = null; }
+        return;
+      }
+      host.hidden = false;
+      document.getElementById('tray-np-title').textContent = nowPlayingState.title || '';
+      document.getElementById('tray-np-art').innerHTML = nowPlayingState.thumbnail ? `<img src="${nowPlayingState.thumbnail}" alt="" />` : '';
+      const tick = () => {
+        const elapsed = Math.max(0, Math.floor((Date.now() - Number(nowPlayingState.startedAt || Date.now())) / 1000));
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        document.getElementById('tray-np-time').textContent = strings('tray.playing') + ' · ' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+      };
+      tick();
+      if (npTimer) clearInterval(npTimer);
+      npTimer = setInterval(tick, 1000);
+    }
     // The main process calls these to animate the panel in/out.
     window.__trayEnter = () => {
       const panel = document.querySelector('.tray-panel');
@@ -217,9 +259,11 @@
       window.setTimeout(() => panel.classList.remove('tray-enter'), 30);
     };
     window.__trayExit = () => document.querySelector('.tray-panel')?.classList.add('tray-exit');
-    window.vortexTray.onGames((games, style) => { if (style) applyStyle(style); render(games); });
-    Promise.all([window.vortexTray.getGames(), window.vortexTray.getStyle()]).then(([games, style]) => {
+    window.vortexTray.onGames((games, style, nowPlaying) => { if (style) applyStyle(style); renderNowPlaying(nowPlaying); render(games); });
+    Promise.all([window.vortexTray.getGames(), window.vortexTray.getStyle()]).then(([payload, style]) => {
       applyStyle(style);
+      const games = Array.isArray(payload) ? payload : (payload && payload.games) || [];
+      renderNowPlaying(payload && payload.nowPlaying);
       render(games);
     }).catch(() => render([]));
     document.getElementById('tray-open').addEventListener('click', () => window.vortexTray.openApp());

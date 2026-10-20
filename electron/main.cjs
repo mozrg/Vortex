@@ -566,8 +566,18 @@ async function getThumbnails(universeIds) {
   const ids = [...new Set(universeIds.map(String).filter((id) => /^\d{1,20}$/.test(id)))];
   if (!ids.length) return new Map();
 
+  const out = new Map();
+  const missing = [];
+  // Serve what the on-disk icon cache already has before touching the network.
+  for (const id of ids) {
+    const cached = await readDiskCache('thumbs', id);
+    if (cached && typeof cached.url === 'string') out.set(id, cached.url);
+    else missing.push(id);
+  }
+  if (!missing.length) return out;
+
   const batches = [];
-  for (let index = 0; index < ids.length; index += 50) batches.push(ids.slice(index, index + 50));
+  for (let index = 0; index < missing.length; index += 50) batches.push(missing.slice(index, index + 50));
   const results = await Promise.all(batches.map(async (batch) => {
     const url = new URL('https://thumbnails.roblox.com/v1/games/icons');
     url.searchParams.set('universeIds', batch.join(','));
@@ -581,7 +591,11 @@ async function getThumbnails(universeIds) {
       return [];
     }
   }));
-  return new Map(results.flat());
+  for (const [id, thumbUrl] of results.flat()) {
+    out.set(id, thumbUrl);
+    if (thumbUrl) void writeDiskCache('thumbs', id, { url: thumbUrl });
+  }
+  return out;
 }
 
 function mapGame(game, thumbnail = '', launchPlaceId = game.rootPlaceId) {
@@ -653,6 +667,63 @@ ipcMain.handle('games:release-history', async (_event, universeIdValue) => {
   const universeId = String(universeIdValue || '').match(/^\d{1,20}$/)?.[0] || '';
   if (!universeId) return [];
   return readPlaceUpdateHistory(universeId);
+});
+
+// Persistent caches: thumbnails and search responses survive restarts.
+const DISK_CACHE_TTL = 24 * 60 * 60 * 1000;
+let diskCacheEnabled = true;
+
+function diskCacheDir(kind) { return path.join(app.getPath('userData'), 'cache', kind); }
+
+function diskCacheKey(key) {
+  return createHash('sha1').update(String(key)).digest('hex');
+}
+
+async function readDiskCache(kind, key) {
+  if (!diskCacheEnabled) return null;
+  try {
+    const file = path.join(diskCacheDir(kind), `${diskCacheKey(key)}.json`);
+    const stat = await fsp.stat(file);
+    if (Date.now() - stat.mtimeMs > DISK_CACHE_TTL) return null;
+    return JSON.parse(await fsp.readFile(file, 'utf8'));
+  } catch { return null; }
+}
+
+async function writeDiskCache(kind, key, value) {
+  if (!diskCacheEnabled) return;
+  try {
+    const dir = diskCacheDir(kind);
+    await fsp.mkdir(dir, { recursive: true });
+    await fsp.writeFile(path.join(dir, `${diskCacheKey(key)}.json`), JSON.stringify(value), 'utf8');
+  } catch { /* cache writes never break a request */ }
+}
+
+async function clearDiskCache(kind) {
+  const target = kind ? diskCacheDir(kind) : path.join(app.getPath('userData'), 'cache');
+  await fsp.rm(target, { recursive: true, force: true }).catch(() => {});
+}
+
+ipcMain.handle('cache:set-disk-enabled', (_event, enabled) => { diskCacheEnabled = Boolean(enabled); return diskCacheEnabled; });
+
+ipcMain.handle('cache:disk-stats', async () => {
+  const count = async (kind) => (await fsp.readdir(diskCacheDir(kind)).catch(() => [])).length;
+  return { thumbnails: await count('thumbs'), search: await count('search') };
+});
+
+ipcMain.handle('cache:clear-disk', async (_event, kind) => {
+  await clearDiskCache(kind || '');
+  return true;
+});
+
+ipcMain.handle('games:disk-cached-search', async (_event, request = {}) => {
+  const cacheKey = JSON.stringify({ q: request.query, p: request.pageToken });
+  return readDiskCache('search', cacheKey);
+});
+
+ipcMain.handle('games:store-search', async (_event, request = {}) => {
+  const cacheKey = JSON.stringify({ q: request.query, p: request.pageToken });
+  await writeDiskCache('search', cacheKey, request.payload);
+  return true;
 });
 
 ipcMain.handle('shell:open-external', async (_event, value) => {
@@ -1180,6 +1251,7 @@ let tray = null;
 let trayWindow = null;
 let trayIcon = null;
 let recentGamesForTray = [];
+let nowPlayingForTray = null;
 // The tray panel mirrors the launcher's appearance; the renderer pushes this
 // palette whenever settings change (accent, theme, tray scale, language).
 const TRAY_SCALES = { compact: 0.9, normal: 1, large: 1.1 };
@@ -1220,9 +1292,11 @@ function trayBounds() {
   const display = screen.getDisplayNearestPoint(cursor);
   const width = Math.round(TRAY_MENU_WIDTH * trayScale());
   const height = Math.round(trayMenuHeight * trayScale());
+  // Anchored to the taskbar: the panel bottom sits flush on the work-area edge
+  // instead of floating with a gap above it.
   return {
     x: Math.max(display.workArea.x, Math.min(display.workArea.x + display.workArea.width - width, cursor.x - width / 2)),
-    y: Math.max(display.workArea.y, Math.min(display.workArea.y + display.workArea.height - height, cursor.y - height - 12))
+    y: display.workArea.y + display.workArea.height - height
   };
 }
 
@@ -1280,7 +1354,7 @@ function showTrayWindow() {
   const next = trayBounds();
   trayWindow.setSize(Math.round(TRAY_MENU_WIDTH * trayScale()), Math.round(trayMenuHeight * trayScale()), false);
   trayWindow.setPosition(next.x, next.y, false);
-  trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle);
+  trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle, nowPlayingForTray);
   setTimeout(fitTrayWindowToContent, 60);
   if (!trayWindow.isVisible()) {
     // Rise-from-taskbar entrance, like a native tray flyout.
@@ -1324,8 +1398,9 @@ async function launchFromTray(placeId) {
 }
 
 ipcMain.on('tray:recent-games', (_event, payload = []) => {
-  // The renderer sends { games, style }: the games feed the tray list and the
-  // context menu, the style payload lets tray.html match the launcher design.
+  // The renderer sends { games, style, nowPlaying }: the games feed the tray list
+  // and the context menu, the style payload lets tray.html match the launcher
+  // design, and nowPlaying drives the mini-player row.
   const request = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : { games: payload };
   recentGamesForTray = (Array.isArray(request.games) ? request.games : [])
     .filter((game) => game && /^\d{5,20}$/.test(String(game.id)) && String(game.title || '').length > 0)
@@ -1337,9 +1412,17 @@ ipcMain.on('tray:recent-games', (_event, payload = []) => {
       thumbnail: /^https:\/\/tr\.rbxcdn\.com\/.+$/.test(String(game.thumbnail || '')) ? String(game.thumbnail) : '',
       lastPlayed: Number(game.lastPlayed) > 0 ? Number(game.lastPlayed) : 0
     }));
+  nowPlayingForTray = request.nowPlaying && typeof request.nowPlaying === 'object' && /^\d{5,20}$/.test(String(request.nowPlaying.id || ''))
+    ? {
+        id: String(request.nowPlaying.id),
+        title: String(request.nowPlaying.title || '').slice(0, 60),
+        thumbnail: /^https:\/\/tr\.rbxcdn\.com\/.+$/.test(String(request.nowPlaying.thumbnail || '')) ? String(request.nowPlaying.thumbnail) : '',
+        startedAt: Number(request.nowPlaying.startedAt) > 0 ? Number(request.nowPlaying.startedAt) : Date.now()
+      }
+    : null;
   if (request.style && typeof request.style === 'object') trayStyle = sanitizeTrayStyle(request.style);
   if (trayWindow && !trayWindow.isDestroyed()) {
-    trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle);
+    trayWindow.webContents.send('tray:games', recentGamesForTray, trayStyle, nowPlayingForTray);
     setTimeout(fitTrayWindowToContent, 60);
   }
 });
@@ -1349,7 +1432,7 @@ ipcMain.handle('tray:get-style', () => trayStyle);
 ipcMain.on('tray:open', () => { if (trayWindow && !trayWindow.isDestroyed()) trayWindow.hide(); showMainWindowFromTray(); });
 ipcMain.on('tray:dismiss', () => { if (trayWindow && !trayWindow.isDestroyed()) trayWindow.hide(); });
 ipcMain.on('tray:quit', () => app.exit(0));
-ipcMain.handle('tray:get-games', () => recentGamesForTray);
+ipcMain.handle('tray:get-games', () => ({ games: recentGamesForTray, nowPlaying: nowPlayingForTray }));
 ipcMain.on('tray:launch', (_event, placeId) => { void launchFromTray(placeId); });
 
 app.whenReady().then(async () => {
@@ -1375,7 +1458,7 @@ let discordActivity = null;
 let discordEnabled = false;
 let discordLastError = '';
 let discordAccount = null;
-const DISCORD_CLIENT_ID = process.env.VORTEX_DISCORD_CLIENT_ID || '';
+const DISCORD_CLIENT_ID = process.env.VORTEX_DISCORD_CLIENT_ID || '1536230039870505020';
 
 let discordPending = Buffer.alloc(0);
 let discordHandshakeSent = false;

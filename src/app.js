@@ -74,8 +74,71 @@ const preferenceDefaults = {
   cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true,
   homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal',
   homeSectionTitles: {}, homeSectionScale: 1, catalogView: 'grid', catalogGenre: 'all', cardAspect: 'auto', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern',
-  discordPresence: false, friendFavoriteAlerts: false
+  discordPresence: false, friendFavoriteAlerts: false,
+  diskCache: true, lazyImages: true, onlineHistoryLimit: 'week', trayMiniPlayer: true,
+  catalogGroupByGenre: false,
+  hotkeys: {}
 };
+
+// Rebindable shortcuts. `fallback` is used until the user records a custom combo.
+const HOTKEY_ACTIONS = [
+  { id: 'palette', label: 'settings.hotkeys.search', fallback: { key: 'k', ctrl: true, shift: false } },
+  { id: 'settings', label: 'settings.hotkeys.settings', fallback: { key: ',', ctrl: true, shift: false } },
+  { id: 'friends', label: 'settings.hotkeys.friends', fallback: { key: 'f', ctrl: true, shift: true } },
+  { id: 'back', label: 'settings.hotkeys.back', fallback: { key: 'Escape', ctrl: false, shift: false } }
+];
+
+function hotkeyCombo(id) {
+  const custom = preferences.hotkeys?.[id];
+  if (custom && custom.key) return custom;
+  return HOTKEY_ACTIONS.find((action) => action.id === id)?.fallback || null;
+}
+
+function formatHotkey(combo) {
+  if (!combo || !combo.key) return '—';
+  const parts = [];
+  if (combo.ctrl) parts.push('Ctrl');
+  if (combo.shift) parts.push('Shift');
+  const key = combo.key === 'Escape' ? 'Esc' : combo.key === ',' ? ',' : combo.key.length === 1 ? combo.key.toUpperCase() : combo.key;
+  parts.push(key);
+  return parts.join('+');
+}
+
+function matchesHotkey(event, combo) {
+  if (!combo || !combo.key) return false;
+  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  const target = combo.key.length === 1 ? combo.key.toLowerCase() : combo.key;
+  return key === target && Boolean(event.ctrlKey || event.metaKey) === Boolean(combo.ctrl) && Boolean(event.shiftKey) === Boolean(combo.shift);
+}
+
+// Recording mode: the next non-modifier key press becomes the shortcut.
+let hotkeyRecording = null;
+
+function startHotkeyRecording(id, button) {
+  hotkeyRecording = id;
+  button.classList.add('recording');
+  button.textContent = t('settings.hotkeys.press');
+  const finish = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) {
+        const combo = { key: event.key, ctrl: Boolean(event.ctrlKey || event.metaKey), shift: Boolean(event.shiftKey) };
+        preferences.hotkeys = { ...(preferences.hotkeys || {}), [id]: combo };
+        savePreferences();
+      }
+    }
+    document.removeEventListener('keydown', finish, true);
+    hotkeyRecording = null;
+    renderPage();
+  };
+  document.addEventListener('keydown', finish, true);
+  // Clicking anywhere else cancels the recording.
+  setTimeout(() => {
+    const cancel = () => { if (hotkeyRecording === id) finish(null); document.removeEventListener('click', cancel); };
+    document.addEventListener('click', cancel);
+  }, 50);
+}
 
 // ---------- Customization profiles (Stage 6) ----------
 // A profile snapshots every LOOK-related preference (colors, wallpaper, cards,
@@ -295,7 +358,13 @@ function syncWallpaperLayer() {
 
 function applyPreferences() {
   if (!['ru', 'en'].includes(preferences.language)) preferences.language = 'ru';
-  if (!['home', 'accent', 'cards', 'effects', 'interface', 'general', 'version'].includes(preferences.settingsTab)) preferences.settingsTab = 'home';
+  if (!['home', 'accent', 'cards', 'effects', 'interface', 'general', 'integrations', 'data', 'version'].includes(preferences.settingsTab)) preferences.settingsTab = 'home';
+  if (!['off', 'week', 'month'].includes(preferences.onlineHistoryLimit)) preferences.onlineHistoryLimit = 'week';
+  if (!preferences.hotkeys || typeof preferences.hotkeys !== 'object') preferences.hotkeys = {};
+  for (const flag of ['diskCache', 'lazyImages', 'trayMiniPlayer', 'catalogGroupByGenre']) {
+    preferences[flag] = preferences[flag] !== false;
+  }
+  window.vortexDesktop?.setDiskCacheEnabled?.(preferences.diskCache);
   if (!Array.isArray(preferences.sidebarOrder)) preferences.sidebarOrder = [];
   preferences.sidebarOrder = [...new Set(preferences.sidebarOrder.filter((key) => NAV_KEYS.includes(key)))];
   for (const flag of ['uiSidebarTip', 'uiProfileCard', 'uiTopbarSearch', 'uiBreadcrumb', 'uiNotifications', 'uiSidebarFoot', 'uiUpdateBanner']) {
@@ -579,7 +648,6 @@ async function loadSimilarGames(requestId = detailRequestId) {
     ]);
     if (requestId !== detailRequestId || currentView !== 'game-detail') return;
     const patch = {};
-    if (Array.isArray(list) && list.length) patch.similar = list;
     if (Array.isArray(history) && history.length) patch.releaseHistory = history;
     if (!Object.keys(patch).length) return;
     detailGame = { ...detailGame, ...patch };
@@ -626,7 +694,7 @@ function renderGameDetail() {
   const releaseHistory = Array.isArray(game.releaseHistory) && game.releaseHistory.length > 1
     ? `<section class="detail-section"><h2>${t('game.releaseHistory')}</h2><div class="release-history">${game.releaseHistory.slice(0, 8).map((entry) => `<div class="release-row"><span class="release-dot"></span><span><strong>${escapeHtml(new Date(entry.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: 'long', year: 'numeric' }))}</strong><small>${t('game.releaseSeen')}</small></span></div>`).join('')}</div><p class="catalog-disclaimer">${t('game.releaseHistoryHint')}</p></section>`
     : '';
-  const similar = Array.isArray(game.similar) && game.similar.length ? `<section class="detail-section"><h2>${t('game.similar')}</h2><div class="game-grid detail-similar-grid">${game.similar.map(renderGameCard).join('')}</div></section>` : '';
+  const similar = '';
   return `<button class="detail-back icon-button" data-action="detail-back" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)}</button>
     <article class="game-detail">
       <header class="detail-hero"><div class="detail-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(game.title)}" />` : ''}</div><div class="detail-hero-copy"><div class="eyebrow">${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p class="detail-creator-line">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge" title="${t('game.verifiedCreator')}" aria-label="${t('game.verifiedCreator')}">${icon('check', 11)}</span>` : ''}</p>${badgeRow}<div class="detail-actions">${canPlay ? `<button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button>` : `<button class="primary-button" disabled>${icon('close', 14)} ${t('game.notAvailable')}</button>`}<button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button></div></div></header>
@@ -657,7 +725,7 @@ function renderGameCard(game) {
   const canExpandDescription = description.length > 100;
   return `<article class="game-card" style="--game-color: var(--accent)" data-game="${id}" data-universe-id="${escapeHtml(game.universeId || '')}">
     <div class="game-cover art-${art} ${thumbnail ? 'has-thumbnail' : ''}" data-action="open-details" data-id="${id}">
-      ${thumbnail ? `<img class="game-thumbnail" src="${escapeHtml(thumbnail)}" alt="" loading="eager" decoding="async" />` : ''}
+      ${thumbnail ? `<img class="game-thumbnail" src="${escapeHtml(thumbnail)}" alt="" loading="${preferences.lazyImages ? 'lazy' : 'eager'}" decoding="async" />` : ''}
       <span class="cover-shine"></span>
       ${cardPrice}${cardUnavailable}
       <button class="favorite-button ${isFavorite ? 'is-favorite' : ''}" data-action="favorite" data-id="${id}" aria-label="${isFavorite ? t('card.favoriteRemove') : t('card.favoriteAdd')}" aria-pressed="${isFavorite}">${icon('heart', 15)}</button>
@@ -675,6 +743,18 @@ function renderGameCard(game) {
 function renderGrid(list, emptyTitle, emptyText, emptyAction = 'catalog') {
   if (!list.length) {
     return `<div class="empty-state"><div class="empty-icon">${icon(emptyAction === 'favorites' ? 'heart' : 'search', 20)}</div><h2>${emptyTitle}</h2><p>${emptyText}</p><button class="ghost-button" data-nav="${emptyAction}">${t('empty.openCatalog')} ${icon('arrow', 13)}</button></div>`;
+  }
+  // Optional genre grouping: split the grid into labelled sections.
+  if (preferences.catalogGroupByGenre && emptyAction === 'catalog') {
+    const groups = new Map();
+    for (const game of list) {
+      const genre = String(game.genre || t('genre.other'));
+      if (!groups.has(genre)) groups.set(genre, []);
+      groups.get(genre).push(game);
+    }
+    const sections = [...groups.entries()].sort((a, b) => b[1].length - a[1].length)
+      .map(([genre, games]) => `<section class="catalog-genre-section"><div class="catalog-genre-head"><h2>${escapeHtml(genre)}</h2><span>${games.length}</span></div><div class="game-grid ${preferences.catalogView === 'list' ? 'catalog-list-view' : ''}">${games.map(renderGameCard).join('')}</div></section>`).join('');
+    return `<div class="catalog-genre-groups">${sections}</div>`;
   }
   return `<div class="game-grid ${preferences.catalogView === 'list' ? 'catalog-list-view' : ''}">${list.map(renderGameCard).join('')}</div>`;
 }
@@ -1114,14 +1194,19 @@ function renderCatalog() {
     ${isLiveSearch ? '' : discoveryStatus === 'loading' ? '' : `<p class="catalog-disclaimer"><strong>${t('catalog.disclaimerTitle')}</strong> ${t('catalog.disclaimer')}</p>`}`;
 }
 
+let favoritesVisibleCount = 24;
+
 function renderFavorites() {
   const list = allGames().filter((game) => favorites.has(game.id));
-  return `${pageHeading(t('page.favorites.eyebrow'), t('page.favorites.title'), t('page.favorites.description'))}
-    ${renderGrid(list, t('empty.favorites.title'), t('empty.favorites.body'), 'catalog')}`;
+  const visible = list.slice(0, favoritesVisibleCount);
+  const more = list.length > visible.length
+    ? `<div class="load-more-row"><button class="ghost-button" data-action="favorites-more">${t('catalog.showMore', { count: String(Math.min(24, list.length - visible.length)) })}</button></div>`
+    : '';
+  return `${pageHeading(t('page.favorites.eyebrow'), t('page.favorites.title'), t('page.favorites.description'), list.length > 24 ? `<span class="heading-count">${t('catalog.shown', { shown: String(visible.length), total: String(list.length) })}</span>` : '')}
+    ${renderGrid(visible, t('empty.favorites.title'), t('empty.favorites.body'), 'catalog')}${more}`;
 }
 
-let friendsCache = { at: 0, data: null };
-const FRIENDS_TTL = 30 * 1000;
+let friendsCache = { at: 0, data: null };const FRIENDS_TTL = 30 * 1000;
 let friendsAutoDetectStarted = false;
 // First visit to the Friends page with no username: detect the local Roblox
 // account automatically, so the user never has to type anything.
@@ -1321,7 +1406,11 @@ function renderPlans() {
 }
 
 function settingsTabs() {
-  const tabs = [ ['home', 'home'], ['accent', 'palette'], ['cards', 'layout'], ['effects', 'motion'], ['interface', 'sliders'], ['general', 'slidersHorizontal'], ['version', 'download'] ];
+  const tabs = [
+    ['home', 'home'], ['accent', 'palette'], ['cards', 'layout'], ['effects', 'motion'],
+    ['interface', 'sliders'], ['general', 'slidersHorizontal'], ['integrations', 'sparkle'],
+    ['data', 'database'], ['version', 'download']
+  ];
   return `<div class="settings-tabs">${tabs.map(([key, iconName]) => `<button class="settings-tab ${preferences.settingsTab === key ? 'active' : ''}" data-settings-tab="${key}"><span>${icon(iconName)}</span>${t(`settings.tab.${key}`)}</button>`).join('')}</div>`;
 }
 
@@ -1680,6 +1769,10 @@ function renderCardSettings() {
       ${cardFlag('cardShowLikes', 'settings.cardTuning.likes', 'settings.cardTuning.likesHint')}
       ${cardFlag('cardShowPlaytime', 'settings.cardTuning.playtime', 'settings.cardTuning.playtimeHint')}
       ${cardFlag('cardShowGenre', 'settings.cardTuning.genre', 'settings.cardTuning.genreHint')}
+  </section>
+  <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.catalog.title')}</h2><p>${t('settings.catalog.body')}</p></div>${icon('layout', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.catalog.groupByGenre')}</strong><small>${t('settings.catalog.groupByGenreBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.catalogGroupByGenre}" data-toggle="catalogGroupByGenre" aria-label="${t('settings.catalog.groupByGenre')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.catalog.defaultView')}</strong><small>${t('settings.catalog.defaultViewBody')}</small></div><div class="segmented"><button class="segment ${preferences.catalogView === 'grid' ? 'active' : ''}" data-pref="catalogView" data-value="grid">${t('catalog.gridView')}</button><button class="segment ${preferences.catalogView === 'list' ? 'active' : ''}" data-pref="catalogView" data-value="list">${t('catalog.listView')}</button></div></div>
   </section>
   <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cardPreview.title')}</h2><p>${t('settings.cardPreview.body')}</p></div>${icon('gamepad', 18)}</div>
       <div class="card-tuning-preview">
@@ -2196,40 +2289,8 @@ function renderGeneralSettings() {
         <p class="presence-warning">${t('settings.presence.hint')}</p>
       </div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.title')}</h2><p>${t('settings.tray.body')}</p></div>${icon('tray', 18)}</div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.scale')}</strong><small>${t('settings.tray.scaleBody')}</small></div><div class="segmented tray-scale-segmented">${[['compact', t('settings.tray.compact')], ['normal', t('settings.tray.normal')], ['large', t('settings.tray.large')]].map(([value, label]) => `<button class="segment ${preferences.trayScale === value ? 'active' : ''}" data-pref="trayScale" data-value="${value}">${label}</button>`).join('')}</div></div>
-    </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.history.title')}</h2><p>${t('settings.history.body')}</p></div>${icon('clock', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.history.title')}</strong><small>${t('settings.history.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.saveHistory}" data-toggle="saveHistory" aria-label="${t('settings.history.title')}"></button></div>
-    </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.data.title')}</h2><p>${t('settings.data.body')}</p></div>${icon('download', 18)}</div>
-      <div class="data-actions">
-        <button class="ghost-button" data-action="export-data">${icon('download', 13)} ${t('settings.data.export')}</button>
-        <button class="ghost-button" data-action="import-data">${icon('upload', 13)} ${t('settings.data.import')}</button>
-      </div>
-    </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.integrations.title')}</h2><p>${t('settings.integrations.body')}</p></div>${icon('sparkle', 18)}</div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.discord')}</strong><small>${t('settings.integrations.discordBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.discordPresence}" data-toggle="discordPresence" aria-label="${t('settings.integrations.discord')}"></button></div>
-      <p class="catalog-disclaimer discord-status" data-discord-status>${discordStatusText()}</p>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.friendAlerts')}</strong><small>${t('settings.integrations.friendAlertsBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.friendFavoriteAlerts}" data-toggle="friendFavoriteAlerts" aria-label="${t('settings.integrations.friendAlerts')}"></button></div>
-    </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.hotkeys.title')}</h2><p>${t('settings.hotkeys.body')}</p></div>${icon('keyboard', 18)}</div>
-      <div class="hotkey-list">${[[t('settings.hotkeys.search'), 'Ctrl+K'], [t('settings.hotkeys.settings'), 'Ctrl+,'], [t('settings.hotkeys.friends'), 'Ctrl+Shift+F'], [t('settings.hotkeys.back'), 'Esc']].map(([label, combo]) => `<div class="hotkey-row"><span>${label}</span><kbd>${combo}</kbd></div>`).join('')}</div>
-    </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cache.title')}</h2><p>${t('settings.cache.body')}</p></div>${icon('search', 18)}</div>
-      <div class="update-settings-meta">
-        <span><small>${t('settings.cache.details')}</small><strong data-cache-size>${formatBytes(cacheFootprintBytes())}</strong></span>
-        <span><small>${t('settings.cache.onlineHistory')}</small><strong data-history-size>${formatBytes(onlineHistoryBytes())}</strong></span>
-      </div>
-      <div class="data-actions">
-        <button class="ghost-button" data-action="clear-cache">${icon('close', 13)} ${t('settings.cacheClear')}</button>
-        <button class="ghost-button" data-action="clear-api-cache">${icon('rotate', 13)} ${t('settings.cache.clearApi')}</button>
-        <button class="ghost-button" data-action="clear-history-cache">${icon('clock', 13)} ${t('settings.cache.clearHistory')}</button>
-      </div>
-    </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.api.title')}</h2><p>${t('settings.api.body')}</p></div>${icon('sparkle', 18)}</div>
-      <div class="api-status-list" data-api-status>${renderApiStatusPlaceholder()}</div>
-      <button class="ghost-button" data-action="check-api-status">${icon('rotate', 13)} ${t('settings.api.check')}</button>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.profiles.title')}</h2><p>${t('settings.profiles.body')}</p></div>${icon('palette', 18)}</div>
       <div class="profile-actions">
@@ -2254,9 +2315,62 @@ function renderGeneralSettings() {
 }
 
 function renderSettings() {
-  const panel = preferences.settingsTab === 'home' ? renderHomeSettings() : preferences.settingsTab === 'cards' ? renderCardSettings() : preferences.settingsTab === 'effects' ? renderEffectSettings() : preferences.settingsTab === 'interface' ? renderInterfaceSettings() : preferences.settingsTab === 'general' ? renderGeneralSettings() : preferences.settingsTab === 'version' ? renderUpdateSettings() : renderAccentSettings();
+  const panel = preferences.settingsTab === 'home' ? renderHomeSettings()
+    : preferences.settingsTab === 'cards' ? renderCardSettings()
+      : preferences.settingsTab === 'effects' ? renderEffectSettings()
+        : preferences.settingsTab === 'interface' ? renderInterfaceSettings()
+          : preferences.settingsTab === 'general' ? renderGeneralSettings()
+            : preferences.settingsTab === 'integrations' ? renderIntegrationSettings()
+              : preferences.settingsTab === 'data' ? renderDataSettings()
+                : preferences.settingsTab === 'version' ? renderUpdateSettings()
+                  : renderAccentSettings();
   return `${pageHeading(t('page.settings.eyebrow'), t('page.settings.title'), t('page.settings.description'))}
     <div class="settings-layout">${settingsTabs()}<div class="settings-panel">${panel}</div></div>`;
+}
+
+// Integrations tab: Discord presence, friend alerts and keyboard shortcuts.
+function renderIntegrationSettings() {
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.integrations.title')}</h2><p>${t('settings.integrations.body')}</p></div>${icon('sparkle', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.discord')}</strong><small>${t('settings.integrations.discordBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.discordPresence}" data-toggle="discordPresence" aria-label="${t('settings.integrations.discord')}"></button></div>
+      <p class="catalog-disclaimer discord-status" data-discord-status>${discordStatusText()}</p>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.friendAlerts')}</strong><small>${t('settings.integrations.friendAlertsBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.friendFavoriteAlerts}" data-toggle="friendFavoriteAlerts" aria-label="${t('settings.integrations.friendAlerts')}"></button></div>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.hotkeys.title')}</h2><p>${t('settings.hotkeys.body')}</p></div>${icon('keyboard', 18)}</div>
+      <div class="hotkey-list">${HOTKEY_ACTIONS.map((action) => `<div class="hotkey-row"><span>${t(action.label)}</span><button class="hotkey-recorder" data-record-hotkey="${action.id}" aria-label="${t('settings.hotkeys.record')}">${formatHotkey(hotkeyCombo(action.id))}</button></div>`).join('')}</div>
+      <div class="data-actions"><button class="ghost-button" data-action="reset-hotkeys">${icon('rotate', 13)} ${t('settings.hotkeys.reset')}</button></div>
+      <p class="catalog-disclaimer">${t('settings.hotkeys.hint')}</p>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.title')}</h2><p>${t('settings.tray.body')}</p></div>${icon('tray', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.scale')}</strong><small>${t('settings.tray.scaleBody')}</small></div><div class="segmented tray-scale-segmented">${[['compact', t('settings.tray.compact')], ['normal', t('settings.tray.normal')], ['large', t('settings.tray.large')]].map(([value, label]) => `<button class="segment ${preferences.trayScale === value ? 'active' : ''}" data-pref="trayScale" data-value="${value}">${label}</button>`).join('')}</div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.miniPlayer')}</strong><small>${t('settings.tray.miniPlayerBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.trayMiniPlayer}" data-toggle="trayMiniPlayer" aria-label="${t('settings.tray.miniPlayer')}"></button></div>
+    </section>`;
+}
+
+// Data tab: caches, size limits and the Roblox API health probe.
+function renderDataSettings() {
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cache.title')}</h2><p>${t('settings.cache.body')}</p></div>${icon('search', 18)}</div>
+      <div class="update-settings-meta">
+        <span><small>${t('settings.cache.details')}</small><strong data-cache-size>${formatBytes(cacheFootprintBytes())}</strong></span>
+        <span><small>${t('settings.cache.onlineHistory')}</small><strong data-history-size>${formatBytes(onlineHistoryBytes())}</strong></span>
+      </div>
+      <div class="data-actions">
+        <button class="ghost-button" data-action="clear-cache">${icon('close', 13)} ${t('settings.cacheClear')}</button>
+        <button class="ghost-button" data-action="clear-api-cache">${icon('rotate', 13)} ${t('settings.cache.clearApi')}</button>
+        <button class="ghost-button" data-action="clear-history-cache">${icon('clock', 13)} ${t('settings.cache.clearHistory')}</button>
+      </div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cache.diskCache')}</strong><small>${t('settings.cache.diskCacheBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.diskCache}" data-toggle="diskCache" aria-label="${t('settings.cache.diskCache')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cache.lazyImages')}</strong><small>${t('settings.cache.lazyImagesBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.lazyImages}" data-toggle="lazyImages" aria-label="${t('settings.cache.lazyImages')}"></button></div>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.api.title')}</h2><p>${t('settings.api.body')}</p></div>${icon('sparkle', 18)}</div>
+      <div class="api-status-list" data-api-status>${renderApiStatusPlaceholder()}</div>
+      <button class="ghost-button" data-action="check-api-status">${icon('rotate', 13)} ${t('settings.api.check')}</button>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.data.title')}</h2><p>${t('settings.data.body')}</p></div>${icon('download', 18)}</div>
+      <div class="data-actions">
+        <button class="ghost-button" data-action="export-data">${icon('download', 13)} ${t('settings.data.export')}</button>
+        <button class="ghost-button" data-action="import-data">${icon('upload', 13)} ${t('settings.data.import')}</button>
+      </div>
+    </section>`;
 }
 
 const viewNames = { home: 'nav.home', catalog: 'nav.catalog', search: 'nav.search', favorites: 'nav.favorites', recent: 'nav.recent', friends: 'nav.friends', plans: 'nav.plans', settings: 'nav.settings' };
@@ -2451,7 +2565,20 @@ function reportRecentGamesToTray() {
       thumbnail: safeThumbnail(game.thumbnail) || '',
       lastPlayed: Number(playStats && playStats[game.id] && playStats[game.id].lastPlayed) || 0
     }));
-  window.vortexDesktop.reportRecentGames({ games, style: trayStylePayload() });
+  // Mini-player feeds the tray's "now playing" row; only sent when enabled.
+  let nowPlaying = null;
+  if (preferences.trayMiniPlayer && playSessionGameId) {
+    const playing = getGame(playSessionGameId);
+    if (playing) {
+      nowPlaying = {
+        id: String(playing.id),
+        title: String(playing.title || ''),
+        thumbnail: safeThumbnail(playing.thumbnail) || '',
+        startedAt: Number(playSessionStart) || Date.now()
+      };
+    }
+  }
+  window.vortexDesktop.reportRecentGames({ games, style: trayStylePayload(), nowPlaying });
 }
 
 function restorePlaySession() {
@@ -2788,6 +2915,7 @@ function toggleFavorite(id) {
 
 function setView(view) {
   currentView = view;
+  if (view !== 'favorites') favoritesVisibleCount = 24;
   // The search tab keeps its own results: switching tabs does not wipe them.
   if (view !== 'catalog' && view !== 'search') {
     searchQuery = '';
@@ -2864,10 +2992,15 @@ document.addEventListener('click', async (event) => {
   const nav = target.closest('[data-nav]');
   if (nav) { setView(nav.dataset.nav); return; }
 
+  const recorder = target.closest('[data-record-hotkey]');
+  if (recorder) { startHotkeyRecording(recorder.dataset.recordHotkey, recorder); return; }
+
   const action = target.closest('[data-action]');
   if (action) {
     if (action.dataset.action === 'open-social-link') { window.vortexDesktop?.openExternalUrl?.(action.dataset.url); return; }
     if (action.dataset.action === 'toggle-detail-description') { detailDescriptionExpanded = !detailDescriptionExpanded; renderPage(); return; }
+    if (action.dataset.action === 'favorites-more') { favoritesVisibleCount += 24; renderPage(); return; }
+    if (action.dataset.action === 'reset-hotkeys') { preferences.hotkeys = {}; savePreferences(); showToast(t('settings.hotkeys.resetDone')); renderPage(); return; }
     if (action.dataset.action === 'check-api-status') { void checkApiStatus(); return; }
     if (action.dataset.action === 'clear-api-cache') { responseCacheLocal.clear(); localStorage.removeItem('vortex.detailCache'); showToast(t('settings.cache.apiCleared')); renderPage(); return; }
     if (action.dataset.action === 'clear-history-cache') {
@@ -3347,6 +3480,8 @@ document.addEventListener('click', async (event) => {
     preferences[key] = !preferences[key];
     savePreferences();
     if (key === 'discordPresence') { applyDiscordPresence(); showToast(t(preferences.discordPresence ? 'settings.integrations.discordOn' : 'settings.integrations.discordOff')); }
+    if (key === 'diskCache') window.vortexDesktop?.setDiskCacheEnabled?.(preferences.diskCache);
+    if (key === 'trayMiniPlayer') reportRecentGamesToTray();
     renderPage();
     return;
   }
@@ -3611,11 +3746,23 @@ document.addEventListener('keydown', (event) => {
     trigger.focus();
     return;
   }
-  // Ctrl+K / Ctrl+Shift+P: the command palette. "/" (plain, not typing) focuses search.
-  if (((event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === 'k' || (event.shiftKey && event.key.toLowerCase() === 'p')))) {
+  // User-configurable shortcuts, driven by preferences.hotkeys.
+  if (matchesHotkey(event, hotkeyCombo('palette'))) {
     event.preventDefault();
     if (paletteOpen()) closeCommandPalette();
     else openCommandPalette();
+    return;
+  }
+  if (matchesHotkey(event, hotkeyCombo('settings'))) {
+    event.preventDefault();
+    if (paletteOpen()) closeCommandPalette();
+    setView('settings');
+    return;
+  }
+  if (matchesHotkey(event, hotkeyCombo('friends'))) {
+    event.preventDefault();
+    if (paletteOpen()) closeCommandPalette();
+    setView('friends');
     return;
   }
   if (event.key === 'Enter' && event.target.matches('[data-search-page-input]')) {
@@ -3633,20 +3780,7 @@ document.addEventListener('keydown', (event) => {
     searchInput.focus();
     return;
   }
-  // Ctrl-combinations work even while a text field has focus.
-  if ((event.ctrlKey || event.metaKey) && event.key === ',') {
-    event.preventDefault();
-    if (paletteOpen()) closeCommandPalette();
-    setView('settings');
-    return;
-  }
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
-    event.preventDefault();
-    if (paletteOpen()) closeCommandPalette();
-    setView('friends');
-    return;
-  }
-  if (event.key === 'Escape' && !isTyping && currentView === 'game-detail') {
+  if (matchesHotkey(event, hotkeyCombo('back')) && !isTyping && currentView === 'game-detail') {
     event.preventDefault();
     currentView = 'catalog';
     restoreCatalogScroll();

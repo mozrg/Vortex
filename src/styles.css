@@ -1076,6 +1076,17 @@ body.no-motion .palette-panel { animation: none; }
 .card-unavailable-tag + .card-price-tag, .card-price-tag + .card-unavailable-tag { left: auto; right: 9px; }
 .game-title-row { display: flex; align-items: center; gap: 2px; }
 .game-thumbnail-view .game-cover { position: relative; }
+/* Settings split, genre groups, hotkey recorder and load-more rows */
+.hotkey-recorder { padding: 4px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-2); color: var(--text-soft); font: 600 10px var(--font-ui); letter-spacing: .03em; cursor: pointer; transition: border-color .16s, color .16s; }
+.hotkey-recorder:hover { border-color: var(--accent-border); color: var(--accent-text); }
+.hotkey-recorder.recording { border-color: var(--accent); background: var(--accent-wash); color: var(--accent-text); }
+.catalog-genre-groups { display: grid; gap: 26px; }
+.catalog-genre-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 11px; }
+.catalog-genre-head h2 { margin: 0; font: 650 16px var(--font-display); letter-spacing: -.02em; }
+.catalog-genre-head span { color: var(--muted); font-size: 10.5px; }
+.load-more-row { display: flex; justify-content: center; padding: 22px 0 6px; }
+.heading-count { color: var(--muted); font-size: 11px; }
+.detail-section + .detail-section { margin-top: 16px; }
 /* Animation-speed and easing previews */
 .speed-mock, .easing-mock { display: grid; gap: 6px; padding: 10px; }
 .speed-mock .mock-track, .easing-mock .mock-ease-track { position: relative; display: block; height: 8px; border-radius: 99px; background: rgba(255,255,255,.06); overflow: hidden; }

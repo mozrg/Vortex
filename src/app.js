@@ -38,7 +38,8 @@ const NAV_ITEMS = [
   { key: 'recent', icon: 'clock', group: 'menu' },
   { key: 'friends', icon: 'users', group: 'menu' },
   { key: 'plans', icon: 'flag', group: 'space' },
-  { key: 'settings', icon: 'sliders', group: 'space' }
+  // Settings live next to the profile at the very bottom of the sidebar.
+  { key: 'settings', icon: 'sliders', group: 'bottom' }
 ];
 const NAV_KEYS = NAV_ITEMS.map((item) => item.key);
 
@@ -55,7 +56,7 @@ function renderSidebarNav() {
   const order = navOrder();
   const items = order.map((key) => NAV_ITEMS.find((item) => item.key === key)).filter(Boolean);
   const group = (name) => items.filter((item) => item.group === name).map(navItemMarkup).join('');
-  return { menu: group('menu'), space: group('space') };
+  return { menu: group('menu'), space: group('space'), bottom: group('bottom') };
 }
 
 const preferenceDefaults = {
@@ -84,7 +85,8 @@ const preferenceDefaults = {
 // Matching is done on KeyboardEvent.code (physical key), not .key: with a
 // non-Latin layout Ctrl+K reports "л" as .key but still reports "KeyK" as .code.
 const HOTKEY_ACTIONS = [
-  { id: 'palette', label: 'settings.hotkeys.search', fallback: { code: 'KeyK', key: 'k', ctrl: true, shift: false } },
+  { id: 'search', label: 'settings.hotkeys.search', fallback: { code: 'KeyK', key: 'k', ctrl: true, shift: false } },
+  { id: 'palette', label: 'settings.hotkeys.palette', fallback: { code: 'KeyP', key: 'p', ctrl: true, shift: true } },
   { id: 'settings', label: 'settings.hotkeys.settings', fallback: { code: 'Comma', key: ',', ctrl: true, shift: false } },
   { id: 'friends', label: 'settings.hotkeys.friends', fallback: { code: 'KeyF', key: 'f', ctrl: true, shift: true } },
   { id: 'back', label: 'settings.hotkeys.back', fallback: { code: 'Escape', key: 'Escape', ctrl: false, shift: false } }
@@ -786,7 +788,7 @@ function renderGameCard(game) {
     <div class="game-cover art-${art} ${thumbnail ? 'has-thumbnail' : ''}" data-action="open-details" data-id="${id}">
       ${thumbnail ? `<img class="game-thumbnail" src="${escapeHtml(thumbnail)}" alt="" loading="${preferences.lazyImages ? 'lazy' : 'eager'}" decoding="async" />` : ''}
       <span class="cover-shine"></span>
-      ${cardPrice}${cardUnavailable}
+      ${cardUnavailable}
       <button class="favorite-button ${isFavorite ? 'is-favorite' : ''}" data-action="favorite" data-id="${id}" aria-label="${isFavorite ? t('card.favoriteRemove') : t('card.favoriteAdd')}" aria-pressed="${isFavorite}">${icon('heart', 15)}</button>
     </div>
     <div class="game-info">
@@ -794,7 +796,7 @@ function renderGameCard(game) {
       ${preferences.cardShowDescription ? `<p class="game-description ${expandedDescription ? 'expanded' : ''}" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
       ${canExpandDescription ? `<button class="description-more" data-action="toggle-description" data-id="${id}" aria-expanded="${expandedDescription}">${t(expandedDescription ? 'card.readLess' : 'card.readMore')}</button>` : ''}` : ''}
       ${preferences.cardShowLikes ? liveStats : ''}
-      <div class="game-card-footer">${preferences.cardShowGenre ? category : ''}${preferences.cardShowPlaytime ? renderPlaytimeBadge(game.id) : ''}<button class="card-play" data-action="play" data-id="${id}">${icon('play', 11)} ${t('card.play')}</button></div>
+      <div class="game-card-footer">${preferences.cardShowGenre ? category : ''}${cardPrice}${preferences.cardShowPlaytime ? renderPlaytimeBadge(game.id) : ''}<button class="card-play" data-action="play" data-id="${id}">${icon('play', 11)} ${t('card.play')}</button></div>
     </div>
   </article>`;
 }
@@ -1135,7 +1137,7 @@ function renderCustomSortSelect(isLiveSearch) {
 
 function renderGenreFilters() {
   const genres = ['all', 'adventure', 'horror', 'roleplay', 'fashion', 'parkour', 'action', 'simulator', 'survival'];
-  return `<div class="catalog-filter-group"><span class="catalog-filter-label">${t('search.genre')}</span><div class="filter-row genre-filter-row">${genres.map((genre) => `<button class="filter-chip ${activeCategory === genre ? 'active' : ''}" data-category="${genre}">${t(`genre.${genre}`)}</button>`).join('')}</div></div>`;
+  return `<div class="catalog-filter-group"><span class="catalog-filter-label">${t('search.genre')}</span><div class="filter-row genre-filter-row"><button class="filter-chip ${activeCategory === 'all' ? 'active' : ''}" data-category="all">${t('catalog.anyGenre')}</button>${genres.slice(1).map((genre) => `<button class="filter-chip ${activeCategory === genre ? 'active' : ''}" data-category="${genre}">${t(`genre.${genre}`)}</button>`).join('')}</div></div>`;
 }
 
 // Access filter sits beside genres, not inside them.
@@ -1240,7 +1242,7 @@ function renderCatalog() {
       const more = paidGames.length > visible.length
         ? `<div class="load-more-row"><button class="ghost-button" data-action="paid-more">${t('catalog.showMore', { count: String(Math.min(24, paidGames.length - visible.length)) })}</button></div>`
         : '';
-      resultsBody = `<div class="paid-section-head"><p class="result-note">${t('catalog.shown', { shown: String(visible.length), total: String(paidGames.length) })} · ${t('catalog.paidHint')}</p><button class="ghost-button" data-action="paid-rescan" ${paidStatus === 'loading' ? 'disabled' : ''}>${icon('refreshCw', 13)} ${t('catalog.paidRescan')}</button></div>${renderGrid(visible, t('empty.noResults'), t('empty.filterHint'))}${more}`;
+      resultsBody = `<p class="result-note">${t('catalog.shown', { shown: String(visible.length), total: String(paidGames.length) })}</p>${renderGrid(visible, t('empty.noResults'), t('empty.filterHint'))}${more}`;
     }
   } else if (isGenreSearchActive()) {
     if (genreStatus === 'loading') {
@@ -2481,14 +2483,16 @@ function renderSidebar() {
   const groups = renderSidebarNav();
   const menu = document.querySelector('[data-nav-group="menu"]');
   const space = document.querySelector('[data-nav-group="space"]');
+  const bottom = document.querySelector('.sidebar-nav-bottom');
   if (menu) menu.innerHTML = groups.menu;
   if (space) space.innerHTML = groups.space;
+  if (bottom) bottom.innerHTML = groups.bottom;
   mountIcons(document.querySelector('.sidebar') || document.body);
 }
 
 function updateSidebar() {
   document.querySelectorAll('[data-nav]').forEach((button) => button.classList.toggle('active', button.dataset.nav === currentView));
-  breadcrumbCurrent.textContent = searchQuery && currentView === 'catalog' ? t('page.search.title') : t(viewNames[currentView] || 'nav.home');
+  // Breadcrumbs are gone from the topbar: the active nav item already shows location.
 }
 
 function renderPage() {
@@ -3893,6 +3897,14 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   // User-configurable shortcuts, driven by preferences.hotkeys.
+  if (matchesHotkey(event, hotkeyCombo('search'))) {
+    event.preventDefault();
+    if (paletteOpen()) closeCommandPalette();
+    // Ctrl+K focuses the topbar search box instead of opening the palette.
+    searchInput.focus();
+    searchInput.select?.();
+    return;
+  }
   if (matchesHotkey(event, hotkeyCombo('palette'))) {
     event.preventDefault();
     if (paletteOpen()) closeCommandPalette();

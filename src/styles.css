@@ -74,9 +74,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .sidebar-compact .sidebar-hide-button { right: 8px; top: 16px; opacity: 1; visibility: visible; display: grid; }
 .sidebar-compact .sidebar-hide-button svg { transform: rotate(180deg); }
 .sidebar-compact .sidebar-hide-button::after { content: ''; position: absolute; inset: -3px; border-radius: 9px; }
-.catalog-filter-group { display: flex; align-items: center; gap: 12px; grid-column: 1 / -1; min-width: 0; }
-.catalog-filter-label { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
-.genre-filter-row { display: flex; gap: 6px; min-width: 0; overflow-x: auto; padding-bottom: 2px; }
+.genre-filter-row { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .catalog-view-toggle { display: inline-flex; gap: 4px; justify-self: end; }
 .catalog-view-toggle .icon-button { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 8px; }
 .catalog-view-toggle .icon-button.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--accent); }
@@ -353,10 +351,10 @@ body.ui-dragging .ui-row:not(.ui-row-dragging) { transition: transform .18s cubi
 .link-button { display: inline-flex; align-items: center; gap: 7px; padding: 5px 0; border: 0; background: transparent; color: var(--accent-text); font-size: 10px; font-weight: 600; cursor: pointer; }
 .link-button:hover { color: var(--text); }
 .link-button span { font-size: 13px; }
-.game-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 17px; }
+.game-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 17px; align-items: start; }
 .game-card { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-card); background: color-mix(in srgb, var(--surface) 92%, transparent); transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
 .game-card:hover { border-color: rgba(var(--accent-rgb), .33); box-shadow: 0 12px 32px rgba(0,0,0,.22), 0 0 24px rgba(var(--accent-rgb), .06); transform: translateY(-3px); }
-.game-cover { position: relative; height: 132px; overflow: hidden; isolation: isolate; background: #28243d; }
+.game-cover { position: relative; height: 132px; aspect-ratio: 16 / 9; overflow: hidden; isolation: isolate; background: #28243d; }
 .game-cover::before, .game-cover::after { content: ''; position: absolute; pointer-events: none; }
 .game-cover::before { z-index: -1; top: -30px; right: -7px; width: 145px; height: 145px; border: 1px solid rgba(255,255,255,.17); border-radius: 50%; background: radial-gradient(circle at 35% 33%, rgba(255,255,255,.32), rgba(255,255,255,.04) 55%, transparent 57%); }
 .game-cover::after { right: -25px; bottom: -65px; width: 230px; height: 115px; border: 1px solid rgba(255,255,255,.16); border-radius: 50%; background: rgba(255,255,255,.08); transform: rotate(-13deg); box-shadow: 0 -12px 30px rgba(0,0,0,.08); }
@@ -389,7 +387,7 @@ body.ui-dragging .ui-row:not(.ui-row-dragging) { transition: transform .18s cubi
 .favorite-button svg { width: 15px; height: 15px; }
 .game-info { padding: 13px 13px 12px; }
 .game-title-row { display: flex; align-items: center; gap: 7px; }
-.game-title { overflow: hidden; margin: 0; font: 700 12px/1.3 var(--font-display); text-overflow: ellipsis; white-space: nowrap; }
+.game-title { display: -webkit-box; overflow: hidden; margin: 0; font: 700 12px/1.32 var(--font-display); letter-spacing: -.005em; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .game-rating { display: flex; align-items: center; gap: 3px; margin-left: auto; color: #c6bacf; font-size: 9px; font-weight: 600; white-space: nowrap; }
 .game-rating svg { width: 11px; height: 11px; color: #f0bd69; fill: #f0bd69; }
 .game-description { display: -webkit-box; overflow: hidden; margin: 6px 0 0; color: #868a98; font-size: 10px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -416,10 +414,11 @@ body.ui-dragging .ui-row:not(.ui-row-dragging) { transition: transform .18s cubi
 @keyframes spin { to { transform: rotate(360deg); } }
 .load-more-button { display: flex; margin: 18px auto 0; }
 .load-more-status { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 19px; color: #9b9daa; font-size: 10px; }
-.filter-row { display: flex; flex-wrap: wrap; gap: 7px; }
-.filter-chip { min-height: 31px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.025); color: #a1a3ae; font-size: 10px; cursor: pointer; transition: .18s ease; }
-.filter-chip:hover { border-color: var(--line-strong); color: var(--text); }
+.filter-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.filter-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--muted); font-size: 10.5px; font-weight: 600; cursor: pointer; transition: border-color .15s ease, color .15s ease, background .15s ease; }
+.filter-chip:hover { border-color: var(--line-strong); color: var(--text-soft); }
 .filter-chip.active { border-color: var(--accent-border); background: var(--accent-wash); color: var(--accent-text); }
+.filter-chip svg { width: 12px; height: 12px; }
 .custom-select { position: relative; z-index: 8; width: 166px; flex: 0 0 auto; }
 .custom-select-trigger { display: flex; width: 100%; height: 33px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface-2); color: #c5c2ce; font-size: 10px; text-align: left; cursor: pointer; transition: border-color .16s ease, background .16s ease; }
 .custom-select-trigger:hover, .custom-select-trigger[aria-expanded="true"] { border-color: rgba(var(--accent-rgb), .7); background: var(--surface-3); }
@@ -914,10 +913,15 @@ html.has-vignette body::after { position: fixed; z-index: 49; inset: 0; pointer-
 .preview-card:hover { transform: none; border-color: var(--line); box-shadow: none; }
 .preview-note { display: grid; gap: 3px; margin: 0; color: var(--muted); font-size: 9px; }
 .preview-note strong { color: var(--text); font-size: 10px; }
-.game-card .game-cover { height: calc(132px * var(--card-size, 1)); aspect-ratio: var(--card-aspect, auto); }
+/* 16:9 covers keep the grid uniform regardless of card size setting. */
+.game-card .game-cover { height: auto; aspect-ratio: 16 / 9; }
 .game-card .game-cover img { height: 100%; }
-body.spacious .game-card .game-cover { height: calc(164px * var(--card-size, 1)); }
-body.compact .game-card .game-cover { height: calc(101px * var(--card-size, 1)); }
+body.spacious .game-card .game-cover { height: auto; }
+body.compact .game-card .game-cover { height: auto; }
+/* Cards stretch to the row height so no gaps appear under taller titles. */
+.game-grid > .game-card { display: flex; flex-direction: column; height: 100%; }
+.game-grid > .game-card .game-info { display: flex; flex: 1; flex-direction: column; }
+.game-grid > .game-card .game-card-footer { margin-top: auto; }
 .game-card .game-info { font-size: calc(0.86rem * var(--card-size, 1)); }
 /* Radius: enabled only with body.custom-card-radius so the corners preset stays intact
    when the user never touched the slider (custom radius 0 is a valid choice). */
@@ -1068,7 +1072,10 @@ body.no-motion .palette-panel { animation: none; }
 .detail-tag svg { width: 11px; height: 11px; }
 .detail-tag-bad { border-color: rgba(239,82,98,.4); background: rgba(239,82,98,.1); color: #f0909c; }
 .detail-tag-price { border-color: rgba(120,214,166,.4); background: rgba(120,214,166,.1); color: #8fd6a8; }
-.card-price-tag { position: absolute; top: 9px; left: 9px; z-index: 3; padding: 3px 7px; border-radius: 6px; background: rgba(11,12,16,.82); color: #8fd6a8; font-size: 9px; font-weight: 700; backdrop-filter: blur(6px); }
+/* Price now sits in the card footer, next to the genre — no overlay on artwork. */
+.card-price-tag { display: inline-flex; align-items: center; flex: 0 0 auto; padding: 2px 6px; border: 1px solid rgba(143,214,168,.4); border-radius: 5px; background: rgba(143,214,168,.12); color: #9fe4b8; font-size: 9px; font-weight: 800; letter-spacing: .01em; }
+.card-unavailable-tag { position: absolute; top: 9px; left: 9px; z-index: 3; padding: 3px 7px; border-radius: 6px; background: rgba(9,10,13,.92); color: #ff9c9c; font-size: 9px; font-weight: 700; }
+.card-unavailable-tag + .card-price-tag { left: auto; right: 9px; }
 .card-unavailable-tag { position: absolute; top: 9px; left: 9px; z-index: 3; padding: 3px 7px; border-radius: 6px; background: rgba(11,12,16,.82); color: #f0909c; font-size: 9px; font-weight: 700; backdrop-filter: blur(6px); }
 .card-unavailable-tag + .card-price-tag, .card-price-tag + .card-unavailable-tag { left: auto; right: 9px; }
 .game-title-row { display: flex; align-items: center; gap: 2px; }
@@ -1084,10 +1091,12 @@ body.no-motion .palette-panel { animation: none; }
 .load-more-row { display: flex; justify-content: center; padding: 22px 0 6px; }
 .heading-count { color: var(--muted); font-size: 11px; }
 .detail-section + .detail-section { margin-top: 16px; }
-/* Paid experiences section inside the catalog */
-.access-filter-row .filter-chip { display: inline-flex; align-items: center; gap: 5px; }
-.paid-section-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 4px; }
-.paid-section-head .result-note { margin: 0; }
+/* Catalog filters: one compact wrapping row instead of three stacked groups. */
+.catalog-filter-group { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; min-width: 0; }
+.catalog-filter-label { flex: 0 0 auto; color: var(--muted); font-size: 8.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+
+/* Sidebar: settings pinned above the profile card. */
+.sidebar-nav-bottom { margin-bottom: 8px; }
 .catalog-paid-head { display: flex; align-items: baseline; gap: 9px; margin: 4px 0 6px; }
 .catalog-paid-head h2 { display: flex; align-items: center; gap: 7px; margin: 0; font: 650 16px var(--font-display); letter-spacing: -.02em; }
 .catalog-paid-head span { color: var(--muted); font-size: 10.5px; }

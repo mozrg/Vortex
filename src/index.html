@@ -45,7 +45,6 @@
         <div class="side-label side-label-spaced" data-i18n="sidebar.space">ТВОЁ ПРОСТРАНСТВО</div>
         <nav class="primary-nav" data-nav-group="space" aria-label="Твоё пространство" data-i18n-aria="sidebar.spaceNav">
           <button class="nav-item" data-nav="plans"><span class="nav-icon" data-icon="flag"></span><span data-i18n="nav.plans">В планах</span></button>
-          <button class="nav-item" data-nav="settings"><span class="nav-icon" data-icon="sliders"></span><span data-i18n="nav.settings">Настройки</span></button>
         </nav>
 
         <div class="sidebar-bottom">
@@ -54,6 +53,9 @@
             <p data-i18n="sidebar.tip">Новый мир<br />уже где-то рядом</p>
             <button class="text-button" data-nav="catalog"><span data-i18n="sidebar.explore">Исследовать</span><span data-icon="arrowUpRight"></span></button>
           </div>
+          <nav class="primary-nav sidebar-nav-bottom" aria-label="Настройки" data-i18n-aria="nav.settings">
+            <button class="nav-item" data-nav="settings"><span class="nav-icon" data-icon="sliders"></span><span data-i18n="nav.settings">Настройки</span></button>
+          </nav>
           <div class="profile-row" data-ui-part="profile">
             <div class="avatar">V</div>
             <div class="profile-copy"><strong data-i18n="profile.name">Мой лаунчер</strong><small data-i18n="profile.local">Локальный профиль</small></div>
@@ -65,7 +67,7 @@
 
       <main class="main-area">
         <header class="topbar">
-          <div class="breadcrumb" data-ui-part="breadcrumb"><span>VORTEX</span><i>/</i><strong id="breadcrumb-current">Главная</strong></div>
+          <div class="breadcrumb" data-ui-part="breadcrumb" hidden></div>
           <div class="topbar-actions">
             <label class="search-field" for="global-search" data-ui-part="topbar-search">
               <span data-icon="search"></span>

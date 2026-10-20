@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, session, Menu, Tray, nativeImage, screen, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, Menu, Tray, nativeImage, screen, safeStorage, Notification } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
@@ -6,6 +6,7 @@ const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { createHash, randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
+const net = require('node:net');
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 // Dev escape hatch: VORTEX_REMOTE_DEBUGGING=9222 opens a CDP port for UI tests.
 if (process.env.VORTEX_REMOTE_DEBUGGING) {
@@ -616,6 +617,38 @@ async function getGameDetailsByUniverse(universeIds) {
   return results.flat();
 }
 
+function placeReleaseLogPath() { return path.join(app.getPath('userData'), 'place-updates.json'); }
+
+// Roblox exposes only the latest update date, so Vortex keeps its own log:
+// each time a place is seen with a newer `updated` value, the date is recorded.
+async function recordPlaceUpdate(universeId, updated, title) {
+  if (!universeId || !updated) return [];
+  const file = placeReleaseLogPath();
+  let log = {};
+  try { log = JSON.parse(await fsp.readFile(file, 'utf8')); } catch { log = {}; }
+  const key = String(universeId);
+  const history = Array.isArray(log[key]) ? log[key] : [];
+  if (!history.some((entry) => entry.updated === updated)) {
+    history.unshift({ updated, seenAt: new Date().toISOString(), title: String(title || '').slice(0, 120) });
+  }
+  log[key] = history.slice(0, 20);
+  await fsp.writeFile(file, JSON.stringify(log), 'utf8').catch(() => {});
+  return log[key];
+}
+
+async function readPlaceUpdateHistory(universeId) {
+  try {
+    const log = JSON.parse(await fsp.readFile(placeReleaseLogPath(), 'utf8'));
+    return Array.isArray(log[String(universeId)]) ? log[String(universeId)] : [];
+  } catch { return []; }
+}
+
+ipcMain.handle('games:release-history', async (_event, universeIdValue) => {
+  const universeId = String(universeIdValue || '').match(/^\d{1,20}$/)?.[0] || '';
+  if (!universeId) return [];
+  return readPlaceUpdateHistory(universeId);
+});
+
 ipcMain.handle('shell:open-external', async (_event, value) => {
   try {
     const url = new URL(String(value || ''));
@@ -623,6 +656,26 @@ ipcMain.handle('shell:open-external', async (_event, value) => {
     await shell.openExternal(url.href);
     return true;
   } catch { return false; }
+});
+
+// Lightweight health probe for the Roblox endpoints the app depends on.
+ipcMain.handle('roblox:api-status', async () => {
+  const checks = [
+    { id: 'games', url: 'https://games.roblox.com/v1/games?universeIds=1818' },
+    { id: 'thumbnails', url: 'https://thumbnails.roblox.com/v1/games/icons?universeIds=1818&size=512x512&format=Png&isCircular=false' },
+    { id: 'badges', url: 'https://badges.roblox.com/v1/universes/1818/badges?limit=1' }
+  ];
+  const results = await Promise.allSettled(checks.map(async ({ id, url }) => {
+    const started = Date.now();
+    const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(6000) });
+    return { id, ok: response.ok, status: response.status, ms: Date.now() - started };
+  }));
+  return {
+    checkedAt: new Date().toISOString(),
+    services: results.map((result, index) => result.status === 'fulfilled'
+      ? result.value
+      : { id: checks[index].id, ok: false, status: 0, ms: 0 })
+  };
 });
 
 ipcMain.handle('games:details', async (_event, request = {}) => {
@@ -650,6 +703,7 @@ ipcMain.handle('games:details', async (_event, request = {}) => {
   const thumbs = await getThumbnails([resolvedUniverseId]);
   const base = mapGame(row, thumbs.get(resolvedUniverseId), placeId || row.rootPlaceId);
   const voteData = votes.status === 'fulfilled' ? votes.value || {} : {};
+  void recordPlaceUpdate(resolvedUniverseId, row.updated || '', row.name);
   return { ok: true, game: {
     ...base, description: String(row.description ?? base.description), universeId: resolvedUniverseId, placeId: String(row.rootPlaceId || placeId || ''),
     visits: Number(row.visits) || 0, favorites: Number(row.favoritedCount ?? row.favorites) || 0,
@@ -679,6 +733,27 @@ ipcMain.handle('game:open', async (_event, placeId, gameId, accessCode) => {
     await shell.openExternal(`https://www.roblox.com/games/start?placeId=${normalizedId}`);
     return 'browser';
   }
+});
+
+ipcMain.handle('games:similar', async (_event, request = {}) => {
+  const universeId = String(request.universeId ?? '').match(/^\d{1,20}$/)?.[0] || '';
+  const genre = String(request.genre ?? '').slice(0, 60);
+  if (!universeId) return [];
+  try {
+    // Roblox has no direct "similar games" endpoint: reuse the games list sorted
+    // by popularity, then drop the current place and prefer the same genre.
+    const url = new URL('https://games.roblox.com/v1/games/sorts');
+    url.searchParams.set('model', 'games');
+    url.searchParams.set('alias', 'TopPlayingNow');
+    url.searchParams.set('limit', '30');
+    const payload = await fetchCachedJson(url, 12000);
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    const candidates = rows.filter((row) => String(row.id) !== universeId);
+    const sameGenre = genre ? candidates.filter((row) => String(row.genre_l1 || row.genreL1 || row.genre || '').toLowerCase() === genre.toLowerCase()) : [];
+    const ordered = [...sameGenre, ...candidates.filter((row) => !sameGenre.includes(row))].slice(0, 12);
+    const thumbnails = await getThumbnails(ordered.map((row) => row.id));
+    return ordered.map((row) => mapGame(row, thumbnails.get(String(row.id))));
+  } catch { return []; }
 });
 
 ipcMain.handle('games:search', async (_event, request = {}) => {
@@ -1260,7 +1335,102 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('window-all-closed', () => {
-  // The tray keeps the process alive; quitting happens from the tray panel or
-  // a real exit (update install), never merely because a window closed.
+// Discord Rich Presence over the local IPC pipe. The discord-rpc style handshake
+// is small enough to speak directly, so no extra dependency is needed.
+let discordSocket = null;
+let discordReady = false;
+let discordReconnectTimer = null;
+let discordActivity = null;
+let discordEnabled = false;
+const DISCORD_CLIENT_ID = '1030000000000000000';
+
+function discordPipePath(index) {
+  return process.platform === 'win32' ? `\\\\?\\pipe\\discord-ipc-${index}` : path.join(process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || '/tmp', `discord-ipc-${index}`);
+}
+
+function discordFrame(opcode, payload) {
+  const body = Buffer.from(JSON.stringify(payload), 'utf8');
+  const header = Buffer.alloc(8);
+  header.writeInt32LE(opcode, 0);
+  header.writeInt32LE(body.length, 4);
+  return Buffer.concat([header, body]);
+}
+
+let discordPending = Buffer.alloc(0);
+
+function connectDiscord() {
+  if (discordSocket || !DISCORD_CLIENT_ID) return;
+  const attempts = [0, 1, 2, 3];
+  const tryIndex = (position) => {
+    if (position >= attempts.length) { scheduleDiscordReconnect(); return; }
+    const socket = net.createConnection(discordPipePath(attempts[position]));
+    socket.once('connect', () => {
+      discordSocket = socket;
+      discordReady = false;
+      socket.write(discordFrame(0, { v: 1, client_id: DISCORD_CLIENT_ID }));
+      socket.on('data', (chunk) => {
+        discordPending = Buffer.concat([discordPending, chunk]);
+        while (discordPending.length >= 8) {
+          const length = discordPending.readInt32LE(4);
+          if (discordPending.length < 8 + length) break;
+          const body = JSON.parse(discordPending.subarray(8, 8 + length).toString('utf8'));
+          discordPending = discordPending.subarray(8 + length);
+          if (body.cmd === 'DISPATCH' && body.evt === 'READY') { discordReady = true; pushDiscordActivity(); }
+        }
+      });
+      socket.on('error', () => cleanupDiscord());
+      socket.on('close', () => cleanupDiscord());
+    });
+    socket.once('error', () => { socket.destroy(); tryIndex(position + 1); });
+  };
+  tryIndex(0);
+}
+
+function cleanupDiscord() {
+  if (discordSocket) { try { discordSocket.destroy(); } catch { /* already closed */ } }
+  discordSocket = null;
+  discordReady = false;
+  discordPending = Buffer.alloc(0);
+  scheduleDiscordReconnect();
+}
+
+function scheduleDiscordReconnect() {
+  if (!discordEnabled || discordReconnectTimer) return;
+  discordReconnectTimer = setTimeout(() => { discordReconnectTimer = null; connectDiscord(); }, 20000);
+  discordReconnectTimer.unref?.();
+}
+
+function pushDiscordActivity() {
+  if (!discordSocket || !discordReady) return;
+  const activity = discordEnabled && discordActivity
+    ? { details: String(discordActivity.details || '').slice(0, 128), state: String(discordActivity.state || '').slice(0, 128), assets: { large_text: 'Vortex Launcher' } }
+    : null;
+  try {
+    discordSocket.write(discordFrame(1, { cmd: 'SET_ACTIVITY', args: { pid: process.pid, activity }, nonce: randomUUID() }));
+  } catch { cleanupDiscord(); }
+}
+
+ipcMain.handle('discord:set-enabled', (_event, enabled) => {
+  discordEnabled = Boolean(enabled);
+  if (discordEnabled) connectDiscord(); else pushDiscordActivity();
+  return { enabled: discordEnabled, connected: discordReady };
 });
+
+ipcMain.handle('discord:set-activity', (_event, activity) => {
+  discordActivity = activity && typeof activity === 'object' ? activity : null;
+  pushDiscordActivity();
+  return { connected: discordReady };
+});
+
+// Fires a Windows toast when a friend starts playing one of your favourites.
+ipcMain.handle('notifications:friend-playing', (_event, payload = {}) => {
+  if (!Notification.isSupported()) return false;
+  const friend = String(payload.friend || '').slice(0, 60);
+  const game = String(payload.game || '').slice(0, 90);
+  if (!friend || !game) return false;
+  const notification = new Notification({ title: `${friend} играет в избранное`, body: game, silent: false });
+  notification.on('click', () => { showMainWindowFromTray(); });
+  notification.show();
+  return true;
+});
+

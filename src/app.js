@@ -73,7 +73,8 @@ const preferenceDefaults = {
   themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeGrainStrength: 0.05, themeVignette: false, themeVignetteStrength: 1,
   cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true,
   homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal',
-  homeSectionTitles: {}, homeSectionScale: 1, catalogView: 'grid', catalogGenre: 'all', cardAspect: 'auto', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern'
+  homeSectionTitles: {}, homeSectionScale: 1, catalogView: 'grid', catalogGenre: 'all', cardAspect: 'auto', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern',
+  discordPresence: false, friendFavoriteAlerts: false
 };
 
 // ---------- Customization profiles (Stage 6) ----------
@@ -159,6 +160,7 @@ let detailRequestId = 0;
 let detailBadgeCount = 3;
 let detailBadgesExpanded = true;
 let detailGalleryIndex = 0;
+let detailDescriptionExpanded = false;
 let detailGalleryCount = 0;
 
 let searchQuery = '';
@@ -192,6 +194,37 @@ const pageContent = document.getElementById('page-content');
 const searchInput = document.getElementById('global-search');
 const breadcrumbCurrent = document.getElementById('breadcrumb-current');
 let latestUpdateState = null;
+let lastUpdateCheckAt = 0;
+let pendingScrollRestore = null;
+const DETAIL_CACHE_TTL = 5 * 60 * 1000;
+const detailCache = new Map();
+const responseCacheLocal = new Map();
+
+function readDetailCache(key) {
+  const entry = detailCache.get(key);
+  if (!entry || entry.expiresAt <= Date.now()) { detailCache.delete(key); return null; }
+  return entry.game;
+}
+
+function writeDetailCache(key, game) {
+  detailCache.set(key, { game, expiresAt: Date.now() + DETAIL_CACHE_TTL });
+  if (detailCache.size > 60) detailCache.delete(detailCache.keys().next().value);
+}
+
+function captureCatalogScroll() {
+  const area = document.querySelector('.main-area');
+  if (area) pendingScrollRestore = { view: currentView, top: area.scrollTop };
+}
+
+function restoreCatalogScroll() {
+  if (!pendingScrollRestore || pendingScrollRestore.view !== 'catalog') return;
+  const { top } = pendingScrollRestore;
+  pendingScrollRestore = null;
+  requestAnimationFrame(() => {
+    const area = document.querySelector('.main-area');
+    if (area) area.scrollTop = top;
+  });
+}
 
 function setWindowMaximized(isMaximized) {
   const button = document.querySelector('[data-window-control="maximize"]');
@@ -506,11 +539,20 @@ function openGameDetails(id) {
   detailBadgeCount = 3;
   detailBadgesExpanded = true;
   detailGalleryIndex = 0;
+  detailDescriptionExpanded = false;
   detailGalleryCount = 0;
   detailGame = { ...game, upVotes: Number(game.upVotes) || 0, downVotes: Number(game.downVotes) || 0, playing: Number(game.playerCount) || 0, visits: Number(game.visits) || 0, favorites: Number(game.favorites) || 0 };
   detailStatus = 'loading';
   currentView = 'game-detail';
   renderPage();
+  const cacheKey = String(game.universeId || game.id);
+  const cached = readDetailCache(cacheKey);
+  if (cached) {
+    detailGame = { ...detailGame, ...cached };
+    detailStatus = 'success';
+    renderPage();
+    return;
+  }
   if (!window.vortexDesktop?.getGameDetails) { detailStatus = 'error'; renderPage(); return; }
   const timeout = new Promise((_, reject) => window.setTimeout(() => reject(new Error('timeout')), 14000));
   Promise.race([window.vortexDesktop.getGameDetails({ universeId: game.universeId, placeId: game.id }), timeout]).then((response) => {
@@ -518,8 +560,27 @@ function openGameDetails(id) {
     if (!response?.ok) { detailStatus = 'error'; renderPage(); return; }
     detailGame = { ...detailGame, ...response.game };
     detailStatus = 'success';
+    writeDetailCache(cacheKey, response.game);
     renderPage();
+    loadSimilarGames(requestId);
   }).catch(() => { if (requestId === detailRequestId && currentView === 'game-detail') { detailStatus = 'error'; renderPage(); } });
+}
+
+async function loadSimilarGames(requestId = detailRequestId) {
+  if (!detailGame || !window.vortexDesktop?.getSimilarGames) return;
+  try {
+    const [list, history] = await Promise.all([
+      window.vortexDesktop.getSimilarGames({ universeId: detailGame.universeId, genre: detailGame.genre }).catch(() => []),
+      window.vortexDesktop.getReleaseHistory?.(detailGame.universeId).catch(() => [])
+    ]);
+    if (requestId !== detailRequestId || currentView !== 'game-detail') return;
+    const patch = {};
+    if (Array.isArray(list) && list.length) patch.similar = list;
+    if (Array.isArray(history) && history.length) patch.releaseHistory = history;
+    if (!Object.keys(patch).length) return;
+    detailGame = { ...detailGame, ...patch };
+    renderPage();
+  } catch { /* similar games and release log are optional */ }
 }
 
 function renderGameDetail() {
@@ -551,16 +612,19 @@ function renderGameDetail() {
   const currentMedia = galleryItems[detailGalleryIndex];
   const galleryTitle = videos.length ? t('game.media') : t('game.screenshots');
   const gallery = currentMedia ? `<section class="detail-section"><div class="detail-section-heading"><div><h2>${galleryTitle}</h2><p>${detailGalleryIndex + 1} / ${galleryItems.length}</p></div>${galleryItems.length > 1 ? `<div class="detail-gallery-controls"><button class="icon-button" data-action="gallery-prev" aria-label="${t('game.previousMedia')}">${icon('arrowLeft', 16)}</button><button class="icon-button" data-action="gallery-next" aria-label="${t('game.nextMedia')}">${icon('arrow', 16)}</button></div>` : ''}</div><div class="detail-gallery"><div class="detail-gallery-slide">${currentMedia.kind === 'video' ? `<video controls preload="metadata" poster="${escapeHtml(currentMedia.thumbnail || '')}"><source src="${escapeHtml(currentMedia.url)}" type="video/mp4" /></video>` : `<img src="${escapeHtml(currentMedia.url)}" alt="${escapeHtml(currentMedia.title || game.title)}" />`}</div>${galleryItems.length > 1 ? `<div class="detail-gallery-dots">${galleryItems.map((_, index) => `<button class="gallery-dot ${index === detailGalleryIndex ? 'active' : ''}" data-action="gallery-goto" data-index="${index}" aria-label="${index + 1}"></button>`).join('')}</div>` : ''}</div></section>` : '';
-  const description = String(game.description || t('game.fallbackDescription'));
+  const releaseHistory = Array.isArray(game.releaseHistory) && game.releaseHistory.length > 1
+    ? `<section class="detail-section"><h2>${t('game.releaseHistory')}</h2><div class="release-history">${game.releaseHistory.slice(0, 8).map((entry) => `<div class="release-row"><span class="release-dot"></span><span><strong>${escapeHtml(new Date(entry.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: 'long', year: 'numeric' }))}</strong><small>${t('game.releaseSeen')}</small></span></div>`).join('')}</div><p class="catalog-disclaimer">${t('game.releaseHistoryHint')}</p></section>`
+    : '';
+  const similar = Array.isArray(game.similar) && game.similar.length ? `<section class="detail-section"><h2>${t('game.similar')}</h2><div class="game-grid detail-similar-grid">${game.similar.map(renderGameCard).join('')}</div></section>` : '';
   return `<button class="detail-back icon-button" data-action="detail-back" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)}</button>
     <article class="game-detail">
       <header class="detail-hero"><div class="detail-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(game.title)}" />` : ''}</div><div class="detail-hero-copy"><div class="eyebrow"><span class="eyebrow-mark"></span>${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p>${escapeHtml(game.creator || t('game.unknownCreator'))}</p><div class="detail-actions"><button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button><button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button></div></div></header>
       ${detailStatus === 'loading' ? `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('game.loadingDetails')}</strong></div>` : ''}
       ${detailStatus === 'error' ? `<p class="catalog-disclaimer">${t('game.detailsUnavailable')}</p>` : ''}
       <section class="detail-stats"><div><strong>${formatCount(game.playing ?? game.playerCount)}</strong><span>${t('game.online')}</span></div><div class="detail-like-stat"><strong>${likePercent === null ? '—' : `${likePercent}%`}</strong><span>${t('game.likeRatio')} · ${formatCount(game.upVotes)} / ${formatCount(game.downVotes)}</span>${voteBar}</div><div><strong>${formatCount(game.visits)}</strong><span>${t('game.visits')}</span></div><div><strong>${formatCount(game.favorites)}</strong><span>${t('game.favorites')}</span></div></section>
-      <section class="detail-section"><h2>${t('game.description')}</h2><p class="detail-description">${escapeHtml(description)}</p></section>
+      <section class="detail-section"><h2>${t('game.description')}</h2><p class="detail-description ${detailDescriptionExpanded ? 'expanded' : 'collapsed'}">${escapeHtml(description)}</p>${description.length > 420 ? `<button class="ghost-button detail-description-toggle" data-action="toggle-detail-description">${t(detailDescriptionExpanded ? 'card.readLess' : 'card.readMore')}</button>` : ''}</section>
       <section class="detail-section detail-meta"><div><span>${t('game.author')}</span><strong>${escapeHtml(game.creator || t('game.unknownCreator'))}</strong></div><div><span>${t('game.genre')}</span><strong>${escapeHtml(game.genre || t('genre.other'))}</strong></div><div><span>${t('game.updated')}</span><strong>${game.updated ? escapeHtml(new Date(game.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU')) : '—'}</strong></div><div><span>${t('game.playtime')}</span><strong>${playtime}</strong></div></section>
-      ${gallery}${badges}${social}
+      ${gallery}${badges}${social}${releaseHistory}${similar}
     </article>`;
 }
 
@@ -864,6 +928,8 @@ function filterGames() {
     // valid API hits, making a 10-game batch appear as only 1–3 cards.
     let list = [...genreResults];
     if (sortMode === 'alpha') list = list.slice().sort((first, second) => first.title.localeCompare(second.title, preferences.language));
+    if (sortMode === 'recent') list = list.slice().sort((first, second) => new Date(second.updated || 0) - new Date(first.updated || 0));
+    if (sortMode === 'visits') list = list.slice().sort((first, second) => (Number(second.visits) || 0) - (Number(first.visits) || 0));
     if (sortMode === 'players') list = list.slice().sort((first, second) => (second.playerCount || 0) - (first.playerCount || 0));
     if (sortMode === 'likes') list = list.slice().sort((first, second) => {
       const score = (game) => (Number(game.upVotes) + Number(game.downVotes)) ? Number(game.upVotes) / (Number(game.upVotes) + Number(game.downVotes)) : 0;
@@ -881,7 +947,8 @@ function filterGames() {
     return matchesQuery && matchesCategory;
   });
   if (sortMode === 'alpha') list = list.slice().sort((first, second) => first.title.localeCompare(second.title, preferences.language));
-  if (sortMode === 'recent') list = list.slice().reverse();
+  if (sortMode === 'updated') list = list.slice().sort((first, second) => new Date(second.updated || 0) - new Date(first.updated || 0));
+  if (sortMode === 'visits') list = list.slice().sort((first, second) => (Number(second.visits) || 0) - (Number(first.visits) || 0));
   if (sortMode === 'players') list = list.slice().sort((first, second) => (second.playerCount || 0) - (first.playerCount || 0));
   if (sortMode === 'likes') list = list.slice().sort((first, second) => {
     const score = (game) => (Number(game.upVotes) + Number(game.downVotes)) ? Number(game.upVotes) / (Number(game.upVotes) + Number(game.downVotes)) : 0;
@@ -901,6 +968,8 @@ function renderCustomSortSelect(isLiveSearch) {
     { value: 'default', label: t(isLiveSearch ? 'sort.relevance' : 'sort.curated') },
     { value: 'players', label: t('sort.players') },
     { value: 'likes', label: t('sort.likes') },
+    { value: 'updated', label: t('sort.updated') },
+    { value: 'visits', label: t('sort.visits') },
     { value: 'alpha', label: t('sort.alpha') }
   ];
   const selected = options.find((option) => option.value === sortMode) || options[0];
@@ -1106,10 +1175,31 @@ async function loadFriends(username) {
     // next visit instead of showing a stale error for 30 seconds.
     if (data && data.ok) friendsCache = { at: Date.now(), data };
     else friendsCache = { at: Date.now() - FRIENDS_TTL, data };
+    if (data && data.ok) notifyFriendsInFavorites(data.friends);
     if (currentView === 'friends') renderPage();
   } catch {
     friendsCache = { at: 0, data: { ok: false, error: 'network' } };
     if (currentView === 'friends') renderPage();
+  }
+}
+
+// Notifies once per friend/game pair when a friend starts a favourite of yours.
+const notifiedFriendGames = new Set();
+
+function notifyFriendsInFavorites(friends) {
+  if (!preferences.friendFavoriteAlerts || !Array.isArray(friends) || !favorites.size) return;
+  for (const friend of friends) {
+    if (!friend || !friend.isOnline || !friend.playingPlaceId) continue;
+    const placeId = String(friend.playingPlaceId);
+    if (!favorites.has(placeId)) continue;
+    const key = `${friend.id}:${placeId}`;
+    if (notifiedFriendGames.has(key)) continue;
+    notifiedFriendGames.add(key);
+    const game = getGame(placeId);
+    window.vortexDesktop?.notifyFriendPlaying?.({
+      friend: friend.displayName || friend.name || t('friends.unknown'),
+      game: game?.title || t('friends.someGame')
+    });
   }
 }
 
@@ -1963,10 +2053,78 @@ function renderUpdateSettings() {
               : status === 'development' ? t('updates.development') : t('updates.checking');
   const progress = Math.max(0, Math.min(100, Number(state.progress) || 0));
   const visualProgress = status === 'applying' || status === 'downloaded' ? 100 : progress;
+  const checking = status === 'checking';
   return `<section class="settings-card update-settings-card" id="update-settings-card" data-update-status="${escapeHtml(status)}"><div class="settings-card-head"><div><h2>${t('updates.settingsTitle')}</h2><p>${t('updates.settingsBody')}</p></div>${icon('download', 18)}</div>
     <div class="update-settings-preview"><div class="update-preview-art" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="update-preview-copy"><strong>${status === 'error' ? t('updates.error', { error: escapeHtml(state.errorMessage || 'Unknown error') }) : escapeHtml(version ? `Vortex ${version}` : t('updates.settingsTitle'))}</strong><small>${statusMessage}</small><span class="update-settings-progress"><i style="--progress:${visualProgress}%"></i></span></div></div>
-    ${status === 'error' ? `<button class="ghost-button update-retry-button" data-action="retry-update">${t('updates.retry')}</button>` : ''}
+    <div class="update-settings-meta">
+      <span><small>${t('updates.currentVersionLabel')}</small><strong>${escapeHtml(state.currentVersion || '—')}</strong></span>
+      <span><small>${t('updates.lastCheckLabel')}</small><strong>${lastUpdateCheckAt ? escapeHtml(new Date(lastUpdateCheckAt).toLocaleString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })) : '—'}</strong></span>
+    </div>
+    <button class="ghost-button update-retry-button" data-action="retry-update" ${checking ? 'disabled' : ''}>${icon('rotate', 13)} ${checking ? t('updates.checkingShort') : t('updates.checkNow')}</button>
   </section>`;
+}
+
+function applyDiscordPresence() {
+  window.vortexDesktop?.setDiscordEnabled?.(Boolean(preferences.discordPresence));
+  if (!preferences.discordPresence) return;
+  const viewing = currentView === 'game-detail' && detailGame ? detailGame.title : null;
+  window.vortexDesktop?.setDiscordActivity?.({
+    details: viewing ? t('discord.viewing', { game: viewing }) : t('discord.browsing'),
+    state: viewing ? t('discord.inVortex') : t('discord.launcher')
+  });
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} Б`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} КБ`;
+  return `${(value / 1024 / 1024).toFixed(2)} МБ`;
+}
+
+// Sums every vortex.* key the renderer keeps in localStorage.
+function cacheFootprintBytes() {
+  let total = 0;
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !key.startsWith('vortex.')) continue;
+      if (key.startsWith('vortex.onlineHistory.')) continue;
+      total += key.length + String(localStorage.getItem(key) || '').length;
+    }
+  } catch { return 0; }
+  return total;
+}
+
+function onlineHistoryBytes() {
+  let total = 0;
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !key.startsWith('vortex.onlineHistory.')) continue;
+      total += key.length + String(localStorage.getItem(key) || '').length;
+    }
+  } catch { return 0; }
+  return total;
+}
+
+let apiStatusCache = null;
+
+function renderApiStatusPlaceholder() {
+  return apiStatusCache ? renderApiStatus(apiStatusCache) : `<p class="catalog-disclaimer">${t('settings.api.notChecked')}</p>`;
+}
+
+function renderApiStatus(result) {
+  const labels = { games: t('settings.api.games'), thumbnails: t('settings.api.thumbnails'), badges: t('settings.api.badges') };
+  return (result?.services || []).map((service) => `<div class="api-status-row ${service.ok ? 'ok' : 'bad'}"><span class="api-status-dot"></span><span><strong>${labels[service.id] || service.id}</strong><small>${service.ok ? t('settings.api.online', { ms: String(service.ms) }) : t('settings.api.offline')}</small></span></div>`).join('');
+}
+
+async function checkApiStatus() {
+  const host = document.querySelector('[data-api-status]');
+  if (host) host.innerHTML = `<p class="catalog-disclaimer">${t('settings.api.checking')}</p>`;
+  try {
+    apiStatusCache = await window.vortexDesktop?.getRobloxApiStatus?.();
+  } catch { apiStatusCache = null; }
+  if (host) host.innerHTML = apiStatusCache ? renderApiStatus(apiStatusCache) : `<p class="catalog-disclaimer">${t('settings.api.failed')}</p>`;
 }
 
 function renderGeneralSettings() {
@@ -2002,8 +2160,27 @@ function renderGeneralSettings() {
         <button class="ghost-button" data-action="import-data">${icon('upload', 13)} ${t('settings.data.import')}</button>
       </div>
     </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.integrations.title')}</h2><p>${t('settings.integrations.body')}</p></div>${icon('sparkle', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.discord')}</strong><small>${t('settings.integrations.discordBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.discordPresence}" data-toggle="discordPresence" aria-label="${t('settings.integrations.discord')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.friendAlerts')}</strong><small>${t('settings.integrations.friendAlertsBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.friendFavoriteAlerts}" data-toggle="friendFavoriteAlerts" aria-label="${t('settings.integrations.friendAlerts')}"></button></div>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.hotkeys.title')}</h2><p>${t('settings.hotkeys.body')}</p></div>${icon('keyboard', 18)}</div>
+      <div class="hotkey-list">${[[t('settings.hotkeys.search'), 'Ctrl+K'], [t('settings.hotkeys.settings'), 'Ctrl+,'], [t('settings.hotkeys.friends'), 'Ctrl+Shift+F'], [t('settings.hotkeys.back'), 'Esc']].map(([label, combo]) => `<div class="hotkey-row"><span>${label}</span><kbd>${combo}</kbd></div>`).join('')}</div>
+    </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cache.title')}</h2><p>${t('settings.cache.body')}</p></div>${icon('search', 18)}</div>
-      <button class="ghost-button" data-action="clear-cache">${icon('close', 13)} ${t('settings.cacheClear')}</button>
+      <div class="update-settings-meta">
+        <span><small>${t('settings.cache.details')}</small><strong data-cache-size>${formatBytes(cacheFootprintBytes())}</strong></span>
+        <span><small>${t('settings.cache.onlineHistory')}</small><strong data-history-size>${formatBytes(onlineHistoryBytes())}</strong></span>
+      </div>
+      <div class="data-actions">
+        <button class="ghost-button" data-action="clear-cache">${icon('close', 13)} ${t('settings.cacheClear')}</button>
+        <button class="ghost-button" data-action="clear-api-cache">${icon('rotate', 13)} ${t('settings.cache.clearApi')}</button>
+        <button class="ghost-button" data-action="clear-history-cache">${icon('clock', 13)} ${t('settings.cache.clearHistory')}</button>
+      </div>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.api.title')}</h2><p>${t('settings.api.body')}</p></div>${icon('sparkle', 18)}</div>
+      <div class="api-status-list" data-api-status>${renderApiStatusPlaceholder()}</div>
+      <button class="ghost-button" data-action="check-api-status">${icon('rotate', 13)} ${t('settings.api.check')}</button>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.profiles.title')}</h2><p>${t('settings.profiles.body')}</p></div>${icon('palette', 18)}</div>
       <div class="profile-actions">
@@ -2057,6 +2234,7 @@ function renderPage() {
   const pages = { home: renderHome, catalog: renderCatalog, 'game-detail': renderGameDetail, favorites: renderFavorites, recent: renderRecent, friends: renderFriends, plans: renderPlans, settings: renderSettings };
   pageContent.innerHTML = (pages[currentView] || renderHome)();
   mountIcons(pageContent);
+  if (preferences.discordPresence) applyDiscordPresence();
   if (pageContent.dataset.renderedView !== currentView) {
     pageContent.dataset.renderedView = currentView;
     pageContent.dataset.transition = preferences.motion ? preferences.pageTransition : 'none';
@@ -2067,7 +2245,10 @@ function renderPage() {
 }
 
 function renderUpdateBanner(state) {
-  if (state) latestUpdateState = state;
+  if (state) {
+    latestUpdateState = state;
+    if (state.status !== 'checking') lastUpdateCheckAt = Date.now();
+  }
   const banner = document.getElementById('update-banner');
   if (!banner) return;
   const status = latestUpdateState?.status;
@@ -2636,8 +2817,17 @@ document.addEventListener('click', async (event) => {
   const action = target.closest('[data-action]');
   if (action) {
     if (action.dataset.action === 'open-social-link') { window.vortexDesktop?.openExternalUrl?.(action.dataset.url); return; }
-    if (action.dataset.action === 'detail-back') { currentView = 'catalog'; renderPage(); return; }
-    if (action.dataset.action === 'open-details') { openGameDetails(action.dataset.id); return; }
+    if (action.dataset.action === 'toggle-detail-description') { detailDescriptionExpanded = !detailDescriptionExpanded; renderPage(); return; }
+    if (action.dataset.action === 'check-api-status') { void checkApiStatus(); return; }
+    if (action.dataset.action === 'clear-api-cache') { responseCacheLocal.clear(); localStorage.removeItem('vortex.detailCache'); showToast(t('settings.cache.apiCleared')); renderPage(); return; }
+    if (action.dataset.action === 'clear-history-cache') {
+      for (const key of Object.keys(localStorage)) if (key.startsWith('vortex.onlineHistory.')) localStorage.removeItem(key);
+      showToast(t('settings.cache.historyCleared'));
+      renderPage();
+      return;
+    }
+    if (action.dataset.action === 'detail-back') { currentView = 'catalog'; restoreCatalogScroll(); renderPage(); return; }
+    if (action.dataset.action === 'open-details') { captureCatalogScroll(); openGameDetails(action.dataset.id); return; }
     if (action.dataset.action === 'export-data') {
       const blob = new Blob([JSON.stringify(buildDataExport(), null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -3102,7 +3292,14 @@ document.addEventListener('click', async (event) => {
     return;
   }
   const toggle = target.closest('[data-toggle]');
-  if (toggle) { preferences[toggle.dataset.toggle] = !preferences[toggle.dataset.toggle]; savePreferences(); renderPage(); }
+  if (toggle) {
+    const key = toggle.dataset.toggle;
+    preferences[key] = !preferences[key];
+    savePreferences();
+    if (key === 'discordPresence') applyDiscordPresence();
+    renderPage();
+    return;
+  }
 });
 
 // Imported theme files: validate and apply every known field.
@@ -3385,6 +3582,25 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     searchInput.focus();
   }
+  // Documented shortcuts: Ctrl+, opens Settings, Ctrl+Shift+F opens Friends,
+  // Escape leaves the place detail page.
+  if ((event.ctrlKey || event.metaKey) && event.key === ',') {
+    event.preventDefault();
+    setView('settings');
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+    event.preventDefault();
+    setView('friends');
+    return;
+  }
+  if (event.key === 'Escape' && currentView === 'game-detail' && !isTyping) {
+    event.preventDefault();
+    currentView = 'catalog';
+    restoreCatalogScroll();
+    renderPage();
+    return;
+  }
   if (event.key === 'Escape' && document.activeElement === searchInput) {
     searchInput.value = '';
     scheduleLiveSearch('');
@@ -3576,6 +3792,7 @@ window.vortexDesktop?.onUpdateState?.(renderUpdateBanner);
 window.vortexDesktop?.getUpdateState?.().then(renderUpdateBanner).catch(() => {});
 hydrateFeaturedGames();
 loadDiscoveryCatalog(activeDiscoverySort);
+applyDiscordPresence();
 }
 
 bootVortex();

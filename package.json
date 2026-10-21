@@ -1,6 +1,6 @@
 {
   "name": "vortex-roblox-launcher",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "private": true,
   "description": "A customizable desktop launcher for Roblox experiences.",
   "main": "electron/main.cjs",

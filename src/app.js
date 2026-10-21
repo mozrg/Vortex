@@ -1210,7 +1210,8 @@ function submitSearchPage(value) {
 }
 
 function renderCatalog() {
-  if (activeAccess === 'paid' && paidStatus === 'idle') window.setTimeout(() => loadPaidGames(), 0);
+  // Entering the paid view also nudges a background scan (the function self-guards).
+  if (activeAccess === 'paid') window.setTimeout(() => loadPaidGames(), 0);
   const list = filterGames();
   const availableSorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
   const selectedSort = availableSorts.find((sort) => sort.id === activeDiscoverySort) || availableSorts[0];
@@ -1239,8 +1240,9 @@ function renderCatalog() {
       resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('coin', 20)}</div><h2>${t('catalog.paidEmptyTitle')}</h2><p>${t('catalog.paidEmptyBody')}</p></div>`;
     } else {
       const visible = paidGames.slice(0, paidVisibleCount);
-      const more = paidGames.length > visible.length
-        ? `<div class="load-more-row"><button class="ghost-button" data-action="paid-more">${t('catalog.showMore', { count: String(Math.min(24, paidGames.length - visible.length)) })}</button></div>`
+      const remaining = paidGames.length - visible.length;
+      const more = remaining > 0
+        ? `<div class="load-more-row"><button class="ghost-button" data-action="paid-more">${t('catalog.showMore', { count: String(Math.min(PAID_PAGE_SIZE, remaining)) })}</button></div>`
         : '';
       resultsBody = `<p class="result-note">${t('catalog.shown', { shown: String(visible.length), total: String(paidGames.length) })}</p>${renderGrid(visible, t('empty.noResults'), t('empty.filterHint'))}${more}`;
     }
@@ -1278,14 +1280,38 @@ function renderCatalog() {
 }
 
 let favoritesVisibleCount = 24;
+// Paid games are scanned in batches, so the grid pages 12 at a time.
+const PAID_PAGE_SIZE = 12;
 let paidGames = [];
 let paidStatus = 'idle';
 let paidRequestId = 0;
-let paidVisibleCount = 24;
+let paidVisibleCount = PAID_PAGE_SIZE;
+
+let paidLastScanAt = 0;
+const PAID_BACKGROUND_RESCAN_MS = 90 * 1000;
 
 async function loadPaidGames(force = false) {
-  if (!force && (paidStatus === 'loading' || paidGames.length)) return;
+  if (paidStatus === 'loading') return;
+
+  // Already have a list: refresh it quietly in the background so the index
+  // keeps growing without any visible "refresh" button.
+  if (!force && paidGames.length) {
+    if (Date.now() - paidLastScanAt < PAID_BACKGROUND_RESCAN_MS) return;
+    paidLastScanAt = Date.now();
+    const requestId = paidRequestId;
+    try {
+      const grown = await window.vortexDesktop?.getPaidGames?.({ force: true });
+      if (requestId !== paidRequestId) return;
+      if (Array.isArray(grown) && grown.length > paidGames.length) {
+        paidGames = grown;
+        if (currentView === 'catalog' && activeAccess === 'paid') renderPage();
+      }
+    } catch { /* a failed background scan keeps the current list */ }
+    return;
+  }
+
   paidStatus = 'loading';
+  paidLastScanAt = Date.now();
   const requestId = ++paidRequestId;
   if (currentView === 'catalog' && activeAccess === 'paid') renderPage();
   try {
@@ -3119,7 +3145,7 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'open-social-link') { window.vortexDesktop?.openExternalUrl?.(action.dataset.url); return; }
     if (action.dataset.action === 'toggle-detail-description') { detailDescriptionExpanded = !detailDescriptionExpanded; renderPage(); return; }
     if (action.dataset.action === 'favorites-more') { favoritesVisibleCount += 24; renderPage(); return; }
-    if (action.dataset.action === 'paid-more') { paidVisibleCount += 24; renderPage(); return; }
+    if (action.dataset.action === 'paid-more') { paidVisibleCount += PAID_PAGE_SIZE; renderPage(); return; }
     if (action.dataset.action === 'paid-rescan') { void loadPaidGames(true); return; }
     if (action.dataset.action === 'reset-hotkeys') { preferences.hotkeys = {}; savePreferences(); showToast(t('settings.hotkeys.resetDone')); renderPage(); return; }
     if (action.dataset.action === 'check-api-status') { void checkApiStatus(); return; }
@@ -3344,7 +3370,7 @@ document.addEventListener('click', async (event) => {
     activeAccess = access.dataset.access === 'paid' ? 'paid' : 'all';
     preferences.catalogAccess = activeAccess;
     savePreferences();
-    paidVisibleCount = 24;
+    paidVisibleCount = PAID_PAGE_SIZE;
     if (activeAccess === 'paid') void loadPaidGames();
     renderPage();
     return;

@@ -1089,6 +1089,7 @@ body.no-motion .palette-panel { animation: none; }
 .catalog-genre-head h2 { margin: 0; font: 650 16px var(--font-display); letter-spacing: -.02em; }
 .catalog-genre-head span { color: var(--muted); font-size: 10.5px; }
 .load-more-row { display: flex; justify-content: center; padding: 22px 0 6px; }
+.load-more-end { margin: 20px 0 4px; color: var(--muted); font-size: 10.5px; text-align: center; }
 .heading-count { color: var(--muted); font-size: 11px; }
 .detail-section + .detail-section { margin-top: 16px; }
 /* Catalog filters: one compact wrapping row instead of three stacked groups. */

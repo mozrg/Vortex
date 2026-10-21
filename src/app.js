@@ -1232,6 +1232,7 @@ function renderCatalog() {
     resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list, t('search.noResults'), t('search.tryShorter'))}${isLoadingMore ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : searchPageToken ? `<button class="ghost-button load-more-button" data-action="load-more">${t('search.loadMore')} ${icon('arrow', 13)}</button>` : ''}`;
   } else if (activeAccess === 'paid' && !searchQuery) {
     // Paid experiences: a section inside the catalog, not a new page and not a genre.
+    // Every "show more" runs another scan, so the list keeps growing.
     if (paidStatus === 'loading') {
       resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.paidLoading')}</strong><small>${t('catalog.paidLoadingNote')}</small></div>`;
     } else if (paidStatus === 'error') {
@@ -1240,11 +1241,13 @@ function renderCatalog() {
       resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('coin', 20)}</div><h2>${t('catalog.paidEmptyTitle')}</h2><p>${t('catalog.paidEmptyBody')}</p></div>`;
     } else {
       const visible = paidGames.slice(0, paidVisibleCount);
-      const remaining = paidGames.length - visible.length;
-      const more = remaining > 0
-        ? `<div class="load-more-row"><button class="ghost-button" data-action="paid-more">${t('catalog.showMore', { count: String(Math.min(PAID_PAGE_SIZE, remaining)) })}</button></div>`
-        : '';
-      resultsBody = `<p class="result-note">${t('catalog.shown', { shown: String(visible.length), total: String(paidGames.length) })}</p>${renderGrid(visible, t('empty.noResults'), t('empty.filterHint'))}${more}`;
+      const hidden = paidGames.length - visible.length;
+      const loadMore = paidStatus === 'loading-more'
+        ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('catalog.paidScanning')}</div>`
+        : paidExhausted && !hidden
+          ? `<p class="load-more-end">${t('catalog.paidEnd')}</p>`
+          : `<button class="ghost-button load-more-button" data-action="paid-more">${t('catalog.loadMore')} ${icon('arrow', 13)}</button>`;
+      resultsBody = `<p class="result-note">${t('catalog.shown', { shown: String(visible.length), total: String(paidGames.length) })}</p>${renderGrid(visible, t('empty.noResults'), t('empty.filterHint'))}${loadMore}`;
     }
   } else if (isGenreSearchActive()) {
     if (genreStatus === 'loading') {
@@ -1280,50 +1283,78 @@ function renderCatalog() {
 }
 
 let favoritesVisibleCount = 24;
-// Paid games are scanned in batches, so the grid pages 12 at a time.
+// Paid games grow one scan at a time: "show more" runs the next scan, exactly
+// like the discovery catalog appends a fresh page.
 const PAID_PAGE_SIZE = 12;
+const PAID_REFRESH_MS = 90 * 1000;
 let paidGames = [];
 let paidStatus = 'idle';
 let paidRequestId = 0;
 let paidVisibleCount = PAID_PAGE_SIZE;
-
+let paidExhausted = false;
+let paidScanning = false;
 let paidLastScanAt = 0;
-const PAID_BACKGROUND_RESCAN_MS = 90 * 1000;
 
-async function loadPaidGames(force = false) {
-  if (paidStatus === 'loading') return;
-
-  // Already have a list: refresh it quietly in the background so the index
-  // keeps growing without any visible "refresh" button.
-  if (!force && paidGames.length) {
-    if (Date.now() - paidLastScanAt < PAID_BACKGROUND_RESCAN_MS) return;
-    paidLastScanAt = Date.now();
-    const requestId = paidRequestId;
-    try {
-      const grown = await window.vortexDesktop?.getPaidGames?.({ force: true });
-      if (requestId !== paidRequestId) return;
-      if (Array.isArray(grown) && grown.length > paidGames.length) {
-        paidGames = grown;
-        if (currentView === 'catalog' && activeAccess === 'paid') renderPage();
-      }
-    } catch { /* a failed background scan keeps the current list */ }
-    return;
-  }
-
-  paidStatus = 'loading';
+// Runs one scan pass. `append` keeps the current list and merges new finds.
+async function scanPaidGames(append = false) {
+  if (paidScanning) return;
+  paidScanning = true;
   paidLastScanAt = Date.now();
-  const requestId = ++paidRequestId;
+  if (append) paidStatus = 'loading-more';
+  else {
+    if (!paidGames.length) paidStatus = 'loading';
+    paidVisibleCount = PAID_PAGE_SIZE;
+  }
   if (currentView === 'catalog' && activeAccess === 'paid') renderPage();
+  const requestId = ++paidRequestId;
   try {
-    const list = await window.vortexDesktop?.getPaidGames?.({ force });
+    const response = await window.vortexDesktop?.getPaidGames?.({ force: true });
     if (requestId !== paidRequestId) return;
-    paidGames = Array.isArray(list) ? list : [];
+    // The handler returns { games, complete }; older builds returned a bare array.
+    const list = Array.isArray(response) ? response : (Array.isArray(response?.games) ? response.games : []);
+    paidExhausted = Array.isArray(response) ? false : response?.complete === true;
+    paidGames = list;
     paidStatus = 'success';
+    if (append) paidVisibleCount = Math.min(paidGames.length, paidVisibleCount + PAID_PAGE_SIZE);
   } catch {
     if (requestId !== paidRequestId) return;
     paidStatus = 'error';
+  } finally {
+    paidScanning = false;
   }
   if (currentView === 'catalog' && activeAccess === 'paid') renderPage();
+}
+
+// "Show more": reveal buffered games instantly, then keep scanning for new ones
+// in the background so the list grows on every click.
+function showMorePaidGames() {
+  const hidden = paidGames.length - paidVisibleCount;
+  if (hidden > 0) {
+    paidVisibleCount = Math.min(paidGames.length, paidVisibleCount + PAID_PAGE_SIZE);
+    renderPage();
+  }
+  // Nothing buffered (or the buffer just ran out): run the next scan.
+  if (paidGames.length - paidVisibleCount <= 0) void scanPaidGames(true);
+}
+
+// Entry point used when the paid filter is selected.
+async function loadPaidGames(force = false) {
+  if (paidGames.length && !force) {
+    // Cheap refresh first: the main process merges games indexed while browsing.
+    try {
+      const response = await window.vortexDesktop?.getPaidGames?.({ force: false });
+      const list = Array.isArray(response) ? response : (Array.isArray(response?.games) ? response.games : []);
+      if (list.length > paidGames.length) {
+        paidGames = list;
+        paidExhausted = Array.isArray(response) ? paidExhausted : response?.complete === true;
+        if (currentView === 'catalog' && activeAccess === 'paid') renderPage();
+      }
+    } catch { /* keep the current list */ }
+    // Then, occasionally, run a real scan so the index keeps growing.
+    if (Date.now() - paidLastScanAt >= PAID_REFRESH_MS) await scanPaidGames(true);
+    return;
+  }
+  await scanPaidGames(false);
 }
 
 function renderFavorites() {
@@ -3145,7 +3176,7 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'open-social-link') { window.vortexDesktop?.openExternalUrl?.(action.dataset.url); return; }
     if (action.dataset.action === 'toggle-detail-description') { detailDescriptionExpanded = !detailDescriptionExpanded; renderPage(); return; }
     if (action.dataset.action === 'favorites-more') { favoritesVisibleCount += 24; renderPage(); return; }
-    if (action.dataset.action === 'paid-more') { paidVisibleCount += PAID_PAGE_SIZE; renderPage(); return; }
+    if (action.dataset.action === 'paid-more') { showMorePaidGames(); return; }
     if (action.dataset.action === 'paid-rescan') { void loadPaidGames(true); return; }
     if (action.dataset.action === 'reset-hotkeys') { preferences.hotkeys = {}; savePreferences(); showToast(t('settings.hotkeys.resetDone')); renderPage(); return; }
     if (action.dataset.action === 'check-api-status') { void checkApiStatus(); return; }

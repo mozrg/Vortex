@@ -634,7 +634,10 @@ async function getGameDetailsByUniverse(universeIds) {
       return rows.map((row) => mapGame(row, thumbnails.get(String(row.id))));
     } catch { return []; }
   }));
-  return results.flat();
+  const games = results.flat();
+  // Every priced game seen here feeds the paid index (see recordPaidGames).
+  void recordPaidGames(games);
+  return games;
 }
 
 function placeReleaseLogPath() { return path.join(app.getPath('userData'), 'place-updates.json'); }
@@ -726,23 +729,43 @@ ipcMain.handle('games:store-search', async (_event, request = {}) => {
   return true;
 });
 
-// Paid experiences: Roblox exposes no "paid only" catalog or price filter, so
-// Vortex keeps its own growing index. Each scan searches a rotating slice of
-// paid-leaning queries, follows nextPageToken, and merges every priced game it
-// finds into a JSON file, so repeated scans keep adding new titles.
+// Paid experiences: Roblox exposes no "paid only" catalog, no price filter and
+// no paid sort — verified against explore-api, catalog and omni-search. Vortex
+// therefore builds its own index from two sources:
+//   1. scans of the search terms that actually surface paid games (rotating,
+//      with deep pagination), and
+//   2. every game the user browses normally, so the list grows with usage.
 const PAID_QUERY_POOL = [
-  'paid access', 'early access', 'premium', 'paid', 'robux', 'buy game',
-  'alpha access', 'beta access', 'supporter', 'paid experience', 'premium access',
-  'vip access', 'entry fee', 'paid entry', 'paid game', 'paid only',
-  'demo', 'playtest', 'support the developer', 'early alpha', 'closed beta',
-  'open beta', 'early release', 'paid alpha', 'buy access', 'purchase access',
-  'paid beta', 'early bird', 'founder pack', 'access pass', 'pay to play',
-  'premium experience', 'alpha test', 'beta test', 'early testing'
+  'paid access', 'early access', 'alpha access', 'beta access',
+  'paid', 'paid entry', 'supporter', 'entry fee',
+  'paid experience', 'premium access', 'vip access', 'paid game'
 ];
-let paidGamesCache = { at: 0, data: [] };
+// Queries per scan and pages per query: deep enough to reach the tail, small
+// enough that one "show more" stays responsive.
+const PAID_QUERIES_PER_SCAN = 4;
+const PAID_MAX_PAGES_PER_QUERY = 6;
+
+let paidScanCursor = 0;
+let paidGamesCache = { at: 0, data: [], complete: false };
 const PAID_CACHE_TTL = 10 * 60 * 1000;
 
 function paidIndexPath() { return path.join(app.getPath('userData'), 'paid-games.json'); }
+function paidCursorPath() { return path.join(app.getPath('userData'), 'paid-cursor.json'); }
+
+async function readPaidCursor() {
+  try {
+    const raw = JSON.parse(await fsp.readFile(paidCursorPath(), 'utf8'));
+    return {
+      cursor: Number.isFinite(raw?.cursor) ? Number(raw.cursor) : paidScanCursor,
+      progress: Number.isFinite(raw?.progress) ? Number(raw.progress) : 0
+    };
+  } catch { return { cursor: paidScanCursor, progress: 0 }; }
+}
+
+async function writePaidCursor(cursor, progress) {
+  paidScanCursor = cursor;
+  try { await fsp.writeFile(paidCursorPath(), JSON.stringify({ cursor, progress, updatedAt: Date.now() }), 'utf8'); } catch { /* best effort */ }
+}
 
 async function readPaidIndex() {
   try {
@@ -753,14 +776,41 @@ async function readPaidIndex() {
 
 async function writePaidIndex(games) {
   try {
-    await fsp.writeFile(paidIndexPath(), JSON.stringify({ updatedAt: Date.now(), games: games.slice(0, 400) }), 'utf8');
+    await fsp.writeFile(paidIndexPath(), JSON.stringify({ updatedAt: Date.now(), games: games.slice(0, 1000) }), 'utf8');
   } catch { /* index writes never break the section */ }
 }
 
+// Opportunistic indexing: any priced game seen while browsing is remembered,
+// so the paid list keeps growing from normal use.
+let paidIndexWriteTimer = null;
+const paidSeen = new Map();
+async function recordPaidGames(games) {
+  const priced = (Array.isArray(games) ? games : []).filter((game) => game && Number(game.price) > 0 && game.availability !== 'unavailable');
+  if (!priced.length) return;
+  for (const game of priced) paidSeen.set(String(game.id), game);
+  if (paidIndexWriteTimer) return;
+  paidIndexWriteTimer = setTimeout(async () => {
+    paidIndexWriteTimer = null;
+    if (!paidSeen.size) return;
+    const stored = await readPaidIndex();
+    const merged = new Map();
+    for (const game of stored) if (game && game.id) merged.set(String(game.id), game);
+    for (const [id, game] of paidSeen) merged.set(id, game);
+    paidSeen.clear();
+    const all = [...merged.values()].filter((game) => Number(game.price) > 0).sort((a, b) => Number(a.price) - Number(b.price));
+    await writePaidIndex(all);
+  }, 1500);
+}
+
+// One scan pass over the next slice of the query pool.
 async function collectPaidUniverseIds() {
-  // Rotate through the pool so consecutive scans surface different games.
-  const shuffled = [...PAID_QUERY_POOL].sort(() => Math.random() - 0.5);
-  const queries = shuffled.slice(0, 18);
+  const state = await readPaidCursor();
+  const total = PAID_QUERY_POOL.length;
+  const queries = [];
+  for (let step = 0; step < PAID_QUERIES_PER_SCAN; step += 1) queries.push(PAID_QUERY_POOL[(state.cursor + step) % total]);
+  const nextCursor = (state.cursor + PAID_QUERIES_PER_SCAN) % total;
+  const progress = state.progress + PAID_QUERIES_PER_SCAN;
+
   const universeIds = new Set();
   const fetchPage = async (query, pageToken) => {
     const url = new URL('https://apis.roblox.com/search-api/omni-search');
@@ -772,7 +822,7 @@ async function collectPaidUniverseIds() {
   };
   const runQuery = async (query) => {
     let token = null;
-    for (let page = 0; page < 3; page += 1) {
+    for (let page = 0; page < PAID_MAX_PAGES_PER_QUERY; page += 1) {
       const payload = await fetchPage(query, token);
       if (!payload) return;
       for (const group of (Array.isArray(payload.searchResults) ? payload.searchResults : [])) {
@@ -786,31 +836,45 @@ async function collectPaidUniverseIds() {
       if (!token) return;
     }
   };
-  for (let index = 0; index < queries.length; index += 5) {
-    await Promise.all(queries.slice(index, index + 5).map(runQuery));
-  }
-  return [...universeIds];
+  await Promise.all(queries.map(runQuery));
+  // A "full pass" means every query in the pool has been scanned at least once.
+  const wrapped = progress >= total;
+  await writePaidCursor(nextCursor, wrapped ? 0 : progress);
+  return { universeIds: [...universeIds], cursor: nextCursor, wrapped };
 }
 
 ipcMain.handle('games:paid', async (_event, request = {}) => {
   const force = request && request.force === true;
-  if (!force && paidGamesCache.data.length && Date.now() - paidGamesCache.at < PAID_CACHE_TTL) {
-    return paidGamesCache.data;
-  }
   const stored = await readPaidIndex();
-  const universeIds = await collectPaidUniverseIds();
-  const fresh = universeIds.length ? await getGameDetailsByUniverse(universeIds.slice(0, 1200)) : [];
+  const cacheFresh = paidGamesCache.data.length && Date.now() - paidGamesCache.at < PAID_CACHE_TTL;
+
+  // A fresh cache skips the network scan, but still merges the index: games the
+  // user browsed since the last scan must appear without waiting for the TTL.
+  if (!force && cacheFresh) {
+    const merged = new Map();
+    for (const game of stored) if (game && game.id) merged.set(String(game.id), game);
+    for (const game of paidGamesCache.data) if (game && game.id) merged.set(String(game.id), game);
+    const all = [...merged.values()].filter((game) => Number(game.price) > 0).sort((a, b) => Number(a.price) - Number(b.price));
+    return { games: all, complete: paidGamesCache.complete === true };
+  }
+
+  const scan = await collectPaidUniverseIds();
+  const fresh = scan.universeIds.length ? await getGameDetailsByUniverse(scan.universeIds.slice(0, 1200)) : [];
   const priced = fresh.filter((game) => Number(game.price) > 0 && game.availability !== 'unavailable');
-  // Merge with everything found by earlier scans, newest price winning.
+  // Merge with everything found by earlier scans and by normal browsing.
+  const knownIds = new Set(stored.map((game) => String(game.id)));
   const merged = new Map();
   for (const game of stored) if (game && game.id) merged.set(String(game.id), game);
   for (const game of priced) merged.set(String(game.id), game);
   const all = [...merged.values()]
     .filter((game) => Number(game.price) > 0)
     .sort((a, b) => Number(a.price) - Number(b.price));
+  const addedNew = priced.some((game) => !knownIds.has(String(game.id)));
   if (priced.length) await writePaidIndex(all);
-  if (all.length) paidGamesCache = { at: Date.now(), data: all };
-  return all;
+  // Exhausted once every query has been scanned and a pass added nothing new.
+  const complete = scan.wrapped && !addedNew;
+  if (all.length) paidGamesCache = { at: Date.now(), data: all, complete };
+  return { games: all, complete };
 });
 
 ipcMain.handle('shell:open-external', async (_event, value) => {

@@ -78,6 +78,8 @@ const preferenceDefaults = {
   discordPresence: false, friendFavoriteAlerts: false,
   diskCache: true, lazyImages: true, onlineHistoryLimit: 'week', trayMiniPlayer: true,
   catalogGroupByGenre: false,
+  // Ids of announcements already seen; drives the unread dot on the bell.
+  readAnnouncements: [], announcementsSeeded: false,
   hotkeys: {}
 };
 
@@ -2354,8 +2356,23 @@ function renderUpdateSettings() {
   </section>`;
 }
 
-let discordStatusCache = null;
+function renderAnnouncementSettings() {
+  const unread = unreadAnnouncements().length;
+  const sourceLabel = announcementSource === 'network' ? t('notifications.sourceNetwork')
+    : announcementSource === 'cache' ? t('notifications.offline')
+      : announcementSource === 'builtin' ? t('notifications.local')
+        : '—';
+  return `<section class="settings-card" id="announcement-settings-card"><div class="settings-card-head"><div><h2>${t('notifications.settingsTitle')}</h2><p>${t('notifications.settingsBody')}</p></div>${icon('bell', 18)}</div>
+    <div class="update-settings-meta">
+      <span><small>${t('notifications.totalLabel')}</small><strong>${announcementItems.length}</strong></span>
+      <span><small>${t('notifications.unreadLabel')}</small><strong>${unread}</strong></span>
+      <span><small>${t('notifications.sourceLabel')}</small><strong>${escapeHtml(sourceLabel)}</strong></span>
+    </div>
+    <button class="ghost-button" data-action="refresh-announcements">${icon('rotate', 13)} ${t('notifications.refresh')}</button>
+  </section>`;
+}
 
+let discordStatusCache = null;
 function discordStatusText() {
   const status = discordStatusCache;
   if (!status) return preferences.discordPresence ? t('discord.status.connecting') : t('discord.status.off');
@@ -2490,7 +2507,7 @@ function renderSettings() {
           : preferences.settingsTab === 'general' ? renderGeneralSettings()
             : preferences.settingsTab === 'integrations' ? renderIntegrationSettings()
               : preferences.settingsTab === 'data' ? renderDataSettings()
-                : preferences.settingsTab === 'version' ? renderUpdateSettings()
+                : preferences.settingsTab === 'version' ? `${renderUpdateSettings()}${renderAnnouncementSettings()}`
                   : renderAccentSettings();
   return `${pageHeading(t('page.settings.eyebrow'), t('page.settings.title'), t('page.settings.description'))}
     <div class="settings-layout">${settingsTabs()}<div class="settings-panel">${panel}</div></div>`;
@@ -2687,8 +2704,192 @@ function showFriendsWarning(pendingUsername) {
   });
 }
 
+/* ---------------------------------------------------------------- announcements
+ * The feed comes from a public Gist that is edited from a local console, so new
+ * announcements reach users without shipping a build. Unread state is stored in
+ * preferences, keyed by announcement id.
+ * ---------------------------------------------------------------------------- */
+
+let announcementItems = [];
+let announcementSource = null;
+let announcementsLoaded = false;
+let announcementTimer = null;
+let announcementPanel = null;
+
+function unreadAnnouncements() {
+  const read = Array.isArray(preferences.readAnnouncements) ? preferences.readAnnouncements : [];
+  return announcementItems.filter((item) => !read.includes(item.id));
+}
+
+function syncBellIndicator() {
+  const button = document.querySelector('[data-ui-part="notifications"]');
+  if (!button) return;
+  const count = unreadAnnouncements().length;
+  button.classList.toggle('has-unread', count > 0);
+  button.title = count > 0 ? t('notifications.unread', { count }) : t('notifications.title');
+}
+
+function formatAnnouncementDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const days = Math.round((Date.now() - date.getTime()) / 86400000);
+  if (days <= 0) return t('notifications.today');
+  if (days === 1) return t('notifications.yesterday');
+  if (days < 7) return t('notifications.daysAgo', { count: days });
+  return date.toLocaleDateString(preferences.language === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function renderAnnouncementList(highlightIds) {
+  if (!announcementPanel) return;
+  const list = announcementPanel.querySelector('.announcements-list');
+  const count = announcementPanel.querySelector('.announcements-count');
+  const source = announcementPanel.querySelector('.announcements-source');
+  if (!list) return;
+
+  // While the panel is open the unread highlight follows the snapshot taken at
+  // open time, so marking items read does not erase what the user is reading.
+  const read = Array.isArray(preferences.readAnnouncements) ? preferences.readAnnouncements : [];
+  const isUnread = (item) => (highlightIds ? highlightIds.has(item.id) : !read.includes(item.id));
+
+  const unreadCount = announcementItems.filter(isUnread).length;
+  if (count) {
+    count.textContent = unreadCount > 0 ? String(unreadCount) : '';
+    count.hidden = unreadCount === 0;
+  }
+  if (source) {
+    // Say where the feed came from only when it is not live: a stale note
+    // explains itself, and a built-in list means the gist is not configured yet.
+    source.textContent = announcementSource === 'network' ? ''
+      : announcementSource === 'cache' ? t('notifications.offline')
+      : announcementSource === 'builtin' ? t('notifications.local')
+      : '';
+  }
+
+  list.replaceChildren();
+  if (!announcementItems.length) {
+    const empty = document.createElement('div');
+    empty.className = 'announcements-empty';
+    empty.textContent = t('notifications.empty');
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const item of announcementItems) {
+    const row = document.createElement('article');
+    row.className = `announcement level-${item.level}`;
+    if (isUnread(item)) row.classList.add('is-unread');
+
+    const head = document.createElement('div');
+    head.className = 'announcement-head';
+    const title = document.createElement('span');
+    title.className = 'announcement-title';
+    title.textContent = item.title;
+    head.appendChild(title);
+    const date = document.createElement('span');
+    date.className = 'announcement-date';
+    date.textContent = formatAnnouncementDate(item.date);
+    head.appendChild(date);
+
+    row.appendChild(head);
+    if (item.body) {
+      const body = document.createElement('p');
+      body.className = 'announcement-body';
+      body.textContent = item.body;
+      row.appendChild(body);
+    }
+    if (item.url) {
+      const link = document.createElement('button');
+      link.type = 'button';
+      link.className = 'announcement-link';
+      link.textContent = t('notifications.open');
+      link.addEventListener('click', () => window.vortexDesktop?.openAnnouncementLink?.(item.url));
+      row.appendChild(link);
+    }
+    list.appendChild(row);
+  }
+}
+
+function closeAnnouncementsPanel() {
+  if (!announcementPanel) return;
+  announcementPanel.remove();
+  announcementPanel = null;
+}
+
+function markAnnouncementsRead() {
+  if (!announcementItems.length) return;
+  const ids = announcementItems.map((item) => item.id);
+  const read = new Set(Array.isArray(preferences.readAnnouncements) ? preferences.readAnnouncements : []);
+  let changed = false;
+  for (const id of ids) if (!read.has(id)) { read.add(id); changed = true; }
+  if (!changed) return;
+  preferences.readAnnouncements = [...read].slice(-200); // keep the file small
+  preferences.announcementsSeeded = true;
+  savePreferences();
+  syncBellIndicator();
+}
+
+function toggleAnnouncementsPanel() {
+  if (announcementPanel) { closeAnnouncementsPanel(); return; }
+
+  const panel = document.createElement('section');
+  panel.className = 'announcements-panel';
+  panel.innerHTML = `
+    <header class="announcements-head">
+      <h2>${escapeHtml(t('notifications.title'))}</h2>
+      <span class="announcements-count" hidden></span>
+      <span class="announcements-source"></span>
+      <button type="button" class="announcements-close" aria-label="${escapeHtml(t('common.close'))}">✕</button>
+    </header>
+    <div class="announcements-list"></div>`;
+  panel.querySelector('.announcements-close').addEventListener('click', closeAnnouncementsPanel);
+  document.body.appendChild(panel);
+  announcementPanel = panel;
+
+  renderAnnouncementList();
+  // Snapshot what was unread BEFORE marking, so the dots stay visible for this
+  // viewing session instead of vanishing the instant the panel opens.
+  const highlight = new Set(unreadAnnouncements().map((item) => item.id));
+  markAnnouncementsRead();
+  renderAnnouncementList(highlight);
+
+  // Refresh in the background; only genuinely new items gain dots.
+  loadAnnouncements({ force: true }).then(() => {
+    renderAnnouncementList(highlight);
+  });
+}
+
+async function loadAnnouncements(options = {}) {
+  const load = window.vortexDesktop?.listAnnouncements;
+  if (typeof load !== 'function') return;
+  try {
+    const result = await load(options.force ? { force: true } : undefined);
+    const items = Array.isArray(result?.items) ? result.items : [];
+    announcementItems = items;
+    announcementSource = result?.source || null;
+    announcementsLoaded = true;
+
+    // First ever run: adopt everything as read so a backlog does not fire a
+    // toast storm on install. Later notes still notify.
+    if (!preferences.announcementsSeeded) {
+      preferences.readAnnouncements = items.map((item) => item.id).slice(-200);
+      preferences.announcementsSeeded = true;
+      savePreferences();
+      syncBellIndicator();
+      return;
+    }
+    syncBellIndicator();
+  } catch { /* the panel simply stays empty */ }
+}
+
+function startAnnouncementPolling() {
+  if (announcementTimer) return;
+  announcementTimer = window.setInterval(() => loadAnnouncements({ force: true }), 5 * 60 * 1000);
+}
+
 function showToast(message, action) {
   const region = document.getElementById('toast-region');
+  if (!region) return;
   if (toastTimer) window.clearTimeout(toastTimer);
   toastTimer = null;
   region.innerHTML = '';
@@ -3118,6 +3319,10 @@ function setView(view) {
 document.addEventListener('click', async (event) => {
   const target = event.target instanceof Element ? event.target : event.target?.parentElement;
   if (!target) return;
+  // Any click that is not inside the panel or on the bell dismisses it.
+  if (announcementPanel && !target.closest('.announcements-panel') && !target.closest('[data-action="notifications"]')) {
+    closeAnnouncementsPanel();
+  }
   const move = target.closest('[data-ui-move]');
   if (move) {
     moveNavItem(move.dataset.uiMove, move.dataset.direction);
@@ -3261,7 +3466,20 @@ document.addEventListener('click', async (event) => {
         }
       }
     }
-    if (action.dataset.action === 'notifications') showToast(t('toast.notifications'));
+    if (action.dataset.action === 'notifications') toggleAnnouncementsPanel();
+    if (action.dataset.action === 'refresh-announcements') {
+      action.disabled = true;
+      loadAnnouncements({ force: true }).then(() => {
+        const card = document.getElementById('announcement-settings-card');
+        if (card) card.outerHTML = renderAnnouncementSettings();
+        const fresh = document.getElementById('announcement-settings-card');
+        if (fresh) fresh.querySelector('[data-action="refresh-announcements"]')?.removeAttribute('disabled');
+        showToast(t('notifications.refreshed', { count: announcementItems.length }));
+      }).catch(() => {
+        action.disabled = false;
+        showToast(t('notifications.refreshError'));
+      });
+    }
     if (action.dataset.action === 'retry-update') {
       if (retryUpdateBusy) return;
       retryUpdateBusy = true;
@@ -3958,6 +4176,12 @@ document.addEventListener('keydown', (event) => {
     closeCommandPalette();
     return;
   }
+  // ...and the announcements panel, before any other Escape handling.
+  if (event.key === 'Escape' && announcementPanel) {
+    event.preventDefault();
+    closeAnnouncementsPanel();
+    return;
+  }
   const openMenu = document.querySelector('[data-custom-select] .custom-select-menu:not([hidden])');
   if (event.key === 'Escape' && openMenu) {
     event.preventDefault();
@@ -4226,6 +4450,10 @@ hydrateFeaturedGames();
 loadDiscoveryCatalog(activeDiscoverySort);
 applyDiscordPresence();
 if (preferences.discordPresence) refreshDiscordStatus();
+loadAnnouncements();
+startAnnouncementPolling();
+// Coming back from the tray is the moment a user expects fresh news.
+window.addEventListener('focus', () => loadAnnouncements());
 }
 
 bootVortex();

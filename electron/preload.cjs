@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('vortexDesktop', {
   getDiscordStatus: () => ipcRenderer.invoke('discord:status'),
   setDiscordActivity: (activity) => ipcRenderer.invoke('discord:set-activity', activity),
   notifyFriendPlaying: (payload) => ipcRenderer.invoke('notifications:friend-playing', payload),
+  listAnnouncements: (request) => ipcRenderer.invoke('announcements:list', request),
+  openAnnouncementLink: (url) => ipcRenderer.invoke('announcements:open', url),
   discoverGames: (request) => ipcRenderer.invoke('games:discover', request),
   getFeaturedGames: (placeIds) => ipcRenderer.invoke('games:featured', placeIds),
   clearSearchCache: () => ipcRenderer.invoke('games:clear-cache'),

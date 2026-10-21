@@ -177,7 +177,57 @@ body.light-theme .search-page-field { background: #fff; box-shadow: 0 12px 30px 
 .search-field input::placeholder { color: #777a87; }
 .search-field kbd { flex: 0 0 auto; padding: 3px 5px; border: 1px solid rgba(255,255,255,.09); border-radius: 5px; color: #777a86; font: 9px var(--font-ui); white-space: nowrap; }
 .notification-button { position: relative; }
-.notification-button i { position: absolute; top: 7px; right: 7px; width: 5px; height: 5px; border: 1px solid var(--bg); border-radius: 50%; background: var(--accent); }
+/* The dot only means "unread" — it is hidden until an announcement arrives. */
+.notification-button i { position: absolute; top: 7px; right: 7px; width: 5px; height: 5px; border: 1px solid var(--bg); border-radius: 50%; background: var(--accent); display: none; }
+.notification-button.has-unread i { display: block; }
+
+/* ---------- Announcements panel ---------- */
+
+.announcements-panel {
+  position: fixed;
+  z-index: 40;
+  top: 62px;
+  right: clamp(18px, 2.6vw, 42px);
+  display: flex;
+  width: min(390px, calc(100vw - 36px));
+  max-height: min(560px, calc(100vh - 96px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, .6);
+}
+.announcements-panel[hidden] { display: none; }
+
+.announcements-head { display: flex; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.announcements-head h2 { margin: 0; font: 700 14px var(--font-display); letter-spacing: -.02em; }
+.announcements-count { padding: 3px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: 11px; font-weight: 700; }
+.announcements-source { margin-left: auto; color: var(--subtle); font: 10px var(--font-ui); }
+.announcements-close { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
+.announcements-close:hover { border-color: var(--line-strong); color: var(--text); }
+
+.announcements-list { overflow-y: auto; padding: 8px; }
+.announcements-empty { padding: 34px 20px; color: var(--subtle); font-size: 13px; text-align: center; }
+
+.announcement {
+  position: relative;
+  padding: 14px 16px 14px 18px;
+  border-radius: 12px;
+  transition: background-color .16s;
+}
+.announcement:hover { background: var(--surface-3); }
+/* Level stripe on the left edge: colour carries the meaning. */
+.announcement::before { content: ''; position: absolute; top: 15px; bottom: 15px; left: 6px; width: 2px; border-radius: 2px; background: var(--accent); }
+.announcement.level-success::before { background: #4ade80; }
+.announcement.level-warning::before { background: #fbbf24; }
+.announcement-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 5px; }
+.announcement-title { font-size: 13.5px; font-weight: 600; letter-spacing: -.01em; }
+.announcement-date { margin-left: auto; flex: 0 0 auto; color: var(--subtle); font-size: 10.5px; }
+.announcement-body { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+.announcement-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 9px; color: var(--accent-text); font-size: 12px; font-weight: 600; background: none; border: 0; padding: 0; cursor: pointer; }
+.announcement-link:hover { text-decoration: underline; }
+.announcement.is-unread .announcement-title::after { content: ''; display: inline-block; width: 5px; height: 5px; margin-left: 7px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
 .avatar-small { width: 32px; height: 32px; cursor: pointer; }
 .page-content { width: 100%; max-width: 1520px; min-height: calc(100vh - var(--window-titlebar-height) - 76px); padding: 34px clamp(18px, 2.6vw, 42px) 56px; margin: 0 auto; }
 .eyebrow { display: flex; align-items: center; gap: 8px; color: var(--accent-text); font-size: 9px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }

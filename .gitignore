@@ -6,3 +6,6 @@ npm-debug.log*
 dist-update-test/
 *.TMP
 ~$*
+
+# Personal notification console (holds no secrets, but is machine-local)
+tools/notify-console.local.*

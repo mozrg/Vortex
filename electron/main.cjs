@@ -1780,6 +1780,149 @@ ipcMain.handle('discord:set-activity', (_event, activity) => {
   return { connected: discordReady, error: discordLastError };
 });
 
+/* ---------------------------------------------------------------------------
+ * Announcements
+ *
+ * Authored from a local console (tools/notify-console.cjs) that writes a single
+ * public Gist. The launcher only ever reads it, so announcements ship without a
+ * new build. Three cache layers keep the feed available offline:
+ *   network -> userData/announcements.json -> built-in list in this file.
+ * A file watcher and a 5-minute timer keep it current while the app is open.
+ * ------------------------------------------------------------------------- */
+
+// Fill in after creating the public gist; empty disables remote announcements.
+const ANNOUNCEMENTS_GIST = process.env.VORTEX_ANNOUNCEMENTS_GIST || '';
+const ANNOUNCEMENT_REFRESH_MS = 5 * 60 * 1000;
+const ANNOUNCEMENT_TIMEOUT_MS = 10000;
+
+// Shown when there is no gist configured, no network and no disk cache.
+const BUILT_IN_ANNOUNCEMENTS = [
+  {
+    id: '2026-10-21-paid-games',
+    title: 'Раздел платных игр',
+    body: 'Платные игры теперь загружаются постранично, как и остальные списки.',
+    level: 'info',
+    date: '2026-10-21T12:00:00Z'
+  }
+];
+
+let announcementCache = null;
+
+function announcementCachePath() {
+  return path.join(app.getPath('userData'), 'announcements.json');
+}
+
+function gistRawUrl(gistId) {
+  // The ?t= stamp defeats the CDN's ~5 minute cache on gist.githubusercontent.com,
+  // otherwise a fresh announcement can stay invisible right after publishing.
+  return `https://gist.githubusercontent.com/${encodeURIComponent(gistId)}/raw/notifications.json?t=${Date.now()}`;
+}
+
+// `current` is the running version; a note can be gated behind minVersion so
+// people updating later never see stale news.
+function normalizeAnnouncement(entry, currentVersion) {
+  if (!entry || typeof entry !== 'object') return null;
+  const id = String(entry.id || '').trim();
+  const title = String(entry.title || '').trim();
+  if (!id || !title) return null;
+
+  const minVersion = String(entry.minVersion || '').trim();
+  if (minVersion) {
+    const required = numericVersion(minVersion);
+    const running = numericVersion(currentVersion);
+    // Hide the note when this build predates the version it talks about.
+    if (required && running && isNewerVersion(minVersion, currentVersion)) return null;
+  }
+
+  const expiresAt = entry.expiresAt ? new Date(entry.expiresAt) : null;
+  if (expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt < new Date()) return null;
+
+  const level = ['info', 'success', 'warning'].includes(entry.level) ? entry.level : 'info';
+  const url = /^https?:\/\//i.test(String(entry.url || '')) ? String(entry.url) : null;
+
+  return {
+    id,
+    title: title.slice(0, 120),
+    body: String(entry.body || '').slice(0, 800),
+    level,
+    url,
+    date: entry.date ? String(entry.date).slice(0, 40) : null
+  };
+}
+
+function normalizeAnnouncementList(list, currentVersion) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((entry) => normalizeAnnouncement(entry, currentVersion))
+    .filter(Boolean)
+    .sort((left, right) => String(right.date || '').localeCompare(String(left.date || '')));
+}
+
+async function readAnnouncementsFromDisk() {
+  try {
+    const parsed = JSON.parse(await fsp.readFile(announcementCachePath(), 'utf8'));
+    return Array.isArray(parsed) ? parsed : (Array.isArray(parsed.items) ? parsed.items : null);
+  } catch { return null; }
+}
+
+async function writeAnnouncementsToDisk(items) {
+  try {
+    await fsp.mkdir(path.dirname(announcementCachePath()), { recursive: true });
+    await fsp.writeFile(announcementCachePath(), JSON.stringify({ version: 1, items, fetchedAt: new Date().toISOString() }, null, 2), 'utf8');
+  } catch { /* a failed cache write must never break the feed */ }
+}
+
+async function fetchAnnouncementsFromGist() {
+  if (!ANNOUNCEMENTS_GIST) return null;
+  try {
+    const response = await fetch(gistRawUrl(ANNOUNCEMENTS_GIST), {
+      headers: { Accept: 'application/json', 'Cache-Control': 'no-cache', 'User-Agent': 'Vortex-Place-Launcher' },
+      signal: AbortSignal.timeout(ANNOUNCEMENT_TIMEOUT_MS)
+    });
+    if (!response.ok) return null;
+    const parsed = await response.json();
+    const items = Array.isArray(parsed) ? parsed : parsed.items;
+    return Array.isArray(items) ? items : null;
+  } catch { return null; }
+}
+
+// Returns the feed plus where it came from, so the UI can say "offline copy".
+async function loadAnnouncements({ force = false } = {}) {
+  const currentVersion = app.getVersion();
+  const fresh = announcementCache && !force && Date.now() - announcementCache.at < ANNOUNCEMENT_REFRESH_MS;
+
+  if (!fresh) {
+    const remote = await fetchAnnouncementsFromGist();
+    if (remote) {
+      announcementCache = { items: normalizeAnnouncementList(remote, currentVersion), at: Date.now(), source: 'network' };
+      await writeAnnouncementsToDisk(remote);
+      return announcementCache;
+    }
+    if (announcementCache) return announcementCache; // keep the last good copy
+    const disk = await readAnnouncementsFromDisk();
+    if (disk) {
+      announcementCache = { items: normalizeAnnouncementList(disk, currentVersion), at: Date.now(), source: 'cache' };
+      return announcementCache;
+    }
+    announcementCache = { items: normalizeAnnouncementList(BUILT_IN_ANNOUNCEMENTS, currentVersion), at: Date.now(), source: 'builtin' };
+    return announcementCache;
+  }
+
+  return announcementCache;
+}
+
+ipcMain.handle('announcements:list', async (_event, request = {}) => {
+  const result = await loadAnnouncements({ force: Boolean(request && request.force) });
+  return { items: result.items, source: result.source };
+});
+
+ipcMain.handle('announcements:open', (_event, target) => {
+  const url = String(target || '');
+  if (!/^https?:\/\//i.test(url)) return false;
+  shell.openExternal(url).catch(() => {});
+  return true;
+});
+
 // Fires a Windows toast when a friend starts playing one of your favourites.
 ipcMain.handle('notifications:friend-playing', (_event, payload = {}) => {
   if (!Notification.isSupported()) return false;

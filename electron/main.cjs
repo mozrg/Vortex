@@ -1783,19 +1783,21 @@ ipcMain.handle('discord:set-activity', (_event, activity) => {
 /* ---------------------------------------------------------------------------
  * Announcements
  *
- * Authored from a local console (tools/notify-console.cjs) that writes a single
- * public Gist. The launcher only ever reads it, so announcements ship without a
- * new build. Three cache layers keep the feed available offline:
+ * Authored from site/admin.html, which commits site/notifications.json to the
+ * repository; GitHub Pages then serves it. The launcher only ever reads that
+ * file, so announcements ship without a new build. Three cache layers keep the
+ * feed available offline:
  *   network -> userData/announcements.json -> built-in list in this file.
- * A file watcher and a 5-minute timer keep it current while the app is open.
+ * A 5-minute timer refreshes it while the app is open.
  * ------------------------------------------------------------------------- */
 
-// Fill in after creating the public gist; empty disables remote announcements.
-const ANNOUNCEMENTS_GIST = process.env.VORTEX_ANNOUNCEMENTS_GIST || '';
+// Pages URL for the published file. Override for forks or local testing.
+const ANNOUNCEMENTS_URL = process.env.VORTEX_ANNOUNCEMENTS_URL
+  || 'https://mozrg.github.io/Vortex/site/notifications.json';
 const ANNOUNCEMENT_REFRESH_MS = 5 * 60 * 1000;
 const ANNOUNCEMENT_TIMEOUT_MS = 10000;
 
-// Shown when there is no gist configured, no network and no disk cache.
+// Shown when there is no network and no disk cache yet.
 const BUILT_IN_ANNOUNCEMENTS = [
   {
     id: '2026-10-21-paid-games',
@@ -1812,10 +1814,10 @@ function announcementCachePath() {
   return path.join(app.getPath('userData'), 'announcements.json');
 }
 
-function gistRawUrl(gistId) {
-  // The ?t= stamp defeats the CDN's ~5 minute cache on gist.githubusercontent.com,
-  // otherwise a fresh announcement can stay invisible right after publishing.
-  return `https://gist.githubusercontent.com/${encodeURIComponent(gistId)}/raw/notifications.json?t=${Date.now()}`;
+// The ?t= stamp defeats both the Pages CDN and any intermediate cache, so a
+// fresh announcement is visible immediately after the commit lands.
+function announcementRequestUrl() {
+  return `${ANNOUNCEMENTS_URL}?t=${Date.now()}`;
 }
 
 // `current` is the running version; a note can be gated behind minVersion so
@@ -1872,10 +1874,9 @@ async function writeAnnouncementsToDisk(items) {
   } catch { /* a failed cache write must never break the feed */ }
 }
 
-async function fetchAnnouncementsFromGist() {
-  if (!ANNOUNCEMENTS_GIST) return null;
+async function fetchAnnouncementsFromNetwork() {
   try {
-    const response = await fetch(gistRawUrl(ANNOUNCEMENTS_GIST), {
+    const response = await fetch(announcementRequestUrl(), {
       headers: { Accept: 'application/json', 'Cache-Control': 'no-cache', 'User-Agent': 'Vortex-Place-Launcher' },
       signal: AbortSignal.timeout(ANNOUNCEMENT_TIMEOUT_MS)
     });
@@ -1892,7 +1893,7 @@ async function loadAnnouncements({ force = false } = {}) {
   const fresh = announcementCache && !force && Date.now() - announcementCache.at < ANNOUNCEMENT_REFRESH_MS;
 
   if (!fresh) {
-    const remote = await fetchAnnouncementsFromGist();
+    const remote = await fetchAnnouncementsFromNetwork();
     if (remote) {
       announcementCache = { items: normalizeAnnouncementList(remote, currentVersion), at: Date.now(), source: 'network' };
       await writeAnnouncementsToDisk(remote);

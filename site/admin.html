@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#0b0c10" />
+    <!-- The page talks only to api.github.com. No secrets are shipped in it:
+         the access token is typed by the author and kept in this browser. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'none'" />
+    <title>Vortex — уведомления</title>
+    <link rel="icon" href="assets/vortex-logo.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+    <style>
+      :root {
+        --bg: #0b0c10; --surface: #101218; --surface-2: #14161e; --surface-3: #191c25;
+        --line: rgba(255,255,255,.07); --line-strong: rgba(255,255,255,.13);
+        --text: #f4f4f6; --muted: #8d909e; --subtle: #636776;
+        --accent: #9b7cff; --accent-text: #b9a4ff; --accent-wash: rgba(155,124,255,.12);
+        --accent-line: rgba(155,124,255,.28); --on-accent: #0b0c10;
+        --ok: #4ade80; --warn: #fbbf24; --err: #f87171;
+        --radius-sm: 8px; --radius: 14px; --radius-lg: 20px;
+        --font: 'Inter','Segoe UI',system-ui,sans-serif;
+        --mono: ui-monospace,'Cascadia Mono',Consolas,monospace;
+        --ease: cubic-bezier(.22,.61,.36,1);
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 40px 24px 80px;
+        background: var(--bg); color: var(--text);
+        font: 15px/1.6 var(--font); letter-spacing: -.005em;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap { max-width: 1180px; margin: 0 auto; }
+
+      .top { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+      .top img { width: 28px; height: 28px; }
+      .top strong { font-size: 14px; font-weight: 700; letter-spacing: .16em; }
+      .top span { color: var(--subtle); font-size: 9px; font-weight: 500; letter-spacing: .18em; }
+      .top .spacer { flex: 1; }
+      .top a {
+        padding: 7px 14px; border: 1px solid var(--line-strong); border-radius: 999px;
+        color: var(--muted); font-size: 13px; font-weight: 500; text-decoration: none;
+        transition: color .18s var(--ease), border-color .18s var(--ease);
+      }
+      .top a:hover { color: var(--text); border-color: var(--accent-line); }
+
+      h1 { margin: 22px 0 6px; font-size: 28px; font-weight: 600; letter-spacing: -.03em; }
+      .sub { margin: 0 0 30px; color: var(--muted); font-size: 14px; max-width: 640px; }
+
+      .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); gap: 20px; align-items: start; }
+      @media (max-width: 940px) { .layout { grid-template-columns: 1fr; } }
+
+      .card {
+        padding: 24px; border: 1px solid var(--line); border-radius: var(--radius);
+        background: var(--surface);
+      }
+      .card + .card { margin-top: 20px; }
+      h2 { margin: 0 0 16px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+
+      label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 12px; font-weight: 500; }
+      .field + .field { margin-top: 14px; }
+      .hint { margin: 6px 0 0; color: var(--subtle); font-size: 11.5px; line-height: 1.5; }
+
+      input[type=text], input[type=password], textarea, select {
+        width: 100%; padding: 11px 13px;
+        border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+        background: var(--bg); color: var(--text);
+        font: 14px/1.5 var(--font); outline: none;
+        transition: border-color .18s var(--ease), background-color .18s var(--ease);
+      }
+      input:focus, textarea:focus, select:focus { border-color: var(--accent-line); background: var(--surface-2); }
+      textarea { min-height: 104px; resize: vertical; }
+      select { cursor: pointer; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      @media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+
+      button {
+        padding: 10px 18px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+        background: transparent; color: var(--text);
+        font: 600 13px var(--font); cursor: pointer;
+        transition: background-color .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease);
+      }
+      button:hover { border-color: var(--accent-line); background: var(--accent-wash); }
+      button:disabled { opacity: .45; cursor: default; }
+      button.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+      button.primary:hover { background: #ab90ff; border-color: #ab90ff; }
+      button.danger:hover { border-color: rgba(248,113,113,.5); background: rgba(248,113,113,.1); color: var(--err); }
+      button.tiny { padding: 5px 11px; font-size: 12px; }
+      button.link { padding: 0; border: 0; background: none; color: var(--accent-text); font-size: 12px; }
+      button.link:hover { background: none; text-decoration: underline; }
+
+      .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
+      .status { margin-left: auto; font-size: 12.5px; color: var(--muted); text-align: right; }
+      .status.ok { color: var(--ok); }
+      .status.err { color: var(--err); }
+
+      .preview { margin-top: 16px; padding: 14px 16px; border: 1px solid var(--accent-line); border-radius: var(--radius-sm); background: var(--accent-wash); }
+      .preview-label { color: var(--accent-text); font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+      .preview-title { margin: 6px 0 4px; font-size: 14px; font-weight: 600; }
+      .preview-body { color: var(--muted); font-size: 13px; }
+
+      .list { display: grid; gap: 10px; max-height: 620px; overflow-y: auto; }
+      .item { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); }
+      .item-head { display: flex; align-items: center; gap: 9px; }
+      .item-title { font-size: 13.5px; font-weight: 600; }
+      .tag { padding: 2px 8px; border-radius: 999px; font: 600 10px var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+      .tag.info { background: rgba(155,124,255,.16); color: var(--accent-text); }
+      .tag.success { background: rgba(74,222,128,.14); color: var(--ok); }
+      .tag.warning { background: rgba(251,191,36,.14); color: var(--warn); }
+      .item-body { color: var(--muted); font-size: 12.5px; }
+      .item-meta { color: var(--subtle); font: 11px var(--mono); overflow-wrap: anywhere; }
+      .item-actions { display: flex; gap: 8px; }
+      .empty { padding: 26px 20px; border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); color: var(--subtle); font-size: 13px; text-align: center; }
+
+      .lock-badge { display: inline-flex; align-items: center; gap: 7px; color: var(--warn); font-size: 12px; font-weight: 500; }
+      .hidden { display: none !important; }
+      .note {
+        margin: 0 0 20px; padding: 12px 15px;
+        border: 1px solid rgba(251,191,36,.24); border-radius: var(--radius-sm);
+        background: rgba(251,191,36,.07); color: var(--warn); font-size: 12.5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <img src="assets/vortex-logo.svg" alt="" />
+        <span><strong>VORTEX</strong><br /><span>УВЕДОМЛЕНИЯ</span></span>
+        <span class="spacer"></span>
+        <a href="index.html">← На сайт</a>
+      </div>
+
+      <h1>Публикация уведомлений</h1>
+      <p class="sub">Одна запись — и её видят все пользователи лаунчера. Обновлять приложение не нужно.</p>
+
+      <!-- Setup: shown until a token is stored in this browser. -->
+      <section class="card" id="setup-card">
+        <span class="lock-badge">● Требуется подключение</span>
+        <h2 style="margin-top:12px">Доступ</h2>
+        <p class="note">Страница открыта всем, но без токена она ничего не может: ключ есть только у вас. Токен хранится в этом браузере и отправляется только на api.github.com.</p>
+        <div class="field">
+          <label for="token">Personal access token</label>
+          <input type="password" id="token" placeholder="github_pat_… или ghp_…" autocomplete="off" spellcheck="false" />
+          <p class="hint">
+            <b>Fine-grained</b> (рекомендую): github.com/settings/personal-access-tokens/new →
+            Repository access: <b>Only select repositories</b> → <b>mozrg/Vortex</b> →
+            Permissions → Contents: <b>Read and write</b>.
+          </p>
+          <p class="hint">
+            <b>Classic</b>: github.com/settings/tokens → Generate new token (classic) → отметьте
+            <b>public_repo</b>. Этот вариант даёт доступ ко всем публичным репозиториям, поэтому fine-grained безопаснее.
+          </p>
+        </div>
+        <div class="actions">
+          <button class="primary" id="save-setup">Подключить</button>
+          <span class="status" id="setup-status"></span>
+        </div>
+      </section>
+
+      <div class="layout hidden" id="main">
+        <!-- Editor -->
+        <section class="card" id="editor-card">
+          <h2 id="editor-title">Новое уведомление</h2>
+          <div class="field">
+            <label for="title">Заголовок</label>
+            <input type="text" id="title" maxlength="90" placeholder="Раздел платных игр" />
+          </div>
+          <div class="field">
+            <label for="body">Текст</label>
+            <textarea id="body" maxlength="600" placeholder="Платные игры теперь загружаются постранично, как и остальные списки."></textarea>
+          </div>
+          <div class="field grid2">
+            <div>
+              <label for="level">Уровень</label>
+              <select id="level">
+                <option value="info">info — обычное</option>
+                <option value="success">success — хорошая новость</option>
+                <option value="warning">warning — важно</option>
+              </select>
+            </div>
+            <div>
+              <label for="min-version">Мин. версия</label>
+              <input type="text" id="min-version" placeholder="1.0.22" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="url">Ссылка (необязательно)</label>
+            <input type="text" id="url" placeholder="https://github.com/mozrg/Vortex/releases" />
+          </div>
+          <div class="preview">
+            <span class="preview-label">Предпросмотр</span>
+            <div class="preview-title" id="preview-title">Заголовок появится здесь</div>
+            <div class="preview-body" id="preview-body">И текст уведомления.</div>
+          </div>
+          <div class="actions">
+            <button class="primary" id="publish">Опубликовать</button>
+            <button id="cancel-edit" class="hidden">Отмена</button>
+            <span class="status" id="status"></span>
+          </div>
+        </section>
+
+        <!-- Published -->
+        <section class="card">
+          <h2>Опубликовано</h2>
+          <div class="list" id="list"></div>
+          <div class="actions">
+            <button class="tiny" id="reload">Обновить</button>
+            <button class="tiny danger" id="reset-setup">Сбросить доступ</button>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      // Static page: it calls api.github.com directly with the author's own token.
+      // Nothing here is secret — the token is entered at runtime and kept in
+      // localStorage, so the page can be hosted publicly.
+      //
+      // Storage is a plain JSON file in the repository, served by GitHub Pages.
+      // Every publish is a commit, so the history and rollback come for free.
+      const API = 'https://api.github.com';
+      const REPO = 'mozrg/Vortex';
+      const BRANCH = 'main';
+      const FILE = 'site/notifications.json';
+      const STORE_TOKEN = 'vortex.notify.token';
+
+      const $ = (id) => document.getElementById(id);
+      let editingId = null;
+      let state = { token: localStorage.getItem(STORE_TOKEN) || '', sha: null };
+
+      function setStatus(node, text, kind) {
+        node.textContent = text;
+        node.className = 'status' + (kind ? ' ' + kind : '');
+      }
+
+      // ---- GitHub ----------------------------------------------------------
+
+      async function gh(pathname, options = {}) {
+        const response = await fetch(API + pathname, {
+          ...options,
+          headers: {
+            Authorization: 'Bearer ' + state.token,
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            ...(options.headers || {})
+          }
+        });
+        if (response.status === 401) throw new Error('Токен неверный или отозван (401).');
+        if (response.status === 403) throw new Error('Нет прав на запись (403). Нужен доступ Contents: Read and write.');
+        if (response.status === 409) throw new Error('Конфликт версий (409). Нажмите «Обновить» и повторите.');
+        if (response.status === 404) throw new Error('Файл или репозиторий не найден (404). Проверьте права токена.');
+        if (!response.ok) {
+          const text = await response.text().catch(() => '');
+          throw new Error('GitHub ' + response.status + (text ? ': ' + text.slice(0, 160) : ''));
+        }
+        return response.json();
+      }
+
+      function bytesToBase64(text) {
+        // btoa is latin1-only; encode UTF-8 first so Cyrillic survives.
+        const bytes = new TextEncoder().encode(text);
+        let binary = '';
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        return btoa(binary);
+      }
+
+      function base64ToText(value) {
+        const binary = atob(String(value || '').replace(/\s/g, ''));
+        const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+        return new TextDecoder().decode(bytes);
+      }
+
+      // Returns { items, sha, missing }. sha is required for the next write.
+      async function readDoc() {
+        const response = await fetch(
+          API + '/repos/' + REPO + '/contents/' + FILE + '?ref=' + BRANCH + '&t=' + Date.now(),
+          {
+            headers: {
+              Authorization: 'Bearer ' + state.token,
+              Accept: 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28'
+            },
+            cache: 'no-store'
+          }
+        );
+        if (response.status === 404) return { items: [], sha: null, missing: true };
+        if (response.status === 401) throw new Error('Токен неверный или отозван (401).');
+        if (!response.ok) throw new Error('GitHub ' + response.status);
+        const data = await response.json();
+        state.sha = data.sha;
+        try {
+          const parsed = JSON.parse(base64ToText(data.content));
+          const items = Array.isArray(parsed) ? parsed : parsed.items;
+          return { items: Array.isArray(items) ? items : [], sha: data.sha };
+        } catch {
+          throw new Error('В файле битый JSON — исправьте site/notifications.json в репозитории.');
+        }
+      }
+
+      async function writeDoc(items, sha, message) {
+        const content = JSON.stringify({ version: 1, items }, null, 2) + '\n';
+        const body = { message, content: bytesToBase64(content), branch: BRANCH };
+        if (sha) body.sha = sha;
+        const result = await gh('/repos/' + REPO + '/contents/' + FILE, {
+          method: 'PUT',
+          body: JSON.stringify(body)
+        });
+        state.sha = result?.content?.sha || null;
+      }
+
+      // ---- Rendering -------------------------------------------------------
+
+      function renderList(items) {
+        const list = $('list');
+        list.replaceChildren();
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = 'Пока ничего не опубликовано.';
+          list.appendChild(empty);
+          return;
+        }
+        const sorted = [...items].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+        for (const item of sorted) {
+          const row = document.createElement('div');
+          row.className = 'item';
+
+          const head = document.createElement('div');
+          head.className = 'item-head';
+          const title = document.createElement('span');
+          title.className = 'item-title';
+          title.textContent = item.title || '(без заголовка)';
+          const tag = document.createElement('span');
+          tag.className = 'tag ' + (['info', 'success', 'warning'].includes(item.level) ? item.level : 'info');
+          tag.textContent = item.level || 'info';
+          head.append(title, tag);
+
+          const body = document.createElement('div');
+          body.className = 'item-body';
+          body.textContent = item.body || '';
+
+          const meta = document.createElement('div');
+          meta.className = 'item-meta';
+          meta.textContent = [
+            item.id,
+            item.date ? new Date(item.date).toLocaleString('ru-RU') : '',
+            item.minVersion ? 'от ' + item.minVersion : ''
+          ].filter(Boolean).join(' · ');
+
+          const actions = document.createElement('div');
+          actions.className = 'item-actions';
+          const edit = document.createElement('button');
+          edit.className = 'tiny';
+          edit.textContent = 'Изменить';
+          edit.addEventListener('click', () => startEdit(item));
+          const remove = document.createElement('button');
+          remove.className = 'tiny danger';
+          remove.textContent = 'Удалить';
+          remove.addEventListener('click', () => removeItem(item));
+          actions.append(edit, remove);
+
+          row.append(head, body, meta, actions);
+          list.appendChild(row);
+        }
+      }
+
+      // ---- Editor ----------------------------------------------------------
+
+      function newId(title) {
+        const slug = title.toLowerCase()
+          .replace(/[^a-z0-9а-яё]+/gi, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 40) || 'note';
+        return new Date().toISOString().slice(0, 10) + '-' + slug;
+      }
+
+      function readForm() {
+        const title = $('title').value.trim();
+        const body = $('body').value.trim();
+        if (!title) throw new Error('Заголовок обязателен.');
+        const minVersion = $('min-version').value.trim();
+        if (minVersion && !/^\d+\.\d+\.\d+$/.test(minVersion)) throw new Error('Мин. версия в формате 1.2.3.');
+        const url = $('url').value.trim();
+        if (url && !/^https?:\/\//i.test(url)) throw new Error('Ссылка должна начинаться с http:// или https://');
+        return {
+          id: editingId || newId(title),
+          title,
+          body,
+          level: $('level').value,
+          minVersion: minVersion || undefined,
+          url: url || undefined
+        };
+      }
+
+      function startEdit(item) {
+        editingId = item.id;
+        $('editor-title').textContent = 'Изменение уведомления';
+        $('title').value = item.title || '';
+        $('body').value = item.body || '';
+        $('level').value = item.level || 'info';
+        $('min-version').value = item.minVersion || '';
+        $('url').value = item.url || '';
+        $('cancel-edit').classList.remove('hidden');
+        updatePreview();
+        $('title').focus();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      function resetEditor() {
+        editingId = null;
+        $('editor-title').textContent = 'Новое уведомление';
+        $('title').value = '';
+        $('body').value = '';
+        $('level').value = 'info';
+        $('min-version').value = '';
+        $('url').value = '';
+        $('cancel-edit').classList.add('hidden');
+        updatePreview();
+      }
+
+      function updatePreview() {
+        $('preview-title').textContent = $('title').value.trim() || 'Заголовок появится здесь';
+        $('preview-body').textContent = $('body').value.trim() || 'И текст уведомления.';
+      }
+
+      // ---- Actions ---------------------------------------------------------
+
+      async function refresh() {
+        setStatus($('status'), 'Загружаем…');
+        try {
+          const doc = await readDoc();
+          renderList(doc.items);
+          setStatus($('status'), doc.missing ? 'Файла ещё нет — он создастся при публикации.' : 'Загружено: ' + doc.items.length, doc.missing ? '' : 'ok');
+        } catch (error) {
+          setStatus($('status'), error.message, 'err');
+        }
+      }
+
+      async function publish() {
+        let draft;
+        try { draft = readForm(); } catch (error) { setStatus($('status'), error.message, 'err'); return; }
+        $('publish').disabled = true;
+        setStatus($('status'), 'Публикуем…');
+        try {
+          const doc = await readDoc();
+          const index = doc.items.findIndex((item) => item.id === draft.id);
+          const isEdit = index >= 0;
+          if (isEdit) {
+            // Keep the original date when editing so ordering stays stable.
+            draft.date = doc.items[index].date || new Date().toISOString();
+            doc.items[index] = draft;
+          } else {
+            draft.date = new Date().toISOString();
+            doc.items.push(draft);
+          }
+          await writeDoc(doc.items, doc.sha, `notifications: ${isEdit ? 'edit' : 'add'} ${draft.title}`);
+          renderList(doc.items);
+          resetEditor();
+          setStatus($('status'), 'Опубликовано. Pages обновится за ~1 минуту, лаунчер — в течение 5.', 'ok');
+        } catch (error) {
+          setStatus($('status'), error.message, 'err');
+        } finally {
+          $('publish').disabled = false;
+        }
+      }
+
+      async function removeItem(item) {
+        if (!confirm('Удалить «' + (item.title || item.id) + '»? Уведомление исчезнет у всех.')) return;
+        setStatus($('status'), 'Удаляем…');
+        try {
+          const doc = await readDoc();
+          const items = doc.items.filter((entry) => entry.id !== item.id);
+          await writeDoc(items, doc.sha, `notifications: remove ${item.title || item.id}`);
+          renderList(items);
+          if (editingId === item.id) resetEditor();
+          setStatus($('status'), 'Удалено.', 'ok');
+        } catch (error) {
+          setStatus($('status'), error.message, 'err');
+        }
+      }
+
+      // ---- Boot ------------------------------------------------------------
+
+      function showConsole() {
+        $('setup-card').classList.add('hidden');
+        $('main').classList.remove('hidden');
+        refresh();
+      }
+
+      $('save-setup').addEventListener('click', async () => {
+        const token = $('token').value.trim();
+        // Classic (ghp_) and fine-grained (github_pat_) tokens are both accepted.
+        if (!/^(ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})$/.test(token)) {
+          setStatus($('setup-status'), 'Токен должен начинаться с ghp_ или github_pat_.', 'err');
+          return;
+        }
+        state.token = token;
+        setStatus($('setup-status'), 'Проверяем доступ…');
+        try {
+          await readDoc();
+          // Only persist after the token proved it can read the file.
+          localStorage.setItem(STORE_TOKEN, token);
+          setStatus($('setup-status'), 'Готово.', 'ok');
+          showConsole();
+        } catch (error) {
+          setStatus($('setup-status'), error.message, 'err');
+        }
+      });
+
+      $('reset-setup').addEventListener('click', () => {
+        if (!confirm('Забыть токен в этом браузере?')) return;
+        localStorage.removeItem(STORE_TOKEN);
+        state.token = '';
+        state.sha = null;
+        $('setup-card').classList.remove('hidden');
+        $('main').classList.add('hidden');
+        $('token').value = '';
+        setStatus($('setup-status'), '', '');
+      });
+
+      $('publish').addEventListener('click', publish);
+      $('reload').addEventListener('click', refresh);
+      $('cancel-edit').addEventListener('click', resetEditor);
+      $('title').addEventListener('input', updatePreview);
+      $('body').addEventListener('input', updatePreview);
+
+      // Ctrl+Enter publishes without reaching for the mouse.
+      document.addEventListener('keydown', (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+          event.preventDefault();
+          if (!$('main').classList.contains('hidden')) publish();
+        }
+      });
+
+      if (state.token) {
+        $('token').value = state.token;
+        showConsole();
+      }
+    </script>
+  </body>
+</html>

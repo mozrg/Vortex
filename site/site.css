@@ -147,7 +147,27 @@ main { width: min(100% - 48px, 1120px); margin: 0 auto; }
   background: radial-gradient(closest-side, rgba(155, 124, 255, .1), transparent 72%);
 }
 
-.hero-copy { position: relative; z-index: 2; width: 56%; }
+/* Ruler down the left edge of the hero: a measuring stick, not ornament.
+   Ticks are drawn with gradients so no extra markup is needed. */
+.hero::before {
+  content: '';
+  position: absolute;
+  top: 72px;
+  bottom: 64px;
+  left: 0;
+  width: 9px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--accent-line), var(--accent-line)) 0 0 / 1px 100% no-repeat,
+    repeating-linear-gradient(to bottom,
+      rgba(255, 255, 255, .16) 0 1px,
+      transparent 1px 24px) 0 0 / 9px 100% no-repeat;
+  mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent);
+  opacity: .55;
+}
+
+.hero-copy { position: relative; z-index: 2; width: 56%; padding-left: 28px; }
 
 .eyebrow {
   display: inline-flex;
@@ -337,78 +357,176 @@ h1 {
   letter-spacing: -.035em;
 }
 
-.features-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 48px; }
+/* Feature cards are spec sheets, not tiles: an oversized ghost numeral, a
+   hairline frame with corner ticks, and a live-looking readout per card. */
+.features-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 52px; }
 
 .feature-card {
   position: relative;
-  min-height: 248px;
-  padding: 30px;
+  display: flex;
+  overflow: hidden;
+  min-height: 300px;
+  flex-direction: column;
+  padding: 32px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: var(--surface);
-  transition: border-color .2s var(--ease), background-color .2s var(--ease), transform .2s var(--ease);
+  isolation: isolate;
+  transition: border-color .3s var(--ease), background-color .3s var(--ease);
 }
-.feature-card:hover { border-color: var(--line-strong); background: var(--surface-2); transform: translateY(-2px); }
-.feature-card h3 { margin: 22px 0 8px; font-size: 17px; font-weight: 600; letter-spacing: -.015em; }
-.feature-card p { max-width: 380px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+.feature-card:hover { border-color: var(--line-strong); background: var(--surface-2); }
 
-.feature-wide { grid-column: 1 / -1; min-height: 220px; }
+/* Corner ticks: four L-shaped hairlines that frame the card like a crop mark. */
+.feature-card::before,
+.feature-card::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: var(--accent-line);
+  border-style: solid;
+  opacity: 0;
+  transition: opacity .3s var(--ease);
+  pointer-events: none;
+}
+.feature-card::before { top: 12px; left: 12px; border-width: 1px 0 0 1px; }
+.feature-card::after { right: 12px; bottom: 12px; border-width: 0 1px 1px 0; }
+.feature-card:hover::before,
+.feature-card:hover::after { opacity: 1; }
+
+/* The ghost numeral is the unusual part: it bleeds off the card edge and sits
+   behind the copy, so each card reads as a numbered sheet. */
+.feature-number {
+  position: absolute;
+  z-index: -1;
+  top: -18px;
+  right: 14px;
+  color: transparent;
+  font-size: 132px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -.06em;
+  -webkit-text-stroke: 1px rgba(255, 255, 255, .07);
+  user-select: none;
+  transition: -webkit-text-stroke-color .3s var(--ease), transform .3s var(--ease);
+}
+.feature-card:hover .feature-number { -webkit-text-stroke-color: rgba(155, 124, 255, .3); transform: translateY(-3px); }
+
+.feature-body { position: relative; z-index: 1; }
+
+.feature-card h3 { margin: 24px 0 10px; font-size: 19px; font-weight: 600; letter-spacing: -.02em; }
+.feature-card p { max-width: 340px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
+
+.feature-wide { grid-column: 1 / -1; min-height: 268px; }
+.feature-wide .feature-body { max-width: 460px; }
 
 .feature-icon {
   display: grid;
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
   place-items: center;
-  border-radius: var(--radius-sm);
-  background: var(--accent-wash);
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: transparent;
   color: var(--accent-text);
+  transition: border-color .3s var(--ease), background-color .3s var(--ease);
 }
-.feature-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.heart-icon { color: var(--accent-2); background: rgba(194, 116, 236, .12); }
+.feature-card:hover .feature-icon { border-color: var(--accent-line); background: var(--accent-wash); }
+.feature-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.heart-icon { color: var(--accent-2); }
 .launch-icon svg { fill: currentColor; stroke: none; }
 
+/* --- 01 search pad: docked to the card edge, its top-left corner cut off. --- */
 .search-demo {
   position: absolute;
-  right: 30px;
-  bottom: 30px;
+  z-index: 1;
+  right: 0;
+  bottom: 0;
   display: flex;
-  width: min(46%, 320px);
-  height: 44px;
+  width: min(44%, 340px);
+  height: 58px;
   align-items: center;
-  gap: 10px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  gap: 12px;
+  padding: 0 22px;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  border-top-left-radius: var(--radius-lg);
   background: var(--bg);
   font-size: 13px;
+  transition: border-color .3s var(--ease);
 }
-.search-demo > span { color: var(--subtle); font-size: 15px; }
+.feature-card:hover .search-demo { border-color: var(--accent-line); }
+.search-demo-glyph { color: var(--accent); font-size: 16px; line-height: 1; }
 .search-demo i { overflow: hidden; flex: 1; color: var(--subtle); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
-.search-demo b { padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--muted); font: 500 10px var(--mono); }
-
-.feature-visual { position: absolute; right: 30px; bottom: 30px; }
-
-.mini-pills { display: flex; gap: 7px; }
-.mini-pills i { width: 20px; height: 20px; border-radius: 6px; background: rgba(255, 255, 255, .06); }
-.mini-pills i:nth-child(2) { background: var(--accent-wash); }
-.mini-pills i:nth-child(3) { background: rgba(194, 116, 236, .14); }
-
-.launch-visual {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 9px 14px;
-  border: 1px solid var(--accent-line);
-  border-radius: var(--radius-pill);
-  background: var(--accent-wash);
-  color: var(--accent-text);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .04em;
+.search-demo b {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  color: var(--muted);
+  font: 500 11px var(--mono);
 }
-.launch-visual i { font-size: 9px; font-style: normal; }
-.launch-visual b { font-size: 11px; font-weight: 600; }
 
+/* --- 02 stack rail: six slots down the right edge, the last one lit.
+       Reads as "your shelf has room", which is the actual feature. The rail
+       sits below the ghost numeral so the two never collide. --- */
+.stack-rail {
+  position: absolute;
+  right: 32px;
+  bottom: 32px;
+  display: grid;
+  gap: 9px;
+  justify-items: end;
+}
+.stack-rail i {
+  display: block;
+  width: 34px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, .09);
+  transition: background-color .3s var(--ease), width .3s var(--ease);
+}
+.stack-rail i:nth-child(1) { width: 34px; }
+.stack-rail i:nth-child(2) { width: 30px; }
+.stack-rail i:nth-child(3) { width: 34px; }
+.stack-rail i:nth-child(4) { width: 26px; }
+.stack-rail i:nth-child(5) { width: 32px; }
+.stack-rail i:nth-child(6) { width: 18px; background: var(--accent); }
+.feature-card:hover .stack-rail i:nth-child(6) { width: 34px; }
+
+/* --- 03 launch readout: signal bars, a number and a progress track. --- */
+.launch-readout {
+  position: absolute;
+  right: 32px;
+  bottom: 32px;
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+  width: min(44%, 200px);
+}
+.readout-bars { display: flex; height: 26px; align-items: flex-end; gap: 4px; }
+.readout-bars i {
+  width: 5px;
+  border-radius: 2px;
+  background: var(--accent-line);
+  transition: background-color .3s var(--ease);
+}
+.readout-bars i:nth-child(1) { height: 8px; }
+.readout-bars i:nth-child(2) { height: 13px; }
+.readout-bars i:nth-child(3) { height: 18px; }
+.readout-bars i:nth-child(4) { height: 22px; }
+.readout-bars i:nth-child(5) { height: 26px; background: var(--accent); }
+.feature-card:hover .readout-bars i { background: var(--accent); }
+
+.readout-label { display: flex; align-items: baseline; gap: 8px; }
+.readout-label b { color: var(--text); font: 600 20px var(--mono); letter-spacing: -.03em; }
+.readout-label span { color: var(--subtle); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+
+.readout-track { width: 100%; height: 2px; border-radius: var(--radius-pill); background: rgba(255, 255, 255, .08); }
+.readout-track i { display: block; width: 72%; height: 100%; border-radius: inherit; background: var(--accent); transition: width .5s var(--ease); }
+.feature-card:hover .readout-track i { width: 100%; }
 /* ---------- Versions ---------- */
 
 .versions-section { padding: 96px 0 112px; border-top: 1px solid var(--line); }
@@ -623,8 +741,23 @@ footer > span { margin-left: auto; color: var(--subtle); font-size: 12px; }
   .preview-back { bottom: 0; right: 0; width: 158px; height: 92px; }
   .features-grid { grid-template-columns: 1fr; gap: 14px; }
   .feature-wide { grid-column: auto; }
-  .search-demo { position: static; width: 100%; margin-top: 24px; }
-  .feature-visual { position: static; display: inline-flex; margin-top: 20px; }
+  /* On narrow screens the readouts leave absolute positioning entirely and
+     stack under the copy; otherwise they would print over the paragraph. */
+  .search-demo,
+  .stack-rail,
+  .launch-readout {
+    position: static;
+    width: 100%;
+    margin-top: 24px;
+  }
+  .stack-rail { display: flex; gap: 8px; justify-items: stretch; }
+  .stack-rail i { width: 100%; height: 6px; }
+  .stack-rail i:nth-child(n) { width: auto; flex: 1; }
+  .launch-readout { justify-items: start; }
+  .readout-track { width: 100%; }
+  .search-demo { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0 16px; }
+  .feature-card { min-height: 0; padding: 26px; }
+  .feature-number { font-size: 104px; top: -12px; right: 10px; }
   .feature-card:hover { transform: none; }
 }
 

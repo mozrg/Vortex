@@ -1210,8 +1210,8 @@ function submitSearchPage(value) {
 }
 
 function renderCatalog() {
-  // Entering the paid view also nudges a background scan (the function self-guards).
-  if (activeAccess === 'paid') window.setTimeout(() => loadPaidGames(), 0);
+  // Entering the paid view kicks off the first scan (guarded by status).
+  if (activeAccess === 'paid' && paidStatus === 'idle') window.setTimeout(() => loadPaidGames(), 0);
   const list = filterGames();
   const availableSorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
   const selectedSort = availableSorts.find((sort) => sort.id === activeDiscoverySort) || availableSorts[0];
@@ -3390,6 +3390,8 @@ document.addEventListener('click', async (event) => {
     savePreferences();
     // Full reset of genre pagination when the user switches filters.
     genreResults = []; genrePageToken = null; genreStatus = 'idle'; genreLoadingMore = false; genreTermIndex = 0;
+    paidVisibleCount = PAID_PAGE_SIZE;
+    paidExhausted = false;
     if (activeAccess === 'paid') { void loadPaidGames(); renderPage(); return; }
     if (isGenreSearchActive()) fetchGenreGames(false);
     else renderPage();
@@ -3402,7 +3404,12 @@ document.addEventListener('click', async (event) => {
     preferences.catalogAccess = activeAccess;
     savePreferences();
     paidVisibleCount = PAID_PAGE_SIZE;
-    if (activeAccess === 'paid') void loadPaidGames();
+    paidExhausted = false;
+    if (activeAccess === 'paid') {
+      // Re-entering the paid view always starts from the first page again.
+      paidStatus = paidGames.length ? 'success' : 'idle';
+      if (!paidGames.length) void loadPaidGames();
+    }
     renderPage();
     return;
   }

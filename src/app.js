@@ -1295,16 +1295,14 @@ let paidExhausted = false;
 let paidScanning = false;
 let paidLastScanAt = 0;
 
-// Runs one scan pass. `append` keeps the current list and merges new finds.
+// Runs one scan pass. Pagination state is owned by showMorePaidGames, so the
+// scan only replaces the underlying list.
 async function scanPaidGames(append = false) {
   if (paidScanning) return;
   paidScanning = true;
   paidLastScanAt = Date.now();
   if (append) paidStatus = 'loading-more';
-  else {
-    if (!paidGames.length) paidStatus = 'loading';
-    paidVisibleCount = PAID_PAGE_SIZE;
-  }
+  else if (!paidGames.length) paidStatus = 'loading';
   if (currentView === 'catalog' && activeAccess === 'paid') renderPage();
   const requestId = ++paidRequestId;
   try {
@@ -1313,9 +1311,8 @@ async function scanPaidGames(append = false) {
     // The handler returns { games, complete }; older builds returned a bare array.
     const list = Array.isArray(response) ? response : (Array.isArray(response?.games) ? response.games : []);
     paidExhausted = Array.isArray(response) ? false : response?.complete === true;
-    paidGames = list;
+    if (list.length >= paidGames.length) paidGames = list;
     paidStatus = 'success';
-    if (append) paidVisibleCount = Math.min(paidGames.length, paidVisibleCount + PAID_PAGE_SIZE);
   } catch {
     if (requestId !== paidRequestId) return;
     paidStatus = 'error';
@@ -1339,21 +1336,20 @@ function showMorePaidGames() {
 
 // Entry point used when the paid filter is selected.
 async function loadPaidGames(force = false) {
-  if (paidGames.length && !force) {
-    // Cheap refresh first: the main process merges games indexed while browsing.
-    try {
-      const response = await window.vortexDesktop?.getPaidGames?.({ force: false });
-      const list = Array.isArray(response) ? response : (Array.isArray(response?.games) ? response.games : []);
-      if (list.length > paidGames.length) {
-        paidGames = list;
-        paidExhausted = Array.isArray(response) ? paidExhausted : response?.complete === true;
-        if (currentView === 'catalog' && activeAccess === 'paid') renderPage();
-      }
-    } catch { /* keep the current list */ }
-    // Then, occasionally, run a real scan so the index keeps growing.
-    if (Date.now() - paidLastScanAt >= PAID_REFRESH_MS) await scanPaidGames(true);
-    return;
-  }
+  if (force) { await scanPaidGames(false); return; }
+
+  // Paint the stored index immediately, then scan for more in the background.
+  try {
+    const fast = await window.vortexDesktop?.getPaidGames?.({ fast: true });
+    const list = Array.isArray(fast) ? fast : (Array.isArray(fast?.games) ? fast.games : []);
+    if (list.length) {
+      paidGames = list;
+      paidStatus = 'success';
+      if (currentView === 'catalog' && activeAccess === 'paid') renderPage();
+    }
+  } catch { /* fall through to the scan */ }
+
+  if (paidGames.length && Date.now() - paidLastScanAt < PAID_REFRESH_MS) return;
   await scanPaidGames(false);
 }
 

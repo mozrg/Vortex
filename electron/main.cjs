@@ -743,7 +743,7 @@ const PAID_QUERY_POOL = [
 // Queries per scan and pages per query: deep enough to reach the tail, small
 // enough that one "show more" stays responsive.
 const PAID_QUERIES_PER_SCAN = 4;
-const PAID_MAX_PAGES_PER_QUERY = 6;
+const PAID_MAX_PAGES_PER_QUERY = 4;
 
 let paidScanCursor = 0;
 let paidGamesCache = { at: 0, data: [], complete: false };
@@ -845,6 +845,15 @@ async function collectPaidUniverseIds() {
 
 ipcMain.handle('games:paid', async (_event, request = {}) => {
   const force = request && request.force === true;
+
+  // Fast path: hand back the stored index immediately so the grid paints
+  // without waiting for a network scan.
+  if (request && request.fast === true) {
+    const stored = await readPaidIndex();
+    const games = stored.filter((game) => Number(game.price) > 0).sort((a, b) => Number(a.price) - Number(b.price));
+    return { games, complete: paidGamesCache.complete === true };
+  }
+
   const stored = await readPaidIndex();
   const cacheFresh = paidGamesCache.data.length && Date.now() - paidGamesCache.at < PAID_CACHE_TTL;
 

@@ -913,12 +913,19 @@ function renderHome() {
   // Each widget renders to a <section class="home-widget" data-home-widget="key">
   // with a heading that carries collapse + move controls.
   const widgetBodies = {
-    hero: preferences.homeShowHero && featured ? `<section class="hero-card home-widget" data-home-widget="hero">
-      <span class="hero-avatar" aria-hidden="true">${safeThumbnail(featured.thumbnail) ? `<img src="${escapeHtml(safeThumbnail(featured.thumbnail))}" alt="" />` : `<span class="hero-avatar-fallback">${escapeHtml((featured.title || 'R')[0].toLocaleUpperCase())}</span>`}</span>
+    hero: preferences.homeShowHero && featured ? (() => {
+      // The game's own artwork becomes the hero backdrop; the scrim keeps the
+      // left column readable no matter how bright the thumbnail is.
+      const art = safeThumbnail(featured.thumbnail);
+      const artVar = art ? ` style="--hero-art:url('${escapeHtml(art)}')"` : '';
+      return `<section class="hero-card home-widget" data-home-widget="hero"${artVar}>
+      <span class="hero-scrim" aria-hidden="true"></span>
+      <span class="hero-avatar" aria-hidden="true">${art ? `<img src="${escapeHtml(art)}" alt="" />` : `<span class="hero-avatar-fallback">${escapeHtml((featured.title || 'R')[0].toLocaleUpperCase())}</span>`}</span>
       <div class="hero-copy"><span class="hero-kicker">${t('hero.kicker')}</span><h2>${escapeHtml(featured.title)}</h2><p>${escapeHtml(featured.description || t('hero.body'))}</p>
         <div class="hero-actions"><button class="primary-button" data-action="play" data-id="${escapeHtml(featured.id)}">${icon('play')} ${t('hero.play', { title: escapeHtml(featured.title) })}</button>${featured.creator ? `<span class="hero-meta">${escapeHtml(featured.creator)}</span>` : ''}</div>
       </div>
-    </section>` : '',
+    </section>`;
+    })() : '',
     picks: `<section class="section-block home-widget" data-home-widget="picks">${renderWidgetHeading('picks', t('home.section.title'), t('home.section.subtitle'))}
       ${renderGrid(picks, t('home.picks.emptyTitle'), t('home.picks.emptyBody'), 'settings')}</section>`,
     playstats: renderPlayStats(),

@@ -244,32 +244,53 @@ body.light-theme .search-page-field { background: #fff; box-shadow: 0 12px 30px 
 .primary-button svg, .ghost-button svg, .subtle-button svg { width: 15px; height: 15px; }
 
 /* Hero: minimal editorial layout — flat surface, hairline border, no glow. */
-.hero-card { position: relative; display: flex; min-height: 190px; overflow: hidden; align-items: center; margin-bottom: 18px; padding: 24px 26px; gap: 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
-.hero-card::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 62%, rgba(var(--accent-rgb), .05)); pointer-events: none; }
+/* Hero: the featured game's own artwork becomes the backdrop, dimmed behind a
+   scrim so the title always clears contrast. Falls back to a flat accent wash
+   when the game has no thumbnail. */
+.hero-card { position: relative; display: flex; min-height: 230px; overflow: hidden; align-items: center; margin-bottom: 20px; padding: 30px 32px; gap: 28px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); isolation: isolate; }
+.hero-card::before { content: ''; position: absolute; z-index: -2; inset: 0; background: linear-gradient(90deg, transparent 58%, rgba(var(--accent-rgb), .07)); pointer-events: none; }
+/* Blurred backdrop layer, only drawn when --hero-art is set on the card. */
+.hero-card::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -20%;
+  background-image: var(--hero-art, none);
+  background-size: cover;
+  background-position: center;
+  filter: blur(38px) saturate(150%);
+  opacity: .38;
+  pointer-events: none;
+}
+/* Scrim: keeps the left column dark for text, lets the art glow on the right.
+   The stop at 52% is where the copy ends, so the description never sits on a
+   bright patch of artwork. */
+.hero-scrim { position: absolute; z-index: -1; inset: 0; background: linear-gradient(90deg, var(--surface) 0%, var(--surface) 46%, color-mix(in srgb, var(--surface) 72%, transparent) 62%, rgba(0, 0, 0, .28) 100%); pointer-events: none; }
+
 .hero-copy { position: relative; z-index: 2; display: flex; min-width: 0; flex: 1; flex-direction: column; align-items: flex-start; }
 .hero-kicker { display: inline-flex; align-items: center; gap: 7px; padding: 0; border: 0; background: none; color: var(--accent-text); font-size: 8.5px; font-weight: 700; letter-spacing: .14em; }
 .hero-kicker span { display: inline-flex; color: var(--accent-text); }
 .hero-kicker span svg { width: 13px; height: 13px; }
-.hero-copy h2 { max-width: 100%; margin: 11px 0 7px; font: 700 clamp(19px, 2.2vw, 26px)/1.2 var(--font-display); letter-spacing: -.035em; }
-.hero-copy p { display: -webkit-box; max-width: 520px; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
-.hero-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.hero-copy h2 { max-width: 100%; margin: 12px 0 8px; font: 700 clamp(22px, 2.6vw, 32px)/1.16 var(--font-display); letter-spacing: -.04em; }
+.hero-copy p { display: -webkit-box; max-width: 540px; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.hero-actions { display: flex; align-items: center; gap: 14px; margin-top: 20px; }
 .hero-meta { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10.5px; }
 
-/* Flat thumbnail on the right instead of a floating plaque. */
-.hero-avatar { position: relative; z-index: 2; flex: 0 0 auto; width: 118px; height: 118px; overflow: hidden; place-items: center; display: grid; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-2); }
+/* The artwork reads as a framed plate on the right, lifted off the backdrop. */
+.hero-avatar { position: relative; z-index: 2; flex: 0 0 auto; width: 168px; height: 168px; overflow: hidden; place-items: center; display: grid; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface-2); box-shadow: 0 24px 54px -20px rgba(0, 0, 0, .8); }
 .hero-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.hero-avatar-fallback { display: grid; width: 100%; height: 100%; place-items: center; font: 800 64px var(--font-display); color: color-mix(in srgb, var(--accent-text) 55%, transparent); }
+.hero-avatar-fallback { display: grid; width: 100%; height: 100%; place-items: center; font: 800 88px var(--font-display); color: color-mix(in srgb, var(--accent-text) 55%, transparent); }
 
 /* Home layout variants */
 .home-view { position: relative; }
 .home-view[data-home-layout="spotlight"] .page-heading { margin-bottom: 17px; }
-.home-view[data-home-layout="spotlight"] .hero-card { min-height: 230px; padding: 30px; }
-.home-view[data-home-layout="spotlight"] .hero-copy h2 { font-size: 29px; }
-.home-view[data-home-layout="spotlight"] .hero-avatar { width: 148px; height: 148px; }
-.home-view[data-home-layout="library"] .hero-card { min-height: 150px; padding: 18px 22px; }
-.home-view[data-home-layout="library"] .hero-copy h2 { font-size: 18px; }
+.home-view[data-home-layout="spotlight"] .hero-card { min-height: 290px; padding: 38px 40px; }
+.home-view[data-home-layout="spotlight"] .hero-copy h2 { font-size: clamp(26px, 3.2vw, 40px); }
+.home-view[data-home-layout="spotlight"] .hero-avatar { width: 208px; height: 208px; }
+.home-view[data-home-layout="library"] .hero-card { min-height: 150px; padding: 18px 22px; gap: 20px; }
+.home-view[data-home-layout="library"] .hero-copy h2 { font-size: 19px; }
 .home-view[data-home-layout="library"] .hero-copy p { -webkit-line-clamp: 1; }
-.home-view[data-home-layout="library"] .hero-avatar { width: 92px; height: 92px; }
+.home-view[data-home-layout="library"] .hero-avatar { width: 96px; height: 96px; box-shadow: none; }
 .home-view[data-home-layout="library"] .game-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 13px; }
 
 

@@ -95,13 +95,50 @@ h1 em { color:#b79bff; font-style:normal; }
 .versions-heading p { margin:0; color:var(--muted); font-size:11px; }
 .versions-heading>.secondary-link { margin-bottom:11px; }
 .versions-list { display:grid; gap:10px; }
-.version-card { display:grid; grid-template-columns:minmax(160px,1fr) minmax(190px,2fr) auto; align-items:center; gap:22px; min-height:82px; padding:14px 17px; border:1px solid var(--line); border-radius:12px; background:rgba(18,19,27,.82); }
-.version-meta { display:flex; align-items:center; gap:10px; }
-.version-badge { padding:5px 8px; border:1px solid rgba(162,134,255,.3); border-radius:6px; background:rgba(162,134,255,.09); color:#c4afff; font:700 10px var(--display); }
+.version-card { display:grid; gap:11px; padding:15px 18px 16px; border:1px solid var(--line); border-radius:12px; background:rgba(18,19,27,.82); }
+.version-head { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.version-meta { display:flex; align-items:center; gap:10px; min-width:0; }
+.version-badge { padding:5px 8px; border:1px solid rgba(162,134,255,.3); border-radius:6px; background:rgba(162,134,255,.09); color:#c4afff; font:700 10px var(--display); white-space:nowrap; }
 .version-badge.prerelease { border-color:rgba(231,179,106,.28); background:rgba(231,179,106,.08); color:#e4bd82; }
-.version-date { color:#888a98; font-size:9px; }
-.version-notes { overflow:hidden; color:#a3a3ae; font-size:10px; line-height:1.65; white-space:pre-line; }
-.version-actions { display:flex; align-items:center; justify-content:flex-end; gap:9px; }
+.version-date { color:#888a98; font-size:9px; white-space:nowrap; }
+.version-actions { display:flex; align-items:center; justify-content:flex-end; gap:9px; flex:0 0 auto; }
+
+/* Release notes: markdown rendered into real lists, clamped with a fade. */
+.version-notes { color:#a9aab6; font-size:10.5px; line-height:1.7; overflow-wrap:anywhere; }
+/* Clamping is driven entirely by JS (--notes-limit + .is-clamped); without the
+   variable the class alone must not shrink anything. */
+.version-notes.is-clamped { max-height:var(--notes-limit); overflow:hidden; }
+.version-notes>*:first-child { margin-top:0; }
+.version-notes>*:last-child { margin-bottom:0; }
+.version-notes p { margin:0 0 7px; }
+/* Lists stay block-level: display:grid would break nested indent and markers. */
+.version-notes ul,.version-notes ol { margin:0 0 8px; padding-left:19px; }
+.version-notes li { margin:0 0 4px; }
+.version-notes li:last-child { margin-bottom:0; }
+.version-notes ul { list-style:none; padding-left:17px; }
+.version-notes ul>li { position:relative; }
+.version-notes ul>li::before { content:''; position:absolute; top:.62em; left:-11px; width:4px; height:4px; border-radius:50%; background:rgba(162,134,255,.62); }
+/* Nested levels: tighter spacing, dimmer marker, indented under their parent. */
+.version-notes ul ul,.version-notes ol ol,.version-notes ul ol,.version-notes ol ul { margin:4px 0 0; padding-left:15px; }
+.version-notes ul ul>li::before { background:rgba(162,134,255,.34); }
+.version-notes ul ul>li { color:#9a9bab; }
+.version-notes ol>li { padding-left:2px; }
+.version-notes ol>li::marker { color:#8e79c9; font-size:9.5px; }
+.version-notes li.task { list-style:none; padding-left:16px; }
+.version-notes li.task::before { content:'☐'; top:0; left:-2px; width:auto; height:auto; border-radius:0; background:none; color:#8e79c9; font-size:10px; }
+.version-notes li.task.done { color:#7d7e8b; }
+.version-notes li.task.done::before { content:'☑'; color:#7fd6a2; }
+.version-notes strong { color:#e2e1ea; font-weight:700; }
+.version-notes em { color:#bcbccb; }
+.version-notes code { padding:1px 5px; border:1px solid rgba(162,134,255,.2); border-radius:5px; background:rgba(162,134,255,.1); color:#cbbdff; font:500 9.5px ui-monospace,'Cascadia Code',Consolas,monospace; }
+.version-notes a { color:#bda6ff; text-decoration:underline; text-underline-offset:2px; text-decoration-color:rgba(189,166,255,.4); }
+.version-notes a:hover { color:#d8caff; }
+.version-notes h3,.version-notes h4,.version-notes h5,.version-notes h6 { margin:9px 0 5px; color:#d9d7e4; font:700 10.5px var(--display); letter-spacing:.01em; }
+.version-notes blockquote { margin:0 0 7px; padding:2px 0 2px 10px; border-left:2px solid rgba(162,134,255,.4); color:#9a97a8; }
+.version-notes hr { height:1px; margin:9px 0; border:0; background:var(--line); }
+.version-notes-empty { margin:0; color:#7f8090; font-size:10px; }
+.notes-toggle { justify-self:start; padding:4px 0; border:0; background:none; color:#a48ce6; font:600 9.5px var(--display); letter-spacing:.02em; cursor:pointer; }
+.notes-toggle:hover { color:#c9b8ff; text-decoration:underline; text-underline-offset:3px; }
 .version-download { display:inline-flex; min-height:34px; align-items:center; gap:8px; padding:0 11px; border:1px solid rgba(162,134,255,.22); border-radius:8px; background:rgba(162,134,255,.11); color:#d4c6ff; font-size:9px; font-weight:700; white-space:nowrap; }
 .version-download:hover { border-color:rgba(162,134,255,.55); background:rgba(162,134,255,.19); }
 .checksum-link { color:#797a86; font-size:9px; }
@@ -125,9 +162,8 @@ footer>span { margin-left:auto; color:#777987; font-size:9px; }
   .hero-art { right:-100px; opacity:.78; }
   .hero-copy { width:68%; }
   .planet { right:66px; }
-  .version-card { grid-template-columns:1fr auto; gap:10px; }
-  .version-notes { grid-column:1/-1; grid-row:2; }
-  .version-actions { grid-column:2; grid-row:1; }
+  .version-head { flex-wrap:wrap; gap:9px; }
+  .version-actions { margin-left:auto; }
   footer { padding-right:22px; padding-left:22px; }
 }
 @media (max-width:560px) {
@@ -161,9 +197,9 @@ footer>span { margin-left:auto; color:#777987; font-size:9px; }
   .search-demo { top:auto; right:20px; bottom:23px; left:20px; width:auto; }
   .versions-heading { align-items:flex-start; flex-direction:column; gap:13px; }
   .versions-heading>.secondary-link { margin:0; }
-  .version-card { grid-template-columns:1fr; }
-  .version-actions { grid-column:auto; grid-row:auto; justify-content:flex-start; }
-  .version-notes { grid-column:auto; grid-row:auto; }
+  .version-card { gap:9px; padding:13px 14px 14px; }
+  .version-head { align-items:flex-start; flex-direction:column; gap:9px; }
+  .version-actions { justify-content:flex-start; margin-left:0; }
   footer { align-items:flex-start; flex-wrap:wrap; gap:10px 16px; padding:18px 15px; }
   footer p { width:100%; order:3; }
   footer>span { margin-left:auto; }

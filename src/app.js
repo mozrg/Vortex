@@ -603,15 +603,23 @@ function applyStaticTranslations() {
   });
 }
 
+// Paid results live in their own list (Roblox has no paid catalog). Declared
+// here so allGames()/getGame() can resolve them by id.
+let paidGames = [];
+
 function allGames() {
   const knownIds = new Set(games.map((game) => game.id));
   const custom = (preferences.customGames || []).filter((game) => game && !knownIds.has(String(game.id)));
   const customIds = new Set(custom.map((game) => String(game.id)));
-  return [...games, ...custom, ...dynamicGames.filter((game) => game && !knownIds.has(String(game.id)) && !customIds.has(String(game.id)))];
+  const known = new Set([...knownIds, ...customIds]);
+  const dynamic = dynamicGames.filter((game) => game && !known.has(String(game.id)));
+  for (const game of dynamic) known.add(String(game.id));
+  // Paid results are a separate list; they must be resolvable by id as well.
+  const paid = paidGames.filter((game) => game && !known.has(String(game.id)));
+  return [...games, ...custom, ...dynamic, ...paid];
 }
 
 function getGame(id) { return allGames().find((game) => game.id === String(id)); }
-
 function localizeGame(game) {
   const rawGenre = game.genre && String(game.genre).toLocaleLowerCase() !== 'roblox' ? String(game.genre).trim() : '';
   const localizedGenre = game.genreKey ? t(`genre.${game.genreKey}`) : rawGenre;
@@ -666,7 +674,11 @@ function renderPlaytimeBadge(gameId) {
 }
 
 function openGameDetails(id) {
-  const game = getGame(id) || genreResults.find((item) => String(item.id) === String(id)) || searchResults.find((item) => String(item.id) === String(id));
+  // Paid results live in their own list, so they must be searched too.
+  const game = getGame(id)
+    || genreResults.find((item) => String(item.id) === String(id))
+    || searchResults.find((item) => String(item.id) === String(id))
+    || paidGames.find((item) => String(item.id) === String(id));
   if (!game) return;
   const requestId = ++detailRequestId;
   detailBadgeCount = 3;
@@ -1283,11 +1295,10 @@ function renderCatalog() {
 }
 
 let favoritesVisibleCount = 24;
-// Paid games grow one scan at a time: "show more" runs the next scan, exactly
-// like the discovery catalog appends a fresh page.
+// Paid results are a separate list because Roblox has no paid catalog; it is
+// declared early so allGames()/getGame() can resolve them by id.
 const PAID_PAGE_SIZE = 12;
 const PAID_REFRESH_MS = 90 * 1000;
-let paidGames = [];
 let paidStatus = 'idle';
 let paidRequestId = 0;
 let paidVisibleCount = PAID_PAGE_SIZE;
@@ -3983,12 +3994,14 @@ document.addEventListener('keydown', (event) => {
     setView('friends');
     return;
   }
-  if (event.key === 'Enter' && event.target.matches('[data-search-page-input]')) {
+  // event.target may be document (not an Element), which has no matches().
+  const targetIs = (selector) => typeof event.target?.matches === 'function' && event.target.matches(selector);
+  if (event.key === 'Enter' && targetIs('[data-search-page-input]')) {
     event.preventDefault();
     submitSearchPage(event.target.value);
     return;
   }
-  if (event.key === 'Escape' && event.target.matches('[data-search-page-input]')) {
+  if (event.key === 'Escape' && targetIs('[data-search-page-input]')) {
     event.preventDefault();
     if (searchQuery) submitSearchPage('');
     return;
@@ -3998,7 +4011,7 @@ document.addEventListener('keydown', (event) => {
     searchInput.focus();
     return;
   }
-  if (matchesHotkey(event, hotkeyCombo('back')) && !isTyping && currentView === 'game-detail') {
+  if (matchesHotkey(event, hotkeyCombo('back')) && currentView === 'game-detail') {
     event.preventDefault();
     currentView = 'catalog';
     restoreCatalogScroll();

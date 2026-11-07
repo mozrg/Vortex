@@ -1,0 +1,41 @@
+[package]
+name = "vortex-launcher"
+version = "1.1.1"
+description = "A customizable desktop launcher for Roblox experiences."
+edition = "2021"
+rust-version = "1.82"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png", "image-ico"] }
+tauri-plugin-shell = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
+tokio = { version = "1", features = ["full"] }
+sha2 = "0.10"
+sha1 = "0.10"
+uuid = { version = "1", features = ["v4"] }
+dirs = "6"
+url = "2"
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Memory"] }
+chrono = { version = "0.4", features = ["serde"] }
+aes-gcm = "0.10"
+base64 = "0.22"
+log = "0.4"
+env_logger = "0.11"
+rusty-leveldb = "4.0.2"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

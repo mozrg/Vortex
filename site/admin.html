@@ -102,6 +102,16 @@
       .preview-label { color: var(--accent-text); font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
       .preview-title { margin: 6px 0 4px; font-size: 14px; font-weight: 600; }
       .preview-body { color: var(--muted); font-size: 13px; }
+      .markdown-body { line-height: 1.6; overflow-wrap: anywhere; }
+      .markdown-body > :first-child { margin-top: 0; }
+      .markdown-body > :last-child { margin-bottom: 0; }
+      .markdown-body p, .markdown-body ul, .markdown-body ol, .markdown-body blockquote, .markdown-body pre { margin: 7px 0; }
+      .markdown-body ul, .markdown-body ol { padding-left: 22px; }
+      .markdown-body li + li { margin-top: 3px; }
+      .markdown-body blockquote { padding-left: 11px; border-left: 2px solid var(--accent-line); color: var(--subtle); }
+      .markdown-body pre { padding: 9px 11px; border-radius: 8px; background: var(--bg); white-space: pre-wrap; }
+      .markdown-body code { padding: 1px 4px; border-radius: 4px; background: var(--bg); font-family: var(--mono); font-size: .92em; }
+      .markdown-body a { color: var(--accent-text); }
 
       .list { display: grid; gap: 10px; max-height: 620px; overflow-y: auto; }
       .item { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); }
@@ -118,6 +128,15 @@
 
       .lock-badge { display: inline-flex; align-items: center; gap: 7px; color: var(--warn); font-size: 12px; font-weight: 500; }
       .hidden { display: none !important; }
+      .admin-tabs { display: flex; gap: 8px; margin: 22px 0 16px; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+      .admin-tabs button { min-height: 38px; padding: 8px 16px; border-color: transparent; color: var(--muted); }
+      .admin-tabs button[aria-selected="true"] { border-color: var(--accent-line); background: var(--accent-wash); color: var(--accent-text); }
+      .admin-panel[hidden] { display: none !important; }
+      .locale-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+      .locale-card { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
+      .locale-card h3 { margin: 0 0 12px; color: var(--accent-text); font-size: 12px; }
+      .locale-card textarea { min-height: 128px; }
+      @media (max-width: 760px) { .layout, .locale-grid { grid-template-columns: 1fr; } }
       .note {
         margin: 0 0 20px; padding: 12px 15px;
         border: 1px solid rgba(251,191,36,.24); border-radius: var(--radius-sm);
@@ -134,8 +153,8 @@
         <a href="index.html">← На сайт</a>
       </div>
 
-      <h1>Публикация уведомлений</h1>
-      <p class="sub">Одна запись — и её видят все пользователи лаунчера. Обновлять приложение не нужно.</p>
+      <h1 id="admin-title">Публикация уведомлений</h1>
+      <p class="sub" id="admin-subtitle">Одна запись — и её видят все пользователи лаунчера. Обновлять приложение не нужно.</p>
 
       <!-- Setup: shown until a token is stored in this browser. -->
       <section class="card" id="setup-card">
@@ -161,7 +180,12 @@
         </div>
       </section>
 
-      <div class="layout hidden" id="main">
+      <div class="hidden" id="main">
+        <nav class="admin-tabs" role="tablist" aria-label="Раздел админки">
+          <button type="button" role="tab" id="tab-notifications" data-admin-tab="notifications" aria-selected="true">Уведомления</button>
+          <button type="button" role="tab" id="tab-plans" data-admin-tab="plans" aria-selected="false">Планы</button>
+        </nav>
+        <div class="layout admin-panel" id="notifications-panel" role="tabpanel" aria-labelledby="tab-notifications">
         <!-- Editor -->
         <section class="card" id="editor-card">
           <h2 id="editor-title">Новое уведомление</h2>
@@ -171,7 +195,8 @@
           </div>
           <div class="field">
             <label for="body">Текст</label>
-            <textarea id="body" maxlength="600" placeholder="Платные игры теперь загружаются постранично, как и остальные списки."></textarea>
+            <textarea id="body" maxlength="6000" placeholder="# Заголовок — - пункт списка — **жирный текст**"></textarea>
+            <p class="hint">Поддерживается Markdown: заголовки <code>#</code>, маркированные и нумерованные списки, отступы для вложенных пунктов, **жирный текст**, *курсив*, `код` и ссылки.</p>
           </div>
           <div class="field grid2">
             <div>
@@ -184,7 +209,7 @@
             </div>
             <div>
               <label for="min-version">Мин. версия</label>
-              <input type="text" id="min-version" placeholder="1.0.22" />
+              <input type="text" id="min-version" placeholder="1.1.1" />
             </div>
           </div>
           <div class="field">
@@ -194,7 +219,7 @@
           <div class="preview">
             <span class="preview-label">Предпросмотр</span>
             <div class="preview-title" id="preview-title">Заголовок появится здесь</div>
-            <div class="preview-body" id="preview-body">И текст уведомления.</div>
+            <div class="preview-body markdown-body" id="preview-body">И текст уведомления.</div>
           </div>
           <div class="actions">
             <button class="primary" id="publish">Опубликовать</button>
@@ -212,9 +237,44 @@
             <button class="tiny danger" id="reset-setup">Сбросить доступ</button>
           </div>
         </section>
+        </div>
+        <div class="layout admin-panel" id="plans-panel" role="tabpanel" aria-labelledby="tab-plans" hidden>
+          <section class="card" id="plan-editor-card">
+            <h2 id="plan-editor-title">Новый план</h2>
+            <div class="field grid2">
+              <div><label for="plan-id">ID пункта</label><input type="text" id="plan-id" maxlength="40" placeholder="recommendations" /></div>
+              <div><label for="plan-icon">Иконка</label><input type="text" id="plan-icon" maxlength="32" placeholder="trophy" /></div>
+            </div>
+            <div class="field">
+              <label for="plan-stage">Этап</label>
+              <select id="plan-stage"><option value="research">Исследование</option><option value="design">Дизайн</option><option value="dev">В разработке</option><option value="idea">Идея</option></select>
+            </div>
+            <div class="locale-grid">
+              <section class="locale-card"><h3>Русский</h3>
+                <div class="field"><label for="plan-title-ru">Название</label><input type="text" id="plan-title-ru" maxlength="100" /></div>
+                <div class="field"><label for="plan-body-ru">Описание</label><textarea id="plan-body-ru" maxlength="1200"></textarea></div>
+              </section>
+              <section class="locale-card"><h3>English</h3>
+                <div class="field"><label for="plan-title-en">Title</label><input type="text" id="plan-title-en" maxlength="100" /></div>
+                <div class="field"><label for="plan-body-en">Description</label><textarea id="plan-body-en" maxlength="1200"></textarea></div>
+              </section>
+            </div>
+            <div class="actions">
+              <button class="primary" id="publish-plan">Опубликовать план</button>
+              <button id="cancel-plan-edit" class="hidden">Отмена</button>
+              <span class="status" id="plans-status"></span>
+            </div>
+          </section>
+          <section class="card">
+            <h2>Планы на вкладке приложения</h2>
+            <div class="list" id="plans-list"></div>
+            <div class="actions"><button class="tiny" id="reload-plans">Обновить</button></div>
+          </section>
+        </div>
       </div>
     </div>
 
+    <script src="./markdown.js"></script>
     <script>
       // Static page: it calls api.github.com directly with the author's own token.
       // Nothing here is secret — the token is entered at runtime and kept in
@@ -225,12 +285,14 @@
       const API = 'https://api.github.com';
       const REPO = 'mozrg/Vortex';
       const BRANCH = 'main';
-      const FILE = 'site/notifications.json';
+      const FILES = { notifications: 'site/notifications.json', plans: 'site/plans.json' };
       const STORE_TOKEN = 'vortex.notify.token';
 
       const $ = (id) => document.getElementById(id);
       let editingId = null;
-      let state = { token: localStorage.getItem(STORE_TOKEN) || '', sha: null };
+      let editingPlanId = null;
+      let activeTab = 'notifications';
+      let state = { token: localStorage.getItem(STORE_TOKEN) || '', shas: {} };
 
       function setStatus(node, text, kind) {
         node.textContent = text;
@@ -276,9 +338,9 @@
       }
 
       // Returns { items, sha, missing }. sha is required for the next write.
-      async function readDoc() {
+      async function readDoc(file = FILES[activeTab]) {
         const response = await fetch(
-          API + '/repos/' + REPO + '/contents/' + FILE + '?ref=' + BRANCH + '&t=' + Date.now(),
+          API + '/repos/' + REPO + '/contents/' + file + '?ref=' + BRANCH + '&t=' + Date.now(),
           {
             headers: {
               Authorization: 'Bearer ' + state.token,
@@ -288,29 +350,29 @@
             cache: 'no-store'
           }
         );
-        if (response.status === 404) return { items: [], sha: null, missing: true };
+        if (response.status === 404) { state.shas[file] = null; return { items: [], sha: null, missing: true }; }
         if (response.status === 401) throw new Error('Токен неверный или отозван (401).');
         if (!response.ok) throw new Error('GitHub ' + response.status);
         const data = await response.json();
-        state.sha = data.sha;
+        state.shas[file] = data.sha;
         try {
           const parsed = JSON.parse(base64ToText(data.content));
           const items = Array.isArray(parsed) ? parsed : parsed.items;
           return { items: Array.isArray(items) ? items : [], sha: data.sha };
         } catch {
-          throw new Error('В файле битый JSON — исправьте site/notifications.json в репозитории.');
+          throw new Error('В файле битый JSON — исправьте ' + file + ' в репозитории.');
         }
       }
 
-      async function writeDoc(items, sha, message) {
+      async function writeDoc(file, items, sha, message) {
         const content = JSON.stringify({ version: 1, items }, null, 2) + '\n';
         const body = { message, content: bytesToBase64(content), branch: BRANCH };
         if (sha) body.sha = sha;
-        const result = await gh('/repos/' + REPO + '/contents/' + FILE, {
+        const result = await gh('/repos/' + REPO + '/contents/' + file, {
           method: 'PUT',
           body: JSON.stringify(body)
         });
-        state.sha = result?.content?.sha || null;
+        state.shas[file] = result?.content?.sha || null;
       }
 
       // ---- Rendering -------------------------------------------------------
@@ -341,8 +403,8 @@
           head.append(title, tag);
 
           const body = document.createElement('div');
-          body.className = 'item-body';
-          body.textContent = item.body || '';
+          body.className = 'item-body markdown-body';
+          window.VortexMarkdown?.render(body, item.body || '');
 
           const meta = document.createElement('div');
           meta.className = 'item-meta';
@@ -425,7 +487,7 @@
 
       function updatePreview() {
         $('preview-title').textContent = $('title').value.trim() || 'Заголовок появится здесь';
-        $('preview-body').textContent = $('body').value.trim() || 'И текст уведомления.';
+        window.VortexMarkdown?.render($('preview-body'), $('body').value.trim() || 'И текст уведомления.');
       }
 
       // ---- Actions ---------------------------------------------------------
@@ -433,7 +495,7 @@
       async function refresh() {
         setStatus($('status'), 'Загружаем…');
         try {
-          const doc = await readDoc();
+          const doc = await readDoc(FILES.notifications);
           renderList(doc.items);
           setStatus($('status'), doc.missing ? 'Файла ещё нет — он создастся при публикации.' : 'Загружено: ' + doc.items.length, doc.missing ? '' : 'ok');
         } catch (error) {
@@ -447,7 +509,7 @@
         $('publish').disabled = true;
         setStatus($('status'), 'Публикуем…');
         try {
-          const doc = await readDoc();
+          const doc = await readDoc(FILES.notifications);
           const index = doc.items.findIndex((item) => item.id === draft.id);
           const isEdit = index >= 0;
           if (isEdit) {
@@ -458,7 +520,7 @@
             draft.date = new Date().toISOString();
             doc.items.push(draft);
           }
-          await writeDoc(doc.items, doc.sha, `notifications: ${isEdit ? 'edit' : 'add'} ${draft.title}`);
+          await writeDoc(FILES.notifications, doc.items, doc.sha, `notifications: ${isEdit ? 'edit' : 'add'} ${draft.title}`);
           renderList(doc.items);
           resetEditor();
           setStatus($('status'), 'Опубликовано. Pages обновится за ~1 минуту, лаунчер — в течение 5.', 'ok');
@@ -473,15 +535,176 @@
         if (!confirm('Удалить «' + (item.title || item.id) + '»? Уведомление исчезнет у всех.')) return;
         setStatus($('status'), 'Удаляем…');
         try {
-          const doc = await readDoc();
+          const doc = await readDoc(FILES.notifications);
           const items = doc.items.filter((entry) => entry.id !== item.id);
-          await writeDoc(items, doc.sha, `notifications: remove ${item.title || item.id}`);
+          await writeDoc(FILES.notifications, items, doc.sha, `notifications: remove ${item.title || item.id}`);
           renderList(items);
           if (editingId === item.id) resetEditor();
           setStatus($('status'), 'Удалено.', 'ok');
         } catch (error) {
           setStatus($('status'), error.message, 'err');
         }
+      }
+
+      function localizedPlan(value, language) {
+        if (value && typeof value === 'object') return String(value[language] || value.ru || value.en || '');
+        return String(value || '');
+      }
+
+      function renderPlansList(items) {
+        const list = $('plans-list');
+        list.replaceChildren();
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = 'Планов пока нет.';
+          list.appendChild(empty);
+          return;
+        }
+        for (const item of items) {
+          const row = document.createElement('div');
+          row.className = 'item';
+          const head = document.createElement('div');
+          head.className = 'item-head';
+          const title = document.createElement('span');
+          title.className = 'item-title';
+          title.textContent = localizedPlan(item.title, 'ru') || localizedPlan(item.title, 'en') || '(без названия)';
+          const tag = document.createElement('span');
+          tag.className = 'tag info';
+          tag.textContent = item.stage || 'idea';
+          head.append(title, tag);
+          const body = document.createElement('div');
+          body.className = 'item-body markdown-body';
+          window.VortexMarkdown?.render(body, localizedPlan(item.body, 'ru'));
+          const meta = document.createElement('div');
+          meta.className = 'item-meta';
+          meta.textContent = [item.id, item.icon || 'flag', localizedPlan(item.title, 'en')].filter(Boolean).join(' · ');
+          const actions = document.createElement('div');
+          actions.className = 'item-actions';
+          const edit = document.createElement('button');
+          edit.className = 'tiny';
+          edit.textContent = 'Изменить';
+          edit.addEventListener('click', () => startEditPlan(item));
+          const remove = document.createElement('button');
+          remove.className = 'tiny danger';
+          remove.textContent = 'Удалить';
+          remove.addEventListener('click', () => removePlan(item));
+          actions.append(edit, remove);
+          row.append(head, body, meta, actions);
+          list.appendChild(row);
+        }
+      }
+
+      function startEditPlan(item) {
+        editingPlanId = String(item.id || '');
+        $('plan-editor-title').textContent = 'Изменение плана';
+        $('plan-id').value = editingPlanId;
+        $('plan-id').disabled = true;
+        $('plan-icon').value = item.icon || 'flag';
+        $('plan-stage').value = ['research', 'design', 'dev', 'idea'].includes(item.stage) ? item.stage : 'idea';
+        $('plan-title-ru').value = localizedPlan(item.title, 'ru');
+        $('plan-title-en').value = localizedPlan(item.title, 'en');
+        $('plan-body-ru').value = localizedPlan(item.body, 'ru');
+        $('plan-body-en').value = localizedPlan(item.body, 'en');
+        $('cancel-plan-edit').classList.remove('hidden');
+        $('publish-plan').textContent = 'Сохранить план';
+        $('plan-title-ru').focus();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      function resetPlanEditor() {
+        editingPlanId = null;
+        $('plan-editor-title').textContent = 'Новый план';
+        $('plan-id').value = '';
+        $('plan-id').disabled = false;
+        $('plan-icon').value = 'flag';
+        $('plan-stage').value = 'idea';
+        $('plan-title-ru').value = '';
+        $('plan-title-en').value = '';
+        $('plan-body-ru').value = '';
+        $('plan-body-en').value = '';
+        $('cancel-plan-edit').classList.add('hidden');
+        $('publish-plan').textContent = 'Опубликовать план';
+      }
+
+      function readPlanForm() {
+        const ruTitle = $('plan-title-ru').value.trim();
+        const enTitle = $('plan-title-en').value.trim();
+        if (!ruTitle || !enTitle) throw new Error('Заполните названия на русском и английском.');
+        const icon = $('plan-icon').value.trim() || 'flag';
+        if (!/^[a-zA-Z0-9_-]{1,32}$/.test(icon)) throw new Error('Иконка должна быть коротким ключом без пробелов.');
+        const id = editingPlanId || $('plan-id').value.trim() || `plan-${Date.now().toString(36)}`;
+        if (!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(id)) throw new Error('ID: латинские буквы, цифры, дефис и подчёркивание.');
+        return {
+          id, icon, stage: $('plan-stage').value,
+          title: { ru: ruTitle, en: enTitle },
+          body: { ru: $('plan-body-ru').value.trim(), en: $('plan-body-en').value.trim() }
+        };
+      }
+
+      async function refreshPlans() {
+        setStatus($('plans-status'), 'Загружаем планы…');
+        try {
+          const doc = await readDoc(FILES.plans);
+          renderPlansList(doc.items);
+          setStatus($('plans-status'), doc.missing ? 'Файл планов ещё не найден.' : 'Загружено: ' + doc.items.length, doc.missing ? 'err' : 'ok');
+        } catch (error) {
+          setStatus($('plans-status'), error.message, 'err');
+        }
+      }
+
+      async function publishPlan() {
+        let draft;
+        try { draft = readPlanForm(); } catch (error) { setStatus($('plans-status'), error.message, 'err'); return; }
+        $('publish-plan').disabled = true;
+        setStatus($('plans-status'), 'Сохраняем план…');
+        try {
+          const doc = await readDoc(FILES.plans);
+          const index = editingPlanId ? doc.items.findIndex((item) => item.id === editingPlanId) : -1;
+          const isEdit = index >= 0;
+          if (doc.items.some((item) => item.id === draft.id && item.id !== editingPlanId)) throw new Error('План с таким ID уже существует.');
+          if (isEdit) doc.items[index] = draft;
+          else doc.items.push(draft);
+          await writeDoc(FILES.plans, doc.items, doc.sha, `plans: ${isEdit ? 'edit' : 'add'} ${draft.id}`);
+          renderPlansList(doc.items);
+          resetPlanEditor();
+          setStatus($('plans-status'), 'План опубликован. Приложение обновит список в течение пяти минут.', 'ok');
+        } catch (error) {
+          setStatus($('plans-status'), error.message, 'err');
+        } finally {
+          $('publish-plan').disabled = false;
+        }
+      }
+
+      async function removePlan(item) {
+        const title = localizedPlan(item.title, 'ru') || item.id;
+        if (!confirm('Удалить план «' + title + '»? Он исчезнет из вкладки планов у пользователей.')) return;
+        setStatus($('plans-status'), 'Удаляем план…');
+        try {
+          const doc = await readDoc(FILES.plans);
+          const items = doc.items.filter((entry) => entry.id !== item.id);
+          await writeDoc(FILES.plans, items, doc.sha, `plans: remove ${item.id}`);
+          renderPlansList(items);
+          if (editingPlanId === item.id) resetPlanEditor();
+          setStatus($('plans-status'), 'План удалён.', 'ok');
+        } catch (error) {
+          setStatus($('plans-status'), error.message, 'err');
+        }
+      }
+
+      function switchAdminTab(tab) {
+        if (!['notifications', 'plans'].includes(tab)) return;
+        activeTab = tab;
+        $('notifications-panel').hidden = tab !== 'notifications';
+        $('plans-panel').hidden = tab !== 'plans';
+        $('admin-title').textContent = tab === 'plans' ? 'Планы приложения' : 'Публикация уведомлений';
+        $('admin-subtitle').textContent = tab === 'plans'
+          ? 'Добавляйте, изменяйте и удаляйте пункты, которые появятся во вкладке «Планы».'
+          : 'Одна запись — и её видят все пользователи лаунчера. Обновлять приложение не нужно.';
+        document.querySelectorAll('[data-admin-tab]').forEach((button) => {
+          button.setAttribute('aria-selected', String(button.dataset.adminTab === tab));
+        });
+        if (tab === 'plans') refreshPlans();
       }
 
       // ---- Boot ------------------------------------------------------------
@@ -502,7 +725,7 @@
         state.token = token;
         setStatus($('setup-status'), 'Проверяем доступ…');
         try {
-          await readDoc();
+          await readDoc(FILES.notifications);
           // Only persist after the token proved it can read the file.
           localStorage.setItem(STORE_TOKEN, token);
           setStatus($('setup-status'), 'Готово.', 'ok');
@@ -516,7 +739,9 @@
         if (!confirm('Забыть токен в этом браузере?')) return;
         localStorage.removeItem(STORE_TOKEN);
         state.token = '';
-        state.sha = null;
+        state.shas = {};
+        resetPlanEditor();
+        switchAdminTab('notifications');
         $('setup-card').classList.remove('hidden');
         $('main').classList.add('hidden');
         $('token').value = '';
@@ -526,6 +751,12 @@
       $('publish').addEventListener('click', publish);
       $('reload').addEventListener('click', refresh);
       $('cancel-edit').addEventListener('click', resetEditor);
+      $('publish-plan').addEventListener('click', publishPlan);
+      $('reload-plans').addEventListener('click', refreshPlans);
+      $('cancel-plan-edit').addEventListener('click', resetPlanEditor);
+      document.querySelectorAll('[data-admin-tab]').forEach((button) => {
+        button.addEventListener('click', () => switchAdminTab(button.dataset.adminTab));
+      });
       $('title').addEventListener('input', updatePreview);
       $('body').addEventListener('input', updatePreview);
 
@@ -533,7 +764,10 @@
       document.addEventListener('keydown', (event) => {
         if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
           event.preventDefault();
-          if (!$('main').classList.contains('hidden')) publish();
+          if (!$('main').classList.contains('hidden')) {
+            if (activeTab === 'plans') publishPlan();
+            else publish();
+          }
         }
       });
 

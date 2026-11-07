@@ -3,20 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b0c10" />
+    <meta name="theme-color" content="#0d1012" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://tr.rbxcdn.com data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'" />
     <title>Vortex — Roblox Place Launcher</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body class="sidebar-compact">
     <div class="ambient ambient-one" aria-hidden="true"></div>
     <div class="ambient ambient-two" aria-hidden="true"></div>
     <div class="window-titlebar" role="toolbar" aria-label="Панель окна" data-i18n-aria="window.toolbar">
       <div class="window-drag-region" data-window-drag data-i18n-aria="window.drag" aria-label="Перетащите, чтобы переместить окно">
-        <span class="window-app-caption">PLACE LAUNCHER</span>
+        <span class="window-app-caption">VORTEX</span>
         <span class="window-title-divider"></span>
         <span class="window-context" data-i18n="window.context">ТВОЁ ПРОСТРАНСТВО ДЛЯ НОВЫХ МИРОВ</span>
       </div>
@@ -27,25 +27,21 @@
       </div>
     </div>
     <div class="app-shell">
-      <aside class="sidebar">
-        <a class="brand" href="#home" data-nav="home" data-i18n-aria="brand.home" aria-label="Vortex — главная">
-          <img class="brand-logo" src="../assets/vortex-logo.svg" alt="" aria-hidden="true" />
-          <span class="brand-copy"><strong>VORTEX</strong></span>
-        </a>
-
-        <button class="sidebar-hide-button icon-button" type="button" data-sidebar-hide aria-label="Скрыть меню" title="Скрыть меню"><span data-icon="chevronLeft"></span></button>
-        <div class="side-label" data-i18n="sidebar.menu">МЕНЮ</div>
+        <aside class="sidebar" id="app-sidebar">
+        <div class="sidebar-top-controls">
+          <button class="sidebar-hide-button icon-button" type="button" data-sidebar-hide aria-label="Развернуть меню" title="Развернуть меню" aria-expanded="false" aria-controls="app-sidebar"><span data-icon="chevronLeft"></span></button>
+          <button class="quick-launch-add icon-button" type="button" data-action="open-quick-game-modal" data-i18n-aria="quick.add" aria-label="Добавить быстрый запуск" title="Добавить быстрый запуск"><span data-icon="plus"></span></button>
+        </div>
+        <div class="side-label" data-i18n="sidebar.menu">Библиотека</div>
         <nav class="primary-nav" data-nav-group="menu" aria-label="Основная навигация" data-i18n-aria="sidebar.primaryNav">
-          <button class="nav-item active" data-nav="home"><span class="nav-icon" data-icon="home"></span><span data-i18n="nav.home">Главная</span></button>
-          <button class="nav-item" data-nav="catalog"><span class="nav-icon" data-icon="compass"></span><span data-i18n="nav.catalog">Каталог игр</span></button>
           <button class="nav-item" data-nav="favorites"><span class="nav-icon" data-icon="heart"></span><span data-i18n="nav.favorites">Избранное</span></button>
           <button class="nav-item" data-nav="recent"><span class="nav-icon" data-icon="clock"></span><span data-i18n="nav.recent">Недавние</span></button>
-        </nav>
-
-        <div class="side-label side-label-spaced" data-i18n="sidebar.space">ТВОЁ ПРОСТРАНСТВО</div>
-        <nav class="primary-nav" data-nav-group="space" aria-label="Твоё пространство" data-i18n-aria="sidebar.spaceNav">
           <button class="nav-item" data-nav="plans"><span class="nav-icon" data-icon="flag"></span><span data-i18n="nav.plans">В планах</span></button>
         </nav>
+        <section class="quick-launch-section" aria-label="Быстрый запуск">
+          <div class="quick-launch-heading"><span data-i18n="quick.title">Быстрый запуск</span></div>
+          <div class="quick-launch-items" id="quick-launch-items"></div>
+        </section>
 
         <div class="sidebar-bottom">
           <div class="sidebar-tip" data-ui-part="tip">
@@ -56,18 +52,22 @@
           <nav class="primary-nav sidebar-nav-bottom" aria-label="Настройки" data-i18n-aria="nav.settings">
             <button class="nav-item" data-nav="settings"><span class="nav-icon" data-icon="sliders"></span><span data-i18n="nav.settings">Настройки</span></button>
           </nav>
-          <div class="profile-row" data-ui-part="profile">
-            <div class="avatar">V</div>
-            <div class="profile-copy"><strong data-i18n="profile.name">Мой лаунчер</strong><small data-i18n="profile.local">Локальный профиль</small></div>
-            <button class="icon-button profile-settings" data-nav="settings" data-i18n-aria="nav.settings" aria-label="Настройки"><span data-icon="dots"></span></button>
-          </div>
-          <div class="sidebar-foot" data-ui-part="foot"><span class="status-dot"></span> VORTEX PREVIEW</div>
         </div>
       </aside>
 
       <main class="main-area">
         <header class="topbar">
           <div class="breadcrumb" data-ui-part="breadcrumb" hidden></div>
+          <a class="topbar-brand" href="#home" data-nav="home" data-i18n-aria="brand.home" aria-label="Vortex — главная"><img class="topbar-brand-logo" src="./assets/vortex-logo.svg" alt="" aria-hidden="true" /></a>
+          <div class="nav-history-controls" aria-label="История навигации" data-i18n-aria="nav.history">
+            <button class="icon-button nav-history-button" type="button" data-action="history-back" data-i18n-aria="nav.back" aria-label="Назад" title="Назад" disabled><span data-icon="arrowLeft"></span></button>
+            <button class="icon-button nav-history-button nav-history-forward" type="button" data-action="history-forward" data-i18n-aria="nav.forward" aria-label="Вперёд" title="Вперёд" disabled><span data-icon="arrowLeft"></span></button>
+          </div>
+          <nav class="topbar-nav" data-nav-group="topbar" aria-label="Основные разделы" data-i18n-aria="topbar.primaryNav">
+            <button class="topbar-nav-item active" type="button" data-nav="home" aria-label="Главная" title="Главная"><span class="topbar-nav-icon" data-icon="home"></span><span class="topbar-nav-label" data-i18n="nav.home">Главная</span></button>
+            <button class="topbar-nav-item" type="button" data-nav="catalog" aria-label="Каталог игр" title="Каталог игр"><span class="topbar-nav-icon" data-icon="compass"></span><span class="topbar-nav-label" data-i18n="nav.catalog">Каталог игр</span></button>
+            <button class="topbar-nav-item" type="button" data-nav="friends" aria-label="Друзья" title="Друзья"><span class="topbar-nav-icon" data-icon="users"></span><span class="topbar-nav-label" data-i18n="nav.friends">Друзья</span></button>
+          </nav>
           <div class="topbar-actions">
             <label class="search-field" for="global-search" data-ui-part="topbar-search">
               <span data-icon="search"></span>
@@ -75,7 +75,7 @@
               <kbd>Ctrl K</kbd>
             </label>
             <button class="icon-button notification-button" data-ui-part="notifications" data-i18n-aria="notifications" aria-label="Уведомления" data-action="notifications"><span data-icon="bell"></span><i></i></button>
-            <button class="avatar avatar-small" data-nav="settings" data-i18n-aria="profile.settings" aria-label="Профиль и настройки">V</button>
+            <button class="avatar avatar-small" type="button" data-action="toggle-friends-drawer" data-i18n-aria="friends.drawer.open" aria-label="Открыть друзей" aria-controls="friends-drawer" aria-haspopup="dialog" aria-expanded="false">V<span class="avatar-presence-dot" aria-hidden="true"></span></button>
           </div>
         </header>
 
@@ -83,10 +83,46 @@
         <div class="page-content" id="page-content"></div>
       </main>
     </div>
+    <button class="friends-drawer-backdrop" id="friends-drawer-backdrop" type="button" data-action="close-friends-drawer" data-i18n-aria="common.close" aria-label="Закрыть список друзей" hidden></button>
+    <aside class="friends-drawer" id="friends-drawer" role="dialog" aria-modal="true" aria-labelledby="friends-drawer-title" aria-hidden="true" hidden inert>
+      <header class="friends-drawer-header"><div><span class="friends-drawer-kicker" data-i18n="friends.drawer.kicker">СООБЩЕСТВО</span><h2 id="friends-drawer-title" data-i18n="nav.friends">Друзья</h2></div><div class="friends-drawer-header-actions"><button class="icon-button" type="button" data-action="refresh-friends-drawer" data-i18n-aria="friends.refresh" aria-label="Обновить друзей"><span data-icon="refreshCw"></span></button><button class="icon-button" type="button" data-action="close-friends-drawer" data-i18n-aria="common.close" aria-label="Закрыть"><span data-icon="close"></span></button></div></header>
+      <div class="friends-drawer-content" id="friends-drawer-content"></div>
+    </aside>
+    <div class="quick-game-modal" id="quick-game-modal" hidden>
+      <button class="quick-game-modal-backdrop" type="button" data-action="close-quick-game-modal" data-i18n-aria="common.close" aria-label="Закрыть"></button>
+      <section class="quick-game-dialog" role="dialog" aria-modal="true" aria-labelledby="quick-game-title">
+        <header class="quick-game-dialog-header"><div><span class="quick-game-dialog-kicker" data-i18n="quick.kicker">БЫСТРЫЙ ЗАПУСК</span><h2 id="quick-game-title" data-i18n="quick.dialogTitle">Добавить игру</h2></div><button class="icon-button" type="button" data-action="close-quick-game-modal" data-i18n-aria="common.close" aria-label="Закрыть"><span data-icon="close"></span></button></header>
+        <form id="quick-game-form" class="quick-game-form">
+          <fieldset class="quick-game-methods"><legend data-i18n="quick.methodLabel">Способ запуска</legend>
+            <button type="button" class="quick-game-method active" data-quick-method="private"><span data-icon="users"></span><span><strong data-i18n="quick.privateTitle">Приватный сервер</strong><small data-i18n="quick.privateBody">Place ID и Link Code</small></span></button>
+            <button type="button" class="quick-game-method" data-quick-method="share"><span data-icon="arrowUpRight"></span><span><strong data-i18n="quick.shareTitle">Ссылка Roblox</strong><small data-i18n="quick.shareBody">Код или share-ссылка</small></span></button>
+            <button type="button" class="quick-game-method" data-quick-method="public"><span data-icon="gamepad"></span><span><strong data-i18n="quick.publicTitle">Публичная игра</strong><small data-i18n="quick.publicBody">Запуск по Place ID</small></span></button>
+          </fieldset>
+          <div class="quick-game-fields" id="quick-game-fields"></div>
+          <label class="quick-game-name-field"><span data-i18n="quick.nameLabel">Название в меню</span><input name="title" type="text" maxlength="64" data-i18n-placeholder="quick.namePlaceholder" placeholder="Например, вечерний сервер" /></label>
+          <label class="quick-code-import"><span data-i18n="quick.codeLabel">Код пресета быстрого запуска</span><span><input type="text" autocomplete="off" data-quick-code data-i18n-placeholder="quick.codePlaceholder" placeholder="VORTEXQL1-…" /><button class="ghost-button" type="button" data-action="import-quick-code" data-i18n="quick.importCode">Загрузить</button></span></label>
+          <div class="quick-game-form-error" id="quick-game-error" role="alert" hidden></div>
+          <footer class="quick-game-dialog-actions"><button class="ghost-button" type="button" data-action="close-quick-game-modal" data-i18n="common.cancel">Отмена</button><button class="primary-button" type="submit"><span data-quick-submit-icon data-icon="plus"></span><span data-quick-submit-label data-i18n="quick.save">Добавить</span></button></footer>
+        </form>
+      </section>
+    </div>
+    <div class="quick-game-modal" id="quick-folder-modal" hidden>
+      <button class="quick-game-modal-backdrop" type="button" data-action="close-quick-folder-modal" data-i18n-aria="common.close" aria-label="Закрыть"></button>
+      <section class="quick-game-dialog quick-folder-dialog" role="dialog" aria-modal="true" aria-labelledby="quick-folder-title">
+        <header class="quick-game-dialog-header"><div><span class="quick-game-dialog-kicker" data-i18n="quick.folderKicker">БЫСТРЫЙ ЗАПУСК</span><h2 id="quick-folder-title" data-i18n="quick.folderEditTitle">Настройки папки</h2></div><button class="icon-button" type="button" data-action="close-quick-folder-modal" data-i18n-aria="common.close" aria-label="Закрыть"><span data-icon="close"></span></button></header>
+        <form id="quick-folder-form" class="quick-game-form quick-folder-form">
+          <label class="quick-game-name-field"><span data-i18n="quick.folderName">Название папки</span><input name="title" type="text" maxlength="48" data-i18n-placeholder="quick.folderDefault" placeholder="Игры" /></label>
+          <label class="quick-game-name-field quick-folder-color"><span data-i18n="quick.folderColor">Цвет папки</span><input name="color" type="color" value="#9b7cff" /></label>
+          <footer class="quick-game-dialog-actions"><button class="ghost-button" type="button" data-action="close-quick-folder-modal" data-i18n="common.cancel">Отмена</button><button class="primary-button" type="submit" data-i18n="common.save">Сохранить</button></footer>
+        </form>
+      </section>
+    </div>
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
     <script src="./js/icons.js"></script>
     <script src="./js/color.js"></script>
     <script src="./js/i18n.js"></script>
-    <script src="./app.js"></script>
+    <script src="./js/desktop.js"></script>
+    <script src="./js/markdown.js"></script>
+    <script src="./js/bootstrap.js"></script>
   </body>
 </html>

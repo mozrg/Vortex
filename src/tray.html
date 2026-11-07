@@ -1,284 +1,33 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' https://tr.rbxcdn.com data:;" />
-  <title>Vortex  Трей</title>
-  <style>
-    :root {
-      --bg: #0b0c10;
-      --surface: #171922;
-      --surface-hover: #23252f;
-      --item: #1c1e28;
-      --line: rgba(255,255,255,.07);
-      --line-strong: rgba(255,255,255,.14);
-      --text: #f4f4f6;
-      --muted: #8d909e;
-      --accent: #9b7cff;
-      --accent-rgb: 155, 124, 255;
-      --accent-secondary: #c274ec;
-      --accent-border: rgba(155, 124, 255, .38);
-      --accent-wash: rgba(155, 124, 255, .14);
-      --accent-text: #c3b2ff;
-      --accent-fill: #9b7cff;
-      --accent-contrast: #ffffff;
-      --radius: 6px;
-      --scale: 1;
-    }
-    * { box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; font-family: 'Segoe UI', 'Inter', system-ui, 'Segoe UI Emoji', sans-serif; font-size: calc(13px * var(--scale)); }
-    body.sharp { --radius: 2px; }
-
-    /* Steam-style menu: compact, list-driven, single column. */
-    .tray-panel { display: flex; flex-direction: column; width: calc(280px * var(--scale)); height: auto; max-height: 100vh; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); box-shadow: 0 16px 40px rgba(0,0,0,.55), inset 0 1px rgba(255,255,255,.04); transition: opacity .1s ease, transform .1s cubic-bezier(.2,.72,.25,1); }
-    .tray-panel.tray-enter { opacity: 0; transform: translateY(6px); }
-    .tray-panel.tray-exit { opacity: 0; transform: translateY(3px); }
-
-    .tray-games { display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: none; max-height: calc(260px * var(--scale)); }
-    .tray-games::-webkit-scrollbar { display: none; }
-
-    /* Steam-style game row: art, title, play glyph; flat, tight, hover-filled. */
-    .tray-game { display: flex; align-items: center; gap: calc(9px * var(--scale)); width: 100%; min-height: calc(38px * var(--scale)); padding: calc(5px * var(--scale)) calc(12px * var(--scale)); border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; transition: background .12s ease; }
-    .tray-game:hover { background: var(--surface-hover); }
-    .tray-game + .tray-game { border-top: 1px solid var(--line); }
-    .tray-game-art { display: grid; width: calc(28px * var(--scale)); height: calc(28px * var(--scale)); flex: 0 0 auto; overflow: hidden; place-items: center; border-radius: calc(3px * var(--scale)); background: linear-gradient(140deg, rgba(var(--accent-rgb), .35), rgba(0,0,0,.45)); }
-    .tray-game-art img { width: 100%; height: 100%; object-fit: cover; }
-    .tray-game-copy { display: grid; min-width: 0; flex: 1; gap: 1px; }
-    .tray-game strong { display: block; overflow: hidden; font-size: calc(11.5px * var(--scale)); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
-    .tray-game small { display: block; overflow: hidden; color: var(--muted); font-size: calc(8.5px * var(--scale)); text-overflow: ellipsis; white-space: nowrap; }
-    .tray-game-play { display: grid; width: calc(20px * var(--scale)); height: calc(20px * var(--scale)); flex: 0 0 auto; place-items: center; border-radius: calc(3px * var(--scale)); background: var(--accent-wash); color: var(--accent-text); opacity: 0; transition: opacity .12s ease; }
-    .tray-game:hover .tray-game-play { opacity: 1; }
-    .tray-game-play svg { width: calc(10px * var(--scale)); height: calc(10px * var(--scale)); }
-
-    .tray-empty { display: grid; gap: 6px; padding: calc(16px * var(--scale)) calc(12px * var(--scale)); place-items: center; color: var(--muted); font-size: calc(9.5px * var(--scale)); text-align: center; line-height: 1.6; }
-    .tray-empty svg { width: calc(20px * var(--scale)); height: calc(20px * var(--scale)); color: var(--accent-text); }
-
-    .tray-sep { height: 1px; margin: 0; border: 0; background: var(--line); }
-
-    /* Mini-player: one compact line with the launched game and a live timer. */
-    .tray-now-playing { display: flex; align-items: center; gap: calc(7px * var(--scale)); padding: calc(6px * var(--scale)) calc(10px * var(--scale)); border-bottom: 1px solid var(--line); background: linear-gradient(100deg, rgba(var(--accent-rgb), .14), transparent); }
-    .tray-now-playing[hidden] { display: none; }
-    .tray-np-art { display: grid; width: calc(20px * var(--scale)); height: calc(20px * var(--scale)); flex: 0 0 auto; overflow: hidden; place-items: center; border-radius: calc(3px * var(--scale)); background: rgba(var(--accent-rgb), .25); }
-    .tray-np-art img { width: 100%; height: 100%; object-fit: cover; }
-    .tray-np-copy { display: flex; min-width: 0; flex: 1; align-items: baseline; gap: calc(6px * var(--scale)); }
-    .tray-np-copy strong { overflow: hidden; font-size: calc(10.5px * var(--scale)); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-    .tray-np-copy small { flex: 0 0 auto; color: var(--accent-text); font-size: calc(9px * var(--scale)); font-variant-numeric: tabular-nums; }
-    .tray-np-live { width: calc(6px * var(--scale)); height: calc(6px * var(--scale)); flex: 0 0 auto; border-radius: 50%; background: #33cd7c; box-shadow: 0 0 calc(5px * var(--scale)) rgba(51,205,124,.65); animation: tray-pulse 1.6s ease-in-out infinite; }
-    @keyframes tray-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
-
-    /* Steam-style actions: full-width rows, not floating buttons. */
-    .tray-actions { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
-    .tray-button { display: flex; align-items: center; gap: calc(9px * var(--scale)); width: 100%; min-height: calc(34px * var(--scale)); padding: 0 calc(12px * var(--scale)); border: 0; background: transparent; color: var(--text); font-size: calc(11px * var(--scale)); font-weight: 500; cursor: pointer; transition: background .12s ease; }
-    .tray-button:hover { background: var(--surface-hover); }
-    .tray-button svg { width: calc(13px * var(--scale)); height: calc(13px * var(--scale)); flex: 0 0 auto; color: var(--muted); }
-    .tray-button:hover svg { color: var(--accent-text); }
-    .tray-button.danger:hover { color: #ff8f9b; }
-    .tray-button.danger:hover svg { color: #ff8f9b; }
-
-    @media (prefers-reduced-motion: reduce) { .tray-panel { transition: none; } }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://*.rbxcdn.com data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'" />
+  <title>Vortex</title>
+  <link rel="stylesheet" href="./tray.css" />
+  <script src="./js/tray.js" defer></script>
 </head>
 <body>
-  <div class="tray-panel">
+  <main class="tray-shell">
     <div class="tray-now-playing" id="tray-now-playing" hidden>
-      <span class="tray-np-art" id="tray-np-art"></span>
-      <span class="tray-np-copy"><strong id="tray-np-title"></strong><small id="tray-np-time"></small></span>
-      <span class="tray-np-live" aria-hidden="true"></span>
+      <span class="tray-now-art" id="tray-now-art"></span><span class="tray-now-copy"><strong id="tray-now-title"></strong><small id="tray-now-time"></small></span><span class="tray-now-live" aria-hidden="true"></span>
     </div>
-    <div class="tray-games" id="tray-games"></div>
-    <hr class="tray-sep" />
-    <div class="tray-actions">
-      <button class="tray-button" id="tray-open">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
-        <span data-i18n="tray.open">Открыть приложение</span>
-      </button>
-      <button class="tray-button danger" id="tray-quit">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-        <span data-i18n="tray.quit">Закрыть полностью</span>
-      </button>
+    <div class="tray-content">
+      <section class="tray-section" aria-labelledby="favorite-heading">
+        <div class="tray-section-heading"><h2 id="favorite-heading"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.9c0 4.2-8.8 10.2-8.8 10.2S3.2 13.1 3.2 8.9a4.2 4.2 0 0 1 7.5-2.6L12 7.8l1.3-1.5a4.2 4.2 0 0 1 7.5 2.6Z" /></svg><span data-copy="favorites">Избранное</span></h2><small data-favorite-count>0 / 5</small></div>
+        <div class="tray-list" id="tray-favorites"></div>
+      </section>
+      <section class="tray-section" aria-labelledby="quick-heading">
+        <div class="tray-section-heading"><h2 id="quick-heading"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 12 7-12 7z" /><path d="M4 4v16" /></svg><span data-copy="quick">Быстрый запуск</span></h2><small data-quick-count>0 / 3</small></div>
+        <div class="tray-list" id="tray-quick-launch"></div>
+      </section>
     </div>
-  </div>
-
-  <script>
-    const translations = {
-      ru: {
-        'tray.status': 'РАБОТАЕТ В ФОНЕ',
-        'tray.recent': 'ПОСЛЕДНИЕ ИГРЫ',
-        'tray.open': 'Открыть приложение',
-        'tray.quit': 'Закрыть полностью',
-        'tray.launch': 'Запустить',
-        'tray.playing': 'Играет',
-        'tray.empty': 'Пока пусто — запусти игру,<br />и она появится здесь'
-      },
-      en: {
-        'tray.status': 'RUNNING IN BACKGROUND',
-        'tray.recent': 'RECENT GAMES',
-        'tray.open': 'Open app',
-        'tray.quit': 'Quit completely',
-        'tray.launch': 'Launch',
-        'tray.playing': 'Playing',
-        'tray.empty': 'Nothing yet — launch a game<br />and it will show up here'
-      }
-    };
-    let language = 'ru';
-
-    const hexToRgb = (hex) => {
-      const normalized = /^#[0-9a-f]{6}$/i.test(String(hex)) ? String(hex) : '#000000';
-      return [1, 3, 5].map((index) => parseInt(normalized.slice(index, index + 2), 16));
-    };
-    const relativeLuminance = (hex) => {
-      const [red, green, blue] = hexToRgb(hex).map((channel) => {
-        const scaled = channel / 255;
-        return scaled <= 0.03928 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4;
-      });
-      return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-    };
-    const mixHex = (first, second, amount) => {
-      const a = hexToRgb(first);
-      const b = hexToRgb(second);
-      return '#' + a.map((channel, index) => Math.round(channel + (b[index] - channel) * amount).toString(16).padStart(2, '0')).join('');
-    };
-
-    // Applies the launcher's appearance settings: accent, theme, custom colors,
-    // gradient fill and corner style all follow the main window.
-    function applyStyle(style) {
-      if (!style || typeof style !== 'object') return;
-      language = ['ru', 'en'].includes(style.language) ? style.language : 'ru';
-      const root = document.documentElement.style;
-      const accent = /^#[0-9a-f]{6}$/i.test(String(style.accent)) ? String(style.accent) : '#9b7cff';
-      const accentSecondary = /^#[0-9a-f]{6}$/i.test(String(style.accentSecondary)) ? String(style.accentSecondary) : '#c274ec';
-      const channels = hexToRgb(accent).join(', ');
-      const themeBase = {
-        dark: { background: '#0b0c10', surface: '#171922' },
-        light: { background: '#f2f1f6', surface: '#ffffff' },
-        oled: { background: '#030305', surface: '#08090c' }
-      }[style.theme] || { background: '#0b0c10', surface: '#171922' };
-      const background = /^#[0-9a-f]{6}$/i.test(String(style.themeBackground)) ? String(style.themeBackground) : themeBase.background;
-      const isLightCanvas = relativeLuminance(background) > 0.42;
-      const derivedSurface = /^#[0-9a-f]{6}$/i.test(String(style.themeBackground))
-        ? mixHex(background, isLightCanvas ? '#ffffff' : '#000000', isLightCanvas ? 0.78 : 0.48)
-        : themeBase.surface;
-      const surface = /^#[0-9a-f]{6}$/i.test(String(style.themeSurface)) ? String(style.themeSurface) : derivedSurface;
-      const gradientAngle = Math.max(0, Math.min(360, Number(style.gradientAngle) || 135));
-      const accentText = /^#[0-9a-f]{6}$/i.test(String(style.accentText)) ? String(style.accentText) : accent;
-      const accentWash = style.accentMode === 'gradient'
-        ? `linear-gradient(${gradientAngle}deg, rgba(${channels}, .19), rgba(${hexToRgb(accentSecondary).join(', ')}, .12))`
-        : `rgba(${channels}, .14)`;
-      const fill = style.accentMode === 'gradient'
-        ? `linear-gradient(${gradientAngle}deg, ${accent}, ${accentSecondary})`
-        : accent;
-      const contrast = (foreground) => {
-        const a = relativeLuminance(foreground);
-        const b = relativeLuminance(accent);
-        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-      };
-      const accentContrast = contrast('#ffffff') >= contrast('#17151d') ? '#ffffff' : '#17151d';
-      root.setProperty('--accent', accent);
-      root.setProperty('--accent-rgb', channels);
-      root.setProperty('--accent-secondary', accentSecondary);
-      root.setProperty('--accent-border', `rgba(${channels}, .38)`);
-      root.setProperty('--accent-wash', accentWash);
-      root.setProperty('--accent-text', accentText);
-      root.setProperty('--accent-fill', fill);
-      root.setProperty('--accent-contrast', accentContrast);
-      root.setProperty('--bg', background);
-      root.setProperty('--surface', surface);
-      root.setProperty('--surface-hover', mixHex(surface, isLightCanvas ? '#000000' : '#ffffff', isLightCanvas ? 0.06 : 0.08));
-      root.setProperty('--text', isLightCanvas ? '#211e2a' : '#f4f4f6');
-      root.setProperty('--muted', isLightCanvas ? '#777382' : '#8d909e');
-      root.setProperty('--line', isLightCanvas ? 'rgba(38,32,56,.1)' : 'rgba(255,255,255,.07)');
-      root.setProperty('--line-strong', isLightCanvas ? 'rgba(38,32,56,.22)' : 'rgba(255,255,255,.14)');
-      root.setProperty('--scale', String({ compact: 0.9, normal: 1, large: 1.1 }[style.trayScale] || 1));
-      document.body.classList.toggle('sharp', style.corners === 'sharp');
-      document.body.classList.toggle('light-theme', isLightCanvas);
-      document.querySelectorAll('[data-i18n]').forEach((node) => {
-        const key = node.dataset.i18n;
-        node.textContent = (translations[language] || translations.ru)[key] || node.textContent;
-      });
-      render(window.__games || []);
-    }
-
-    const playIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 4 14 8-14 8z"/></svg>';
-    const gamesList = document.getElementById('tray-games');
-    const strings = (key) => (translations[language] || translations.ru)[key] || key;
-    // "5 min ago" style stamps for the recent list.
-    function timeAgo(ts) {
-      const seconds = Math.max(0, Math.round((Date.now() - Number(ts)) / 1000));
-      if (!seconds) return '';
-      if (seconds < 60) return language === 'ru' ? 'только что' : 'just now';
-      const minutes = Math.round(seconds / 60);
-      if (minutes < 60) return language === 'ru' ? minutes + ' мин назад' : minutes + 'm ago';
-      const hours = Math.round(minutes / 60);
-      if (hours < 24) return language === 'ru' ? hours + ' ч назад' : hours + 'h ago';
-      return language === 'ru' ? Math.round(hours / 24) + ' дн назад' : Math.round(hours / 24) + 'd ago';
-    }
-    function render(games) {
-      window.__games = games || [];
-      gamesList.innerHTML = window.__games.length
-        ? window.__games.map((game) => `<button class="tray-game" data-launch="${game.id}">
-            ${game.thumbnail ? `<span class="tray-game-art"><img src="${game.thumbnail}" alt="" /></span>` : ''}
-            <span class="tray-game-copy"><strong>${game.title}</strong><small>${game.lastPlayed ? timeAgo(game.lastPlayed) : strings('tray.launch')}</small></span>
-            <span class="tray-game-play">${playIcon}</span>
-          </button>`).join('')
-        : `<div class="tray-empty">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="3"/><path d="m16 3-4 4-4-4"/><path d="m10 12 5 2.5-5 2.5z"/></svg>
-            ${strings('tray.empty')}
-          </div>`;
-    }
-    // Mini-player row: shown only while a launch session is active.
-    let nowPlayingState = null;
-    let npTimer = null;
-    function renderNowPlaying(nowPlaying) {
-      const host = document.getElementById('tray-now-playing');
-      if (!host) return;
-      nowPlayingState = nowPlaying && nowPlaying.id ? nowPlaying : null;
-      if (!nowPlayingState) {
-        host.hidden = true;
-        if (npTimer) { clearInterval(npTimer); npTimer = null; }
-        return;
-      }
-      host.hidden = false;
-      document.getElementById('tray-np-title').textContent = nowPlayingState.title || '';
-      document.getElementById('tray-np-art').innerHTML = nowPlayingState.thumbnail ? `<img src="${nowPlayingState.thumbnail}" alt="" />` : '';
-      const tick = () => {
-        const elapsed = Math.max(0, Math.floor((Date.now() - Number(nowPlayingState.startedAt || Date.now())) / 1000));
-        const minutes = Math.floor(elapsed / 60);
-        const seconds = elapsed % 60;
-        document.getElementById('tray-np-time').textContent = strings('tray.playing') + ' · ' + String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
-      };
-      tick();
-      if (npTimer) clearInterval(npTimer);
-      npTimer = setInterval(tick, 1000);
-    }
-    // The main process calls these to animate the panel in/out.
-    window.__trayEnter = () => {
-      const panel = document.querySelector('.tray-panel');
-      if (!panel) return;
-      panel.classList.remove('tray-exit');
-      panel.classList.add('tray-enter');
-      requestAnimationFrame(() => requestAnimationFrame(() => panel.classList.remove('tray-enter')));
-      window.setTimeout(() => panel.classList.remove('tray-enter'), 30);
-    };
-    window.__trayExit = () => document.querySelector('.tray-panel')?.classList.add('tray-exit');
-    window.vortexTray.onGames((games, style, nowPlaying) => { if (style) applyStyle(style); renderNowPlaying(nowPlaying); render(games); });
-    Promise.all([window.vortexTray.getGames(), window.vortexTray.getStyle()]).then(([payload, style]) => {
-      applyStyle(style);
-      const games = Array.isArray(payload) ? payload : (payload && payload.games) || [];
-      renderNowPlaying(payload && payload.nowPlaying);
-      render(games);
-    }).catch(() => render([]));
-    document.getElementById('tray-open').addEventListener('click', () => window.vortexTray.openApp());
-    document.getElementById('tray-quit').addEventListener('click', () => window.vortexTray.quitApp());
-    document.addEventListener('click', (event) => {
-      const launch = event.target.closest('[data-launch]');
-      if (launch) window.vortexTray.launchGame(launch.dataset.launch);
-    });
-    // Clicking the transparent margin around the panel closes the tray,
-    // mirroring how native tray menus dismiss on an outside click.
-    document.addEventListener('pointerdown', (event) => {
-      if (event.target.closest('.tray-panel')) return;
-      window.vortexTray.dismiss();
-    });
-  </script>
+    <footer class="tray-footer">
+      <button class="tray-footer-button tray-open-button" type="button" data-tray-action="open"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2h-5v-7H9v7H5a2 2 0 0 1-2-2z" /></svg><span data-copy="open">Открыть Vortex</span></button>
+      <button class="tray-footer-button tray-quit-button" type="button" data-tray-action="quit" aria-label="Закрыть Vortex полностью"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5" /><path d="m16 17 5-5-5-5m5 5H9" /></svg><span data-copy="quit">Выход</span></button>
+    </footer>
+    <div class="tray-toast" id="tray-toast" role="status" aria-live="polite"></div>
+  </main>
 </body>
 </html>

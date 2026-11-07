@@ -17,6 +17,7 @@ const LEGACY_STARTER_GAMES_DISABLED = [
 ];
 
 const palettes = [
+  { key: 'sky', color: '#64bedd' },
   { key: 'amethyst', color: '#9b7cff' },
   { key: 'azure', color: '#59a9f2' },
   { key: 'mint', color: '#55c7a4' },
@@ -29,44 +30,59 @@ const palettes = [
   { key: 'slate', color: '#8190a7' }
 ];
 
-// Sidebar navigation. The order and visibility are user configurable
-// in Settings → Interface.
+// Navigation order is user-configurable in Settings → Interface. Primary
+// destinations live in the top bar; collection links stay in the sidebar.
 const NAV_ITEMS = [
-  { key: 'home', icon: 'home', group: 'menu' },
-  { key: 'catalog', icon: 'compass', group: 'menu' },
+  { key: 'home', icon: 'home', group: 'topbar' },
+  { key: 'catalog', icon: 'compass', group: 'topbar' },
+  { key: 'friends', icon: 'users', group: 'topbar' },
   { key: 'favorites', icon: 'heart', group: 'menu' },
   { key: 'recent', icon: 'clock', group: 'menu' },
-  { key: 'friends', icon: 'users', group: 'menu' },
-  { key: 'plans', icon: 'flag', group: 'space' },
+  { key: 'activity', icon: 'activity', group: 'menu' },
+  { key: 'plans', icon: 'flag', group: 'menu' },
   // Settings live next to the profile at the very bottom of the sidebar.
   { key: 'settings', icon: 'sliders', group: 'bottom' }
 ];
 const NAV_KEYS = NAV_ITEMS.map((item) => item.key);
 
-function navOrder() {
-  const stored = Array.isArray(preferences.sidebarOrder) ? preferences.sidebarOrder.filter((key) => NAV_KEYS.includes(key)) : [];
-  return [...new Set([...stored, ...NAV_KEYS])];
+function navOrder(group = 'menu') {
+  const items = NAV_ITEMS.filter((item) => item.group === group);
+  const validKeys = items.map((item) => item.key);
+  const stored = group === 'topbar' ? preferences.topbarOrder : preferences.sidebarOrder;
+  const keys = Array.isArray(stored) ? stored.filter((key) => validKeys.includes(key)) : [];
+  return [...new Set([...keys, ...validKeys])];
 }
 
-function navItemMarkup(item) {
-  return `<button class="nav-item" data-nav="${item.key}"><span class="nav-icon" data-icon="${item.icon}"></span><span>${t(`nav.${item.key}`)}</span></button>`;
+function navItemMarkup(item, location = 'menu') {
+  if (location === 'topbar') {
+    const label = t(`nav.${item.key}`);
+    return `<button class="topbar-nav-item" type="button" data-nav="${item.key}" aria-label="${label}" title="${label}"><span class="topbar-nav-icon" data-icon="${item.icon}"></span><span class="topbar-nav-label">${label}</span></button>`;
+  }
+  const label = t(`nav.${item.key}`);
+  return `<button class="nav-item" type="button" data-nav="${item.key}" aria-label="${label}" title="${label}"><span class="nav-icon" data-icon="${item.icon}"></span><span>${label}</span></button>`;
 }
 
 function renderSidebarNav() {
-  const order = navOrder();
-  const items = order.map((key) => NAV_ITEMS.find((item) => item.key === key)).filter(Boolean);
-  const group = (name) => items.filter((item) => item.group === name).map(navItemMarkup).join('');
-  return { menu: group('menu'), space: group('space'), bottom: group('bottom') };
+  const topbarItems = navOrder('topbar').map((key) => NAV_ITEMS.find((item) => item.key === key)).filter(Boolean);
+  const menuItems = navOrder('menu').map((key) => NAV_ITEMS.find((item) => item.key === key)).filter(Boolean);
+  const bottomItems = navOrder('bottom').map((key) => NAV_ITEMS.find((item) => item.key === key)).filter(Boolean);
+  const group = (name) => menuItems.filter((item) => item.group === name).map(navItemMarkup).join('');
+  return {
+    topbar: topbarItems.map((item) => navItemMarkup(item, 'topbar')).join(''),
+    menu: group('menu'),
+    space: group('space'),
+    bottom: bottomItems.map(navItemMarkup).join('')
+  };
 }
 
 const preferenceDefaults = {
-  accent: '#9b7cff', accentMode: 'solid', accentSecondary: '#c274ec', gradientAngle: 135,
+  accent: '#64bedd', accentMode: 'solid', accentSecondary: '#9bdae8', gradientAngle: 135,
   theme: 'dark', themeBackground: '', themeSurface: '',
   density: 'comfortable', corners: 'soft', showDescriptions: true, showStats: true,
-  homeGreeting: '', customGames: [], homeFeaturedGame: '', homePicks: [], homeGameCount: 4,
+  homeGreeting: '', customGames: [], homeFeaturedGame: '', homePicks: [], homeGameCount: 4, quickLaunchItems: [],
   homeShowHero: true, homeShowRecommendations: true,
   homeLayout: 'balanced', homeMinimal: false,
-  sidebarOrder: [], uiSidebarTip: true, uiProfileCard: true, uiTopbarSearch: true,
+  sidebarOrder: [], topbarOrder: [], uiSidebarTip: true, uiProfileCard: true, uiTopbarSearch: true,
   uiBreadcrumb: true, uiNotifications: true, uiSidebarFoot: true, uiUpdateBanner: true,
   pageTransition: 'fade', cardAnimation: 'rise', animationEasing: 'smooth', animationDuration: 1, glow: 72, ambient: true, motion: true,
   contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home', trayScale: 'normal', robloxUsername: '', friendsNoticeAccepted: false,
@@ -198,7 +214,7 @@ const PROFILE_KEYS = [
   'homeLayout', 'homeMinimal', 'homeShowHero', 'homeShowRecommendations',
   'density', 'corners', 'showDescriptions', 'showStats',
   'pageTransition', 'cardAnimation', 'animationSpeed', 'animationEasing', 'animationDuration', 'glow', 'ambient', 'motion', 'contrast',
-  'sidebarOrder', 'uiSidebarTip', 'uiProfileCard', 'uiTopbarSearch', 'uiBreadcrumb', 'uiNotifications', 'uiSidebarFoot', 'uiUpdateBanner', 'sidebarAutoHide', 'uiFont'
+  'sidebarOrder', 'topbarOrder', 'uiSidebarTip', 'uiProfileCard', 'uiTopbarSearch', 'uiBreadcrumb', 'uiNotifications', 'uiSidebarFoot', 'uiUpdateBanner', 'sidebarAutoHide', 'uiFont'
 ];
 
 function readProfiles() {
@@ -240,6 +256,23 @@ function deleteProfile(name) {
   writeProfiles(profiles);
 }
 
+async function copyText(value) {
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    const input = document.createElement('textarea');
+    input.value = value;
+    input.style.position = 'fixed';
+    input.style.opacity = '0';
+    document.body.appendChild(input);
+    input.select();
+    const copied = document.execCommand('copy');
+    input.remove();
+    return copied;
+  }
+}
+
 const readStored = (key, fallback) => {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) : fallback; } catch { return fallback; }
 };
@@ -252,6 +285,13 @@ let recentGames = readStored('vortex.recent', []);
 // app close, capped at a session ceiling so an abandoned window does not
 // inflate the number.
 let playStats = readStored('vortex.playStats', {});
+let activityData = readStored('vortex.activity', { days: {}, streak: { current: 0, best: 0, lastCompletedDate: '', recoveryUsed: false }, achievements: {} });
+if (!activityData || typeof activityData !== 'object') activityData = { days: {}, streak: { current: 0, best: 0, lastCompletedDate: '', recoveryUsed: false }, achievements: {} };
+activityData.days ||= {};
+activityData.streak = { current: 0, best: 0, lastCompletedDate: '', recoveryUsed: false, ...(activityData.streak || {}) };
+activityData.achievements ||= {};
+const ACTIVITY_GAME_MINUTES = 10;
+const ACTIVITY_DAILY_GAMES = 2;
 const PLAYTIME_SESSION_CAP_SECONDS = 3 * 60 * 60;
 const PLAYTIME_SESSION_KEY = 'vortex.playSession';
 let playSessionStart = null;
@@ -262,6 +302,16 @@ let nowPlayingSnapshot = null;
 let dynamicGames = readStored('vortex.discovered', []);
 const expandedDescriptions = new Set();
 let currentView = 'home';
+let navigationHistory = ['home'];
+let navigationHistoryIndex = 0;
+let quickGameMethod = 'private';
+let editingQuickGameId = '';
+let quickGameDialogReturnFocus = null;
+let quickFolderDialogReturnFocus = null;
+let editingQuickFolderId = '';
+let quickDragState = null;
+let suppressQuickLaunchClick = false;
+const quickFoldersOpen = new Set();
 let detailGame = null;
 let detailStatus = 'idle';
 let detailRequestId = 0;
@@ -404,6 +454,47 @@ function syncWallpaperLayer() {
   wallpaperLayerEl.style.setProperty('--wallpaper-dim', preferences.themeWallpaperDim / 100);
 }
 
+function cleanQuickLaunchItems(items, depth = 0) {
+  if (!Array.isArray(items) || depth > 1) return [];
+  return items.slice(0, 80).map((item) => {
+    if (!item || typeof item !== 'object') return null;
+    const id = String(item.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+    if (!id) return null;
+    if (item.type === 'folder' && depth === 0) {
+      const games = cleanQuickLaunchItems(item.games, depth + 1).filter((entry) => entry?.type === 'game');
+      const color = /^#[0-9a-f]{6}$/i.test(String(item.color || '')) ? String(item.color).toLowerCase() : '#9b7cff';
+      return games.length > 1 ? { type: 'folder', id, title: String(item.title || '').trim().slice(0, 48), color, games } : (games[0] || null);
+    }
+    if (item.type !== 'game') return null;
+    const method = ['private', 'share', 'public'].includes(item.method) ? item.method : 'public';
+    const placeId = String(item.placeId || '').trim();
+    const linkCode = String(item.linkCode || '').trim();
+    const shareCode = String(item.shareCode || '').trim();
+    if (method !== 'share' && !/^\d{1,20}$/.test(placeId)) return null;
+    if (method === 'share' && placeId && !/^\d{1,20}$/.test(placeId)) return null;
+    if (method === 'private' && !/^[a-z\d_-]{1,100}$/i.test(linkCode)) return null;
+    if (method === 'share' && !/^[a-z\d_-]{1,128}$/i.test(shareCode)) return null;
+    const rawHotkey = item.hotkey && typeof item.hotkey === 'object' ? item.hotkey : null;
+    return {
+      type: 'game', id, method, placeId,
+      linkCode: method === 'private' ? linkCode : '', shareCode: method === 'share' ? shareCode : '',
+      shareType: method === 'share' && ['Server', 'ExperienceInvite', 'ExperienceDetails'].includes(item.shareType) ? item.shareType : 'Server',
+      title: String(item.title || '').trim().slice(0, 64),
+      autoTitle: typeof item.autoTitle === 'boolean' ? item.autoTitle : !String(item.title || '').trim(),
+      thumbnail: safeThumbnail(item.thumbnail),
+      lastPlayed: Math.max(0, Number(item.lastPlayed) || 0),
+      hotkey: rawHotkey && (rawHotkey.code || rawHotkey.key) ? {
+        code: String(rawHotkey.code || '').slice(0, 32), key: String(rawHotkey.key || '').slice(0, 32),
+        ctrl: Boolean(rawHotkey.ctrl), shift: Boolean(rawHotkey.shift), alt: Boolean(rawHotkey.alt)
+      } : null
+    };
+  }).filter(Boolean);
+}
+
+function quickLaunchId() {
+  return globalThis.crypto?.randomUUID?.() || `quick-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function applyPreferences() {
   if (!['ru', 'en'].includes(preferences.language)) preferences.language = 'ru';
   if (!['home', 'accent', 'cards', 'effects', 'interface', 'general', 'integrations', 'data', 'version'].includes(preferences.settingsTab)) preferences.settingsTab = 'home';
@@ -428,7 +519,12 @@ function applyPreferences() {
   }
   window.vortexDesktop?.setDiskCacheEnabled?.(preferences.diskCache);
   if (!Array.isArray(preferences.sidebarOrder)) preferences.sidebarOrder = [];
-  preferences.sidebarOrder = [...new Set(preferences.sidebarOrder.filter((key) => NAV_KEYS.includes(key)))];
+  const legacyOrder = preferences.sidebarOrder.filter((key) => NAV_KEYS.includes(key));
+  preferences.sidebarOrder = [...new Set(legacyOrder.filter((key) => NAV_ITEMS.find((item) => item.key === key)?.group === 'menu'))];
+  if (!Array.isArray(preferences.topbarOrder)) preferences.topbarOrder = [];
+  const savedTopbar = preferences.topbarOrder.filter((key) => NAV_ITEMS.find((item) => item.key === key)?.group === 'topbar');
+  preferences.topbarOrder = [...new Set([...(savedTopbar.length ? savedTopbar : legacyOrder.filter((key) => NAV_ITEMS.find((item) => item.key === key)?.group === 'topbar')), ...NAV_ITEMS.filter((item) => item.group === 'topbar').map((item) => item.key)])];
+  preferences.quickLaunchItems = cleanQuickLaunchItems(preferences.quickLaunchItems);
   for (const flag of ['uiSidebarTip', 'uiProfileCard', 'uiTopbarSearch', 'uiBreadcrumb', 'uiNotifications', 'uiSidebarFoot', 'uiUpdateBanner']) {
     preferences[flag] = preferences[flag] !== false;
   }
@@ -508,8 +604,8 @@ function applyPreferences() {
     ? `linear-gradient(${preferences.gradientAngle}deg, rgba(${channels}, .19), rgba(${secondaryRgb}, .12))`
     : `rgba(${channels}, .14)`;
   const themeBase = {
-    dark: { background: '#0b0c10', surface: '#111319' },
-    light: { background: '#f2f1f6', surface: '#ffffff' },
+    dark: { background: '#0d1012', surface: '#14181a' },
+    light: { background: '#f5f6f7', surface: '#ffffff' },
     oled: { background: '#030305', surface: '#08090c' }
   }[preferences.theme];
   const background = preferences.themeBackground || themeBase.background;
@@ -547,8 +643,9 @@ function applyPreferences() {
   root.setProperty('--accent-glow', `rgba(${channels}, .34)`);
   root.setProperty('--bg', background);
   root.setProperty('--surface', surface);
-  root.setProperty('--surface-2', mixHex(surface, background, 0.42));
-  root.setProperty('--surface-3', mixHex(surface, background, 0.72));
+  const raisedTone = isLightCanvas ? '#000000' : '#ffffff';
+  root.setProperty('--surface-2', mixHex(surface, raisedTone, isLightCanvas ? 0.045 : 0.08));
+  root.setProperty('--surface-3', mixHex(surface, raisedTone, isLightCanvas ? 0.09 : 0.14));
   root.setProperty('--text', preferences.themeText || (isLightCanvas ? '#211e2a' : '#f4f4f6'));
   root.setProperty('--muted', preferences.themeMuted || (isLightCanvas ? '#777382' : '#8d909e'));
   root.setProperty('--subtle', isLightCanvas ? '#9692a1' : '#636776');
@@ -560,7 +657,7 @@ function applyPreferences() {
   root.setProperty('--card-aspect', ({ auto: 'auto', square: '1 / 1', wide: '16 / 9', portrait: '4 / 5' }[preferences.cardAspect] || 'auto'));
   root.setProperty('--glass-strength', String(preferences.glassStrength / 100));
   root.setProperty('--animation-duration', String(preferences.animationDuration));
-  root.setProperty('--animation-easing', ({ smooth: 'cubic-bezier(.2,.72,.25,1)', spring: 'cubic-bezier(.16,1.2,.3,1)', linear: 'linear' }[preferences.animationEasing] || 'cubic-bezier(.2,.72,.25,1)'));
+  root.setProperty('--animation-easing', ({ smooth: 'cubic-bezier(.22,1,.36,1)', spring: 'cubic-bezier(.16,1.2,.3,1)', linear: 'linear' }[preferences.animationEasing] || 'cubic-bezier(.22,1,.36,1)'));
   document.documentElement.style.setProperty('--glow-strength', String(Number(preferences.glow) / 100));
   document.body.classList.toggle('custom-card-radius', preferences.customCardRadius === true);
   document.body.classList.toggle('light-theme', isLightCanvas);
@@ -690,6 +787,7 @@ function openGameDetails(id) {
   detailGalleryCount = 0;
   detailGame = { ...game, upVotes: Number(game.upVotes) || 0, downVotes: Number(game.downVotes) || 0, playing: Number(game.playerCount) || 0, visits: Number(game.visits) || 0, favorites: Number(game.favorites) || 0 };
   detailStatus = 'loading';
+  pushNavigationHistory('game-detail');
   currentView = 'game-detail';
   renderPage();
   const cacheKey = String(game.universeId || game.id);
@@ -739,7 +837,7 @@ function renderGameDetail() {
   const likesTotal = Number(game.upVotes || 0) + Number(game.downVotes || 0);
   const likePercent = likesTotal ? Math.round(Number(game.upVotes || 0) / likesTotal * 100) : null;
   const dislikePercent = likePercent === null ? 0 : 100 - likePercent;
-  const voteBar = likesTotal ? `<div class="detail-like-bar" role="img" aria-label="${t('game.likeRatio')} ${likePercent}%"><span class="detail-like-positive" style="width:${likePercent}%"></span><span class="detail-like-negative" style="width:${dislikePercent}%"></span></div><div class="detail-like-legend"><span><i class="like-dot"></i>${likePercent}% · ${t('game.likeRatio')} (${formatCount(game.upVotes)})</span><span><i class="dislike-dot"></i>${dislikePercent}% · ${t('game.dislikeRatio')} (${formatCount(game.downVotes)})</span></div>` : '';
+  const voteBar = likesTotal ? `<div class="detail-like-bar" role="img" aria-label="${t('game.likeRatio')} ${likePercent}%"><span class="detail-like-positive" style="width:${likePercent}%"></span><span class="detail-like-negative" style="width:${dislikePercent}%"></span></div><div class="detail-like-legend"><span><i class="like-dot"></i>${t('game.likeRatio')} · ${formatCount(game.upVotes)}</span><span><i class="dislike-dot"></i>${t('game.dislikeRatio')} · ${formatCount(game.downVotes)}</span></div>` : '';
   const playtime = renderPlaytimeBadge(game.id) || t('stats.noData');
   const description = String(game.description || t('game.fallbackDescription')).trim();
   const isUnavailable = game.availability === 'unavailable';
@@ -750,7 +848,7 @@ function renderGameDetail() {
     : '';
   const allBadges = Array.isArray(game.badges) ? game.badges : [];
   const visibleBadges = detailBadgesExpanded ? allBadges.slice(0, detailBadgeCount) : [];
-  const badges = allBadges.length ? `<section class="detail-section"><div class="detail-section-heading"><h2>${icon('award', 15)} ${t('game.badges')}</h2><button class="ghost-button" data-action="toggle-badges">${t(detailBadgesExpanded ? 'game.hideBadges' : 'game.showBadges')}</button></div>${detailBadgesExpanded ? `<div class="detail-badges">${visibleBadges.map((badge) => `<span class="detail-badge"><strong>${escapeHtml(badge.name)}</strong>${badge.description ? `<small>${escapeHtml(badge.description)}</small>` : ''}</span>`).join('')}</div>${visibleBadges.length < allBadges.length ? `<button class="ghost-button" data-action="show-more-badges">${t('game.showMoreBadges')}</button>` : ''}` : ''}</section>` : '';
+  const badges = allBadges.length ? `<section class="detail-section"><div class="detail-section-heading"><h2>${icon('award', 15)} ${t('game.badges')}</h2><button class="ghost-button" data-action="toggle-badges">${t(detailBadgesExpanded ? 'game.hideBadges' : 'game.showBadges')}</button></div>${detailBadgesExpanded ? `<div class="detail-badges">${visibleBadges.map((badge) => `<span class="detail-badge">${badge.icon ? `<img src="${escapeHtml(badge.icon)}" alt="" loading="lazy" decoding="async" />` : `<span class="detail-badge-fallback">${icon('award', 18)}</span>`}<strong>${escapeHtml(badge.name)}</strong>${badge.description ? `<small>${escapeHtml(badge.description)}</small>` : ''}</span>`).join('')}</div>${visibleBadges.length < allBadges.length ? `<button class="ghost-button" data-action="show-more-badges">${t('game.showMoreBadges')}</button>` : ''}` : ''}</section>` : '';
   const social = Array.isArray(game.socialLinks) && game.socialLinks.length ? `<section class="detail-section"><h2>${icon('link', 15)} ${t('game.socialLinks')}</h2><div class="detail-social-links">${game.socialLinks.map((link) => {
     const href = safeExternalUrl(link.url);
     if (!href) return '';
@@ -765,7 +863,7 @@ function renderGameDetail() {
   detailGalleryIndex = Math.min(detailGalleryIndex, Math.max(0, galleryItems.length - 1));
   const currentMedia = galleryItems[detailGalleryIndex];
   const galleryTitle = videos.length ? t('game.media') : t('game.screenshots');
-  const gallery = currentMedia ? `<section class="detail-section"><div class="detail-section-heading"><div><h2>${icon(videos.length ? 'film' : 'image', 15)} ${galleryTitle}</h2><p>${detailGalleryIndex + 1} / ${galleryItems.length}</p></div>${galleryItems.length > 1 ? `<div class="detail-gallery-controls"><button class="icon-button" data-action="gallery-prev" aria-label="${t('game.previousMedia')}">${icon('arrowLeft', 16)}</button><button class="icon-button" data-action="gallery-next" aria-label="${t('game.nextMedia')}">${icon('arrow', 16)}</button></div>` : ''}</div><div class="detail-gallery"><div class="detail-gallery-slide">${currentMedia.kind === 'video' ? `<video controls preload="metadata" poster="${escapeHtml(currentMedia.thumbnail || '')}"><source src="${escapeHtml(currentMedia.url)}" type="video/mp4" /></video>` : `<img src="${escapeHtml(currentMedia.url)}" alt="${escapeHtml(currentMedia.title || game.title)}" />`}</div>${galleryItems.length > 1 ? `<div class="detail-gallery-dots">${galleryItems.map((_, index) => `<button class="gallery-dot ${index === detailGalleryIndex ? 'active' : ''}" data-action="gallery-goto" data-index="${index}" aria-label="${index + 1}"></button>`).join('')}</div>` : ''}</div></section>` : '';
+  const gallery = currentMedia ? `<section class="detail-section"><div class="detail-section-heading"><div><h2>${icon(videos.length ? 'film' : 'image', 15)} ${galleryTitle}</h2><p>${detailGalleryIndex + 1} / ${galleryItems.length}</p></div>${galleryItems.length > 1 ? `<div class="detail-gallery-controls"><button class="icon-button" data-action="gallery-prev" aria-label="${t('game.previousMedia')}">${icon('arrowLeft', 16)}</button><button class="icon-button" data-action="gallery-next" aria-label="${t('game.nextMedia')}">${icon('arrow', 16)}</button></div>` : ''}</div><div class="detail-gallery"><div class="detail-gallery-slide">${currentMedia.kind === 'video' ? `<video controls preload="metadata" poster="${escapeHtml(currentMedia.thumbnail || '')}"><source src="${escapeHtml(currentMedia.url)}" type="video/mp4" /></video>` : `<img src="${escapeHtml(currentMedia.url)}" alt="${escapeHtml(currentMedia.altText || currentMedia.title || game.title)}" loading="lazy" decoding="async" />`}</div>${galleryItems.length > 1 ? `<div class="detail-gallery-dots">${galleryItems.map((_, index) => `<button class="gallery-dot ${index === detailGalleryIndex ? 'active' : ''}" data-action="gallery-goto" data-index="${index}" aria-label="${index + 1}"></button>`).join('')}</div>` : ''}</div></section>` : '';
   const releaseHistory = Array.isArray(game.releaseHistory) && game.releaseHistory.length > 1
     ? `<section class="detail-section"><h2>${t('game.releaseHistory')}</h2><div class="release-history">${game.releaseHistory.slice(0, 8).map((entry) => `<div class="release-row"><span class="release-dot"></span><span><strong>${escapeHtml(new Date(entry.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: 'long', year: 'numeric' }))}</strong><small>${t('game.releaseSeen')}</small></span></div>`).join('')}</div><p class="catalog-disclaimer">${t('game.releaseHistoryHint')}</p></section>`
     : '';
@@ -775,7 +873,7 @@ function renderGameDetail() {
       <header class="detail-hero"><div class="detail-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(game.title)}" />` : ''}</div><div class="detail-hero-copy"><div class="eyebrow">${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p class="detail-creator-line">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge" title="${t('game.verifiedCreator')}" aria-label="${t('game.verifiedCreator')}">${icon('check', 11)}</span>` : ''}</p>${badgeRow}<div class="detail-actions">${canPlay ? `<button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button>` : `<button class="primary-button" disabled>${icon('close', 14)} ${t('game.notAvailable')}</button>`}<button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button></div></div></header>
       ${detailStatus === 'loading' ? `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('game.loadingDetails')}</strong></div>` : ''}
       ${detailStatus === 'error' ? `<p class="catalog-disclaimer">${t('game.detailsUnavailable')}</p>` : ''}
-      <section class="detail-stats"><div><strong>${formatCount(game.playing ?? game.playerCount)}</strong><span>${t('game.online')}</span></div><div class="detail-like-stat"><strong>${likePercent === null ? '—' : `${likePercent}%`}</strong><span>${t('game.likeRatio')} · ${formatCount(game.upVotes)} / ${formatCount(game.downVotes)}</span>${voteBar}</div><div><strong>${formatCount(game.visits)}</strong><span>${t('game.visits')}</span></div><div><strong>${formatCount(game.favorites)}</strong><span>${t('game.favorites')}</span></div></section>
+      <section class="detail-stats"><div><strong>${formatCount(game.playing ?? game.playerCount)}</strong><span>${t('game.online')}</span></div><div class="detail-like-stat"><strong>${likePercent === null ? '—' : `${likePercent}%`}</strong><span class="detail-like-total">${t('game.votesTotal')} · ${formatCount(likesTotal)}</span>${voteBar}</div><div><strong>${formatCount(game.visits)}</strong><span>${t('game.visits')}</span></div><div><strong>${formatCount(game.favorites)}</strong><span>${t('game.favorites')}</span></div></section>
       <section class="detail-section"><h2>${t('game.description')}</h2><p class="detail-description ${detailDescriptionExpanded ? 'expanded' : 'collapsed'}">${escapeHtml(description)}</p>${description.length > 420 ? `<button class="ghost-button detail-description-toggle" data-action="toggle-detail-description">${t(detailDescriptionExpanded ? 'card.readLess' : 'card.readMore')}</button>` : ''}</section>
       <section class="detail-section detail-meta"><div><span>${t('game.author')}</span><strong class="meta-creator">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge small" title="${t('game.verifiedCreator')}">${icon('check', 10)}</span>` : ''}</strong></div><div><span>${t('game.genre')}</span><strong>${escapeHtml(game.genre || t('genre.other'))}</strong></div><div><span>${t('game.access')}</span><strong>${isUnavailable ? t('game.notAvailable') : Number(game.price) > 0 ? t('game.paid', { price: priceLabel }) : t('game.free')}</strong></div><div><span>${t('game.updated')}</span><strong>${game.updated ? escapeHtml(new Date(game.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU')) : '—'}</strong></div></section>
       ${gallery}${badges}${social}${releaseHistory}${similar}
@@ -799,14 +897,15 @@ function renderGameCard(game) {
   const expandedDescription = expandedDescriptions.has(String(game.id));
   const canExpandDescription = description.length > 100;
   return `<article class="game-card" style="--game-color: var(--accent)" data-game="${id}" data-universe-id="${escapeHtml(game.universeId || '')}">
-    <div class="game-cover art-${art} ${thumbnail ? 'has-thumbnail' : ''}" data-action="open-details" data-id="${id}">
+    <div class="game-cover art-${art} ${thumbnail ? 'has-thumbnail' : ''}">
+      <button class="game-cover-action" type="button" data-action="open-details" data-id="${id}" aria-label="${t('card.openDetails', { title: escapeHtml(game.title) })}"></button>
       ${thumbnail ? `<img class="game-thumbnail" src="${escapeHtml(thumbnail)}" alt="" loading="${preferences.lazyImages ? 'lazy' : 'eager'}" decoding="async" />` : ''}
       <span class="cover-shine"></span>
       ${cardUnavailable}
       <button class="favorite-button ${isFavorite ? 'is-favorite' : ''}" data-action="favorite" data-id="${id}" aria-label="${isFavorite ? t('card.favoriteRemove') : t('card.favoriteAdd')}" aria-pressed="${isFavorite}">${icon('heart', 15)}</button>
     </div>
     <div class="game-info">
-      <div class="game-title-row"><h3 class="game-title" data-action="open-details" data-id="${id}">${escapeHtml(game.title)}</h3>${cardVerified}</div>
+      <h3 class="game-title-row"><button class="game-title" type="button" data-action="open-details" data-id="${id}">${escapeHtml(game.title)}</button>${cardVerified}</h3>
       ${preferences.cardShowDescription ? `<p class="game-description ${expandedDescription ? 'expanded' : ''}" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
       ${canExpandDescription ? `<button class="description-more" data-action="toggle-description" data-id="${id}" aria-expanded="${expandedDescription}">${t(expandedDescription ? 'card.readLess' : 'card.readMore')}</button>` : ''}` : ''}
       ${preferences.cardShowLikes ? liveStats : ''}
@@ -817,7 +916,8 @@ function renderGameCard(game) {
 
 function renderGrid(list, emptyTitle, emptyText, emptyAction = 'catalog') {
   if (!list.length) {
-    return `<div class="empty-state"><div class="empty-icon">${icon(emptyAction === 'favorites' ? 'heart' : 'search', 20)}</div><h2>${emptyTitle}</h2><p>${emptyText}</p><button class="ghost-button" data-nav="${emptyAction}">${t('empty.openCatalog')} ${icon('arrow', 13)}</button></div>`;
+    const actionLabel = emptyAction === 'settings' ? t('home.empty.action') : t('empty.openCatalog');
+    return `<div class="empty-state"><div class="empty-icon">${icon(emptyAction === 'favorites' ? 'heart' : 'search', 20)}</div><h2>${emptyTitle}</h2><p>${emptyText}</p><button class="ghost-button" data-nav="${emptyAction}">${actionLabel} ${icon('arrow', 13)}</button></div>`;
   }
   // Optional genre grouping: split the grid into labelled sections.
   if (preferences.catalogGroupByGenre && emptyAction === 'catalog') {
@@ -908,7 +1008,7 @@ function renderHome() {
     : customGames.filter((game) => String(game.id) !== String(featured?.id)))
     .slice(0, Number(preferences.homeGameCount) || 4);
   const greeting = preferences.homeGreeting.trim() || t('page.home.title');
-  const emptyHint = customGames.length ? '' : `<section class="section-block"><div class="empty-state"><h2>${t('home.empty.title')}</h2><p>${t('home.empty.body')}</p><button class="ghost-button" data-nav="settings">${icon('sliders')} ${t('home.empty.action')}</button></div></section>`;
+  const emptyHint = customGames.length ? '' : `<section class="section-block home-empty-block"><div class="empty-state home-empty-state"><div class="empty-state-copy"><h2>${t('home.empty.title')}</h2><p>${t('home.empty.body')}</p><button class="primary-button" data-nav="settings">${icon('sliders')} ${t('home.empty.action')}</button></div><svg class="library-map" viewBox="0 0 440 240" fill="none" aria-hidden="true"><path class="map-contour" d="M24 170C76 140 88 57 151 62c49 4 42 73 96 78 54 5 58-42 111-44 25-1 43 10 58 24M29 207c54-34 83-89 119-89 41 0 48 67 103 67 58 0 64-46 112-48 24-1 43 8 63 19M55 32c33 22 48 41 48 63m231 116c8-28 21-45 43-56"/><path class="map-route" pathLength="1" d="M62 190C99 164 111 106 148 105s50 47 91 47 57-49 101-47"/><circle class="map-node" cx="62" cy="190" r="6"/><circle class="map-node" cx="148" cy="105" r="8"/><circle class="map-node map-node-active" cx="239" cy="152" r="10"/><circle class="map-node" cx="340" cy="105" r="6"/><path class="map-crosshair" d="M239 127v-9m0 77v-9m-25-34h-9m77 0h-9"/><path class="map-coordinate" d="M20 24h22M20 24v22m378 170h22m0 0v-22"/></svg></div></section>`;
 
   // Each widget renders to a <section class="home-widget" data-home-widget="key">
   // with a heading that carries collapse + move controls.
@@ -926,8 +1026,8 @@ function renderHome() {
       </div>
     </section>`;
     })() : '',
-    picks: `<section class="section-block home-widget" data-home-widget="picks">${renderWidgetHeading('picks', t('home.section.title'), t('home.section.subtitle'))}
-      ${renderGrid(picks, t('home.picks.emptyTitle'), t('home.picks.emptyBody'), 'settings')}</section>`,
+    picks: customGames.length ? `<section class="section-block home-widget" data-home-widget="picks">${renderWidgetHeading('picks', t('home.section.title'), t('home.section.subtitle'))}
+      ${renderGrid(picks, t('home.picks.emptyTitle'), t('home.picks.emptyBody'), 'settings')}</section>` : '',
     playstats: renderPlayStats(),
     favorites: homeWidgetVisible('favorites') ? renderHomeFavoritesPreview() : '',
     recent: homeWidgetVisible('recent') ? renderHomeRecentPreview() : ''
@@ -1384,6 +1484,7 @@ function renderFavorites() {
 }
 
 let friendsCache = { at: 0, data: null };const FRIENDS_TTL = 30 * 1000;
+let friendsLoading = false;
 let friendsAutoDetectStarted = false;
 // First visit to the Friends page with no username: detect the local Roblox
 // account automatically, so the user never has to type anything.
@@ -1397,6 +1498,8 @@ async function autoDetectRobloxAccountOnce() {
       friendsCache = { at: 0, data: null };
       savePreferences();
       renderPage();
+      renderFriendsDrawer();
+      if (!document.getElementById('friends-drawer')?.hidden) void loadFriends(preferences.robloxUsername);
     }
   } catch { /* stay on the setup screen */ }
 }
@@ -1419,19 +1522,26 @@ function renderFriends() {
   }
   const data = friendsCache.data;
   if (!data.ok) {
+    const isNetworkError = ['network', 'auth-required'].includes(data.error);
+    const errorTitle = isNetworkError ? t('friends.networkTitle') : t('friends.notFound.title');
+    const errorBody = isNetworkError ? t('friends.networkBody') : t('friends.notFound.body');
     return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
-      <section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${t('friends.notFound.title')}</h2><p>${t('friends.notFound.body')}</p></div></section>`;
+      <section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${errorTitle}</h2><p>${errorBody}</p><button class="ghost-button" data-action="refresh-friends-drawer">${icon('refreshCw', 13)} ${t('friends.refresh')}</button></div></section>`;
   }
   const friends = data.friends || [];
   const playing = friends.filter((f) => f.presence === 'playing');
   const online = friends.filter((f) => f.presence === 'online');
   const offline = friends.filter((f) => f.presence === 'offline');
   const presenceNote = data.livePresence ? '' : `<div class="friends-presence-note">${icon('bell', 12)} ${t('friends.presenceOff')}</div>`;
-  const card = (friend) => `<article class="friend-card ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" data-friend-name="${escapeHtml(friend.displayName || friend.name || '')}" data-friend-avatar="${escapeHtml(friend.avatar || '')}" data-game-name="${escapeHtml(friend.gameName || '')}" data-game-thumb="${escapeHtml(friend.gameThumbnail || '')}" tabindex="0">
-      <span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="eager" decoding="async" />` : escapeHtml((friend.displayName || friend.name || '?')[0].toLocaleUpperCase())}</span>
-      <span class="friend-copy"><strong>${escapeHtml(friend.displayName || friend.name)}</strong><small>${friend.presence === 'playing' ? escapeHtml(friend.gameName || t('friends.inGame')) : friend.presence === 'online' ? t('friends.online') : t('friends.offline')}</small></span>
+  const card = (friend) => {
+    const name = friend.displayName || friend.name || t('friends.unknown');
+    const gameName = friend.presence === 'playing' ? (friend.gameName || t('friends.inGame')) : '';
+    return `<article class="friend-card ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" data-friend-name="${escapeHtml(name)}" data-friend-avatar="${escapeHtml(friend.avatar || '')}" data-game-name="${escapeHtml(gameName)}" data-game-thumb="${escapeHtml(friend.presence === 'playing' ? friend.gameThumbnail || '' : '')}" tabindex="0">
+      <span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="eager" decoding="async" />` : escapeHtml(name[0].toLocaleUpperCase())}</span>
+      <span class="friend-copy"><strong>${escapeHtml(name)}</strong><small>${friend.presence === 'playing' ? escapeHtml(gameName) : friend.presence === 'online' ? t('friends.online') : t('friends.offline')}</small></span>
       ${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}">${icon('play', 12)}</button>` : ''}
     </article>`;
+  };
   const section = (titleKey, list) => !list.length ? '' : `<p class="friends-group-title">${t(titleKey)} · ${list.length}</p>
     <div class="friends-grid">${list.map(card).join('')}</div>`;
   return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
@@ -1445,19 +1555,102 @@ function renderFriends() {
     </section>`;
 }
 
-async function loadFriends(username) {
+async function loadFriends(username, force = false) {
+  if (friendsLoading) return;
+  if (!force && friendsCache.data && Date.now() - friendsCache.at <= FRIENDS_TTL) return;
+  friendsLoading = true;
+  renderFriendsDrawer();
   try {
     const data = await window.vortexDesktop?.listFriends(username);
     // Cache successes only: a transient network failure must retry on the
     // next visit instead of showing a stale error for 30 seconds.
     if (data && data.ok) friendsCache = { at: Date.now(), data };
-    else friendsCache = { at: Date.now() - FRIENDS_TTL, data };
+    else friendsCache = { at: Date.now(), data: data || { ok: false, error: 'unavailable' } };
     if (data && data.ok) notifyFriendsInFavorites(data.friends);
     if (currentView === 'friends') renderPage();
   } catch {
-    friendsCache = { at: 0, data: { ok: false, error: 'network' } };
+    friendsCache = { at: Date.now(), data: { ok: false, error: 'network' } };
     if (currentView === 'friends') renderPage();
+  } finally {
+    friendsLoading = false;
+    renderFriendsDrawer();
   }
+}
+
+function renderFriendsDrawer() {
+  const content = document.getElementById('friends-drawer-content');
+  if (!content) return;
+  const username = String(preferences.robloxUsername || '').trim();
+  if (!username) {
+    content.innerHTML = `<div class="friends-drawer-empty"><span class="friends-drawer-empty-icon">${icon('users', 19)}</span><strong>${t('friends.setup.title')}</strong><p>${t('friends.setup.body')}</p><button class="primary-button" data-detect-username-home>${icon('users', 14)} ${t('friends.detect')}</button><button class="text-button" data-action="friends-drawer-view-all">${t('friends.setup.action')}</button></div>`;
+    mountIcons(content);
+    return;
+  }
+  if (friendsLoading || !friendsCache.data || Date.now() - friendsCache.at > FRIENDS_TTL) {
+    content.innerHTML = `<div class="friends-drawer-loading"><span class="loading-spinner small"></span><span>${t('friends.loading')}</span></div><button class="text-button friends-drawer-all" data-action="friends-drawer-view-all">${t('activity.viewAllFriends')}</button>`;
+    mountIcons(content);
+    if (!friendsLoading) void loadFriends(username);
+    return;
+  }
+  const data = friendsCache.data;
+  if (!data?.ok) {
+    const isNetworkError = ['network', 'auth-required'].includes(data?.error);
+    content.innerHTML = `<div class="friends-drawer-empty"><span class="friends-drawer-empty-icon">${icon('users', 19)}</span><strong>${t(isNetworkError ? 'friends.networkTitle' : 'friends.notFound.title')}</strong><p>${t(isNetworkError ? 'friends.networkBody' : 'friends.notFound.body')}</p><button class="ghost-button" data-action="refresh-friends-drawer">${icon('refreshCw', 13)} ${t('friends.refresh')}</button></div>`;
+    mountIcons(content);
+    return;
+  }
+  const friends = Array.isArray(data.friends) ? data.friends : [];
+  const groups = [
+    ['friends.groupPlaying', friends.filter((friend) => friend.presence === 'playing')],
+    ['friends.groupOnline', friends.filter((friend) => friend.presence === 'online')],
+    ['friends.groupOffline', friends.filter((friend) => friend.presence !== 'playing' && friend.presence !== 'online')]
+  ];
+  const row = (friend) => {
+    const name = friend.displayName || friend.name || t('friends.unknown');
+    const status = friend.presence === 'playing' ? friend.gameName || t('friends.inGame') : friend.presence === 'online' ? t('friends.online') : t('friends.offline');
+    return `<div class="friends-drawer-row ${friend.presence}"><span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="lazy" decoding="async" />` : escapeHtml(name[0].toLocaleUpperCase())}<i></i></span><span class="friend-copy"><strong>${escapeHtml(name)}</strong><small>${escapeHtml(status)}</small></span>${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}" aria-label="${t('friends.join')}">${icon('play', 12)}</button>` : ''}</div>`;
+  };
+  const groupMarkup = groups.filter(([, list]) => list.length).map(([title, list]) => `<section class="friends-drawer-group"><h3>${t(title)}<span>${list.length}</span></h3>${list.map(row).join('')}</section>`).join('');
+  content.innerHTML = `${data.livePresence ? '' : `<p class="friends-presence-note">${icon('bell', 12)} ${t('friends.presenceOff')}</p>`}${friends.length ? groupMarkup : `<div class="friends-drawer-empty compact"><span class="friends-drawer-empty-icon">${icon('users', 18)}</span><strong>${t('friends.empty.title')}</strong><p>${t('friends.empty.body')}</p></div>`}<button class="text-button friends-drawer-all" data-action="friends-drawer-view-all">${t('activity.viewAllFriends')} ${icon('arrow', 12)}</button>`;
+  mountIcons(content);
+}
+
+function openFriendsDrawer() {
+  const drawer = document.getElementById('friends-drawer');
+  const backdrop = document.getElementById('friends-drawer-backdrop');
+  if (!drawer || !backdrop) return;
+  drawer.hidden = false;
+  backdrop.hidden = false;
+  drawer.inert = false;
+  requestAnimationFrame(() => {
+    drawer.classList.add('is-open');
+    backdrop.classList.add('is-open');
+    drawer.setAttribute('aria-hidden', 'false');
+    document.querySelector('[data-action="toggle-friends-drawer"]')?.setAttribute('aria-expanded', 'true');
+    drawer.querySelector('[data-action="close-friends-drawer"]')?.focus();
+  });
+  renderFriendsDrawer();
+  const username = String(preferences.robloxUsername || '').trim();
+  if (username && (!friendsCache.data || Date.now() - friendsCache.at > FRIENDS_TTL)) void loadFriends(username);
+  else if (!username) autoDetectRobloxAccountOnce();
+}
+
+function closeFriendsDrawer() {
+  const drawer = document.getElementById('friends-drawer');
+  const backdrop = document.getElementById('friends-drawer-backdrop');
+  if (!drawer || drawer.hidden) return;
+  drawer.classList.remove('is-open');
+  backdrop?.classList.remove('is-open');
+  drawer.setAttribute('aria-hidden', 'true');
+  drawer.inert = true;
+  document.querySelector('[data-action="toggle-friends-drawer"]')?.setAttribute('aria-expanded', 'false');
+  window.setTimeout(() => {
+    if (!drawer.classList.contains('is-open')) {
+      drawer.hidden = true;
+      if (backdrop) backdrop.hidden = true;
+      document.querySelector('[data-action="toggle-friends-drawer"]')?.focus();
+    }
+  }, 230);
 }
 
 // Notifies once per friend/game pair when a friend starts a favourite of yours.
@@ -1555,31 +1748,158 @@ function renderRecent() {
     ${renderGrid(list, t('empty.recent.title'), t('empty.recent.body'), 'catalog')}`;
 }
 
-// Roadmap data: each direction carries a stage key and a 0..1 progress.
-const PLANS_DATA = [
-  { icon: 'trophy', title: 'plans.recommendations', body: 'plans.recommendationsBody', stage: 'design' },
-  { icon: 'flag', title: 'plans.collections', body: 'plans.collectionsBody', stage: 'dev' }
+function activityDateKey(timestamp = Date.now()) {
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function shiftActivityDate(dateKey, days) {
+  const [year, month, day] = String(dateKey).split('-').map(Number);
+  const date = new Date(year, month - 1, day + days, 12);
+  return activityDateKey(date.getTime());
+}
+
+function activityDayDistance(fromKey, toKey) {
+  if (!fromKey || !toKey) return Infinity;
+  const toUtc = (key) => {
+    const [year, month, day] = key.split('-').map(Number);
+    return Date.UTC(year, month - 1, day);
+  };
+  return Math.round((toUtc(toKey) - toUtc(fromKey)) / 86400000);
+}
+
+function persistActivityData() {
+  localStorage.setItem('vortex.activity', JSON.stringify(activityData));
+}
+
+function recordActivityTime(gameId, startedAt, seconds) {
+  let cursor = Number(startedAt) || Date.now();
+  let remaining = Math.max(0, Number(seconds) || 0);
+  while (remaining > 0) {
+    const dateKey = activityDateKey(cursor);
+    const date = new Date(cursor);
+    const nextDay = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime();
+    const slice = Math.min(remaining, Math.max(1, Math.ceil((nextDay - cursor) / 1000)));
+    const day = activityData.days[dateKey] || (activityData.days[dateKey] = { games: {} });
+    day.games ||= {};
+    day.games[String(gameId)] = (Number(day.games[String(gameId)]) || 0) + slice;
+    cursor += slice * 1000;
+    remaining -= slice;
+  }
+  completeDailyActivity();
+  updateActivityAchievements();
+  persistActivityData();
+}
+
+function activityQualifiedGames(dateKey = activityDateKey()) {
+  const games = activityData.days[dateKey]?.games || {};
+  const threshold = ACTIVITY_GAME_MINUTES * 60;
+  return Object.entries(games).filter(([, seconds]) => Number(seconds) >= threshold).map(([id]) => id);
+}
+
+function activityRecoveryAvailable() {
+  const { lastCompletedDate, recoveryUsed } = activityData.streak;
+  const today = activityDateKey();
+  return !recoveryUsed && activityData.streak.current > 0 && activityDayDistance(lastCompletedDate, today) === 2;
+}
+
+function completeDailyActivity() {
+  if (activityQualifiedGames().length < ACTIVITY_DAILY_GAMES) return false;
+  const today = activityDateKey();
+  const streak = activityData.streak;
+  if (streak.lastCompletedDate === today) return false;
+  const distance = activityDayDistance(streak.lastCompletedDate, today);
+  if (distance === 2 && activityRecoveryAvailable()) return false;
+  streak.current = distance === 1 ? Number(streak.current || 0) + 1 : 1;
+  streak.best = Math.max(Number(streak.best || 0), streak.current);
+  streak.lastCompletedDate = today;
+  if (distance !== 1) streak.recoveryUsed = false;
+  return true;
+}
+
+const ACTIVITY_ACHIEVEMENTS = [
+  { id: 'first-day', icon: 'sparkle', title: 'activity.achievement.first', body: 'activity.achievement.firstBody', progress: () => Math.min(1, Number(activityData.streak.best > 0)) },
+  { id: 'three-day-streak', icon: 'activity', title: 'activity.achievement.three', body: 'activity.achievement.threeBody', progress: () => Math.min(3, Number(activityData.streak.best || 0)), target: 3 },
+  { id: 'seven-day-streak', icon: 'trophy', title: 'activity.achievement.seven', body: 'activity.achievement.sevenBody', progress: () => Math.min(7, Number(activityData.streak.best || 0)), target: 7 },
+  { id: 'five-games', icon: 'compass', title: 'activity.achievement.explorer', body: 'activity.achievement.explorerBody', progress: () => Math.min(5, Object.values(playStats).filter((entry) => Number(entry?.seconds) > 0).length), target: 5 },
+  { id: 'ten-hours', icon: 'clock', title: 'activity.achievement.hours', body: 'activity.achievement.hoursBody', progress: () => Math.min(600, Math.floor(Object.values(playStats).reduce((sum, entry) => sum + (Number(entry?.seconds) || 0), 0) / 60)), target: 600 }
 ];
-const PLANS_FILTERS = [
-  ['all', 'plans.filter.all'],
-  ['research', 'plans.filter.research'],
-  ['design', 'plans.filter.design'],
-  ['dev', 'plans.filter.dev'],
-  ['idea', 'plans.filter.idea']
-];
-let activePlansFilter = 'all';
+
+function updateActivityAchievements() {
+  let changed = false;
+  for (const achievement of ACTIVITY_ACHIEVEMENTS) {
+    const target = achievement.target || 1;
+    if (achievement.progress() >= target && !activityData.achievements[achievement.id]) {
+      activityData.achievements[achievement.id] = new Date().toISOString();
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function formatActivityMinutes(seconds) {
+  const minutes = Math.floor(Math.max(0, Number(seconds) || 0) / 60);
+  if (minutes < 60) return `${minutes}${t('time.minutes')}`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return `${hours}${t('time.hours')}${remainder ? ` ${remainder}${t('time.minutes')}` : ''}`;
+}
+
+function renderActivity() {
+  const today = activityDateKey();
+  completeDailyActivity();
+  updateActivityAchievements();
+  persistActivityData();
+  const day = activityData.days[today] || { games: {} };
+  const threshold = ACTIVITY_GAME_MINUTES * 60;
+  const allGames = Object.entries(day.games || {}).sort((a, b) => Number(b[1]) - Number(a[1]));
+  const qualified = activityQualifiedGames(today);
+  const completed = qualified.length >= ACTIVITY_DAILY_GAMES;
+  const streakDistance = activityDayDistance(activityData.streak.lastCompletedDate, today);
+  const currentStreak = streakDistance <= 1 || activityRecoveryAvailable() ? activityData.streak.current : 0;
+  const gameRows = allGames.length ? allGames.map(([id, seconds]) => {
+    const game = getGame(id);
+    const title = game?.title || t('activity.unknownGame');
+    const progress = Math.min(100, Math.round(Number(seconds) / threshold * 100));
+    return `<div class="activity-game-row"><span class="activity-game-icon">${game?.thumbnail ? `<img src="${escapeHtml(safeThumbnail(game.thumbnail))}" alt="" />` : icon('gamepad', 16)}</span><span class="activity-game-copy"><strong>${escapeHtml(title)}</strong><small>${formatActivityMinutes(seconds)} / ${ACTIVITY_GAME_MINUTES}${t('time.minutes')}</small></span><span class="activity-game-progress"><i style="--progress:${progress}%"></i></span><span class="activity-game-check ${Number(seconds) >= threshold ? 'is-complete' : ''}">${Number(seconds) >= threshold ? icon('check', 13) : `${progress}%`}</span></div>`;
+  }).join('') : `<div class="activity-empty-note">${icon('gamepad', 16)}<span>${t('activity.emptyGames')}</span></div>`;
+  const achievements = ACTIVITY_ACHIEVEMENTS.map((achievement) => {
+    const target = achievement.target || 1;
+    const value = Math.min(target, achievement.progress());
+    const earned = Boolean(activityData.achievements[achievement.id]);
+    return `<article class="achievement-card ${earned ? 'is-earned' : ''}"><span class="achievement-icon">${icon(achievement.icon, 17)}</span><span class="achievement-copy"><strong>${t(achievement.title)}</strong><small>${t(achievement.body)}</small><em>${earned ? t('activity.earned') : `${value} / ${target}`}</em></span></article>`;
+  }).join('');
+  return `${pageHeading(t('page.activity.eyebrow'), t('page.activity.title'), t('page.activity.description'))}
+    <section class="activity-hero"><div class="activity-hero-copy"><span class="activity-eyebrow">${icon('sparkle', 13)} ${t('activity.today')}</span><h2>${completed ? t('activity.goalComplete') : t('activity.goalTitle')}</h2><p>${t('activity.goalBody', { games: ACTIVITY_DAILY_GAMES, minutes: ACTIVITY_GAME_MINUTES })}</p><div class="activity-goal-track"><i style="--progress:${Math.min(100, Math.round(qualified.length / ACTIVITY_DAILY_GAMES * 100))}%"></i></div><small>${t('activity.gamesProgress', { done: Math.min(ACTIVITY_DAILY_GAMES, qualified.length), total: ACTIVITY_DAILY_GAMES })}</small></div><div class="activity-streak"><span class="activity-streak-icon">${icon('activity', 23)}</span><strong>${currentStreak}</strong><span>${t('activity.streakDays')}</span><small>${t('activity.bestStreak', { count: activityData.streak.best })}</small></div></section>
+    ${activityRecoveryAvailable() ? `<section class="activity-recovery"><span>${icon('refreshCw', 16)} ${t('activity.recoveryHint')}</span><button class="ghost-button" data-action="restore-activity-streak">${t('activity.recoveryAction')}</button></section>` : ''}
+    <div class="activity-dashboard-grid"><section class="settings-card activity-daily-card"><div class="settings-card-head"><div><h2>${t('activity.dailyTitle')}</h2><p>${t('activity.dailyBody')}</p></div>${icon('crosshair', 18)}</div><div class="activity-game-list">${gameRows}</div></section><section class="settings-card activity-achievements"><div class="settings-card-head"><div><h2>${t('activity.achievementsTitle')}</h2><p>${t('activity.achievementsBody')}</p></div>${icon('trophy', 18)}</div><div class="achievement-grid">${achievements}</div></section></div>`;
+}
 
 const PLANS_STAGE_LABELS = { research: 'plans.filter.research', design: 'plans.filter.design', dev: 'plans.filter.dev', idea: 'plans.filter.idea' };
+let roadmapItems = null;
+let roadmapLoadGeneration = 0;
 
 function renderPlans() {
-  // Simple roadmap: a short list of what is coming. No stage filters, no
-  // numeric progress, no reviews section  deliberately minimal.
+  const items = Array.isArray(roadmapItems) ? roadmapItems : [];
   return `${pageHeading(t('page.plans.eyebrow'), t('page.plans.title'), t('page.plans.description'))}
-    <div class="roadmap-grid">${PLANS_DATA.map((plan) => `<article class="roadmap-card" data-stage="${plan.stage}">
-        <div class="roadmap-icon">${icon(plan.icon)}</div>
-        <h3>${t(plan.title)}</h3><p>${t(plan.body)}</p>
-        <span class="roadmap-state">${t(PLANS_STAGE_LABELS[plan.stage])}</span>
-      </article>`).join('')}</div>`;
+    <div class="roadmap-grid">${items.map((plan) => {
+      const localized = (value) => typeof value === 'string' ? value : value?.[preferences.language] || value?.ru || value?.en || '';
+      const stage = Object.hasOwn(PLANS_STAGE_LABELS, plan.stage) ? plan.stage : 'idea';
+      const iconName = /^[a-zA-Z0-9_-]{1,32}$/.test(String(plan.icon || '')) ? plan.icon : 'flag';
+      return `<article class="roadmap-card" data-stage="${stage}"><div class="roadmap-icon">${icon(iconName)}</div><h3>${escapeHtml(localized(plan.title))}</h3><p>${escapeHtml(localized(plan.body))}</p><span class="roadmap-state">${t(PLANS_STAGE_LABELS[stage])}</span></article>`;
+    }).join('') || `<p class="catalog-disclaimer">${t(roadmapItems === null ? 'plans.loading' : 'plans.empty')}</p>`}</div>`;
+}
+
+async function loadRoadmap() {
+  if (!window.vortexDesktop?.listPlans) return;
+  const generation = ++roadmapLoadGeneration;
+  try {
+    const result = await window.vortexDesktop.listPlans();
+    if (generation !== roadmapLoadGeneration || currentView !== 'plans') return;
+    roadmapItems = Array.isArray(result?.items) ? result.items : [];
+    pageContent.innerHTML = renderPlans();
+    mountIcons(pageContent);
+  } catch { /* The bundled site/plans.json remains available when offline. */ }
 }
 
 function settingsTabs() {
@@ -1588,7 +1908,7 @@ function settingsTabs() {
     ['interface', 'monitor'], ['general', 'settings'], ['integrations', 'sparkles'],
     ['data', 'database'], ['version', 'refreshCw']
   ];
-  return `<div class="settings-tabs">${tabs.map(([key, iconName]) => `<button class="settings-tab ${preferences.settingsTab === key ? 'active' : ''}" data-settings-tab="${key}"><span>${icon(iconName)}</span>${t(`settings.tab.${key}`)}</button>`).join('')}</div>`;
+  return `<nav class="settings-tabs" aria-label="${t('settings.tabNavigation')}">${tabs.map(([key, iconName]) => `<button class="settings-tab ${preferences.settingsTab === key ? 'active' : ''}" data-settings-tab="${key}" ${preferences.settingsTab === key ? 'aria-current="page"' : ''}><span>${icon(iconName)}</span>${t(`settings.tab.${key}`)}</button>`).join('')}</nav>`;
 }
 
 function renderHomeSettings() {
@@ -1625,7 +1945,7 @@ function renderHomeSettings() {
       </div>
       <p class="custom-game-status" data-custom-status></p>
       ${customList}
-      <div class="setting-line home-setting-line"><div class="setting-label"><strong>${t('settings.home.gameCount')}</strong></div><div class="segmented"><button class="segment ${Number(preferences.homeGameCount) === 4 ? 'active' : ''}" data-pref="homeGameCount" data-value="4">4</button><button class="segment ${Number(preferences.homeGameCount) === 6 ? 'active' : ''}" data-pref="homeGameCount" data-value="6">6</button><button class="segment ${Number(preferences.homeGameCount) === 8 ? 'active' : ''}" data-pref="homeGameCount" data-value="8">8</button></div></div>
+      <div class="setting-line home-setting-line"><div class="setting-label"><strong>${t('settings.home.gameCount')}</strong></div><div class="segmented">${[4, 6, 8].map((count) => `<button class="segment ${Number(preferences.homeGameCount) === count ? 'active' : ''}" data-pref="homeGameCount" data-value="${count}" data-preview="homeCount:${count}" data-preview-label="${escapeHtml(t('settings.home.gameCount'))}">${count}</button>`).join('')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.layout')}</strong><small>${t('settings.home.layoutBody')}</small></div><div class="segmented">${[['balanced', t('settings.home.layoutBalanced')], ['spotlight', t('settings.home.layoutSpotlight')], ['library', t('settings.home.layoutLibrary')]].map(([value, label]) => `<button class="segment ${preferences.homeLayout === value ? 'active' : ''}" data-pref="homeLayout" data-value="${value}" ${previewAttr('homeLayout', value, label)}>${label}</button>`).join('')}</div></div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.home.sections')}</h2><p>${t('settings.home.sectionsBody')}</p></div>${icon('layout', 18)}</div>
@@ -1634,7 +1954,7 @@ function renderHomeSettings() {
         ${homeWidgetOrder().map((key, index) => {
           const widget = HOME_WIDGETS.find((w) => w.key === key);
           if (!widget) return '';
-          return `<div class="ui-row" data-ui-row="widget:${key}" data-widget-row="${key}" role="listitem" tabindex="0" aria-roledescription="${t('settings.ui.dragHint')}">
+          return `<div class="ui-row" data-ui-row="widget:${key}" data-widget-row="${key}" data-widget-visible="${homeWidgetVisible(key)}" data-preview="homeWidget:${key}:${homeWidgetVisible(key) ? 'on' : 'off'}" data-preview-label="${escapeHtml(t(widget.titleKey))}" role="listitem" tabindex="0" aria-roledescription="${t('settings.ui.dragHint')}">
             <span class="ui-row-grip" aria-hidden="true">${icon('grip', 14)}</span>
             <span class="ui-row-icon">${icon(widget.icon, 14)}</span>
             <span class="ui-row-copy"><strong>${t(widget.titleKey)}</strong><small>${t(widget.bodyKey)}</small></span>
@@ -1893,7 +2213,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 function renderAccentSettings() {
-  const themeDefaults = { dark: { background: '#0b0c10', surface: '#111319' }, light: { background: '#f2f1f6', surface: '#ffffff' }, oled: { background: '#030305', surface: '#08090c' } }[preferences.theme];
+  const themeDefaults = { dark: { background: '#0d1012', surface: '#14181a' }, light: { background: '#f5f6f7', surface: '#ffffff' }, oled: { background: '#030305', surface: '#08090c' } }[preferences.theme];
   const displayBackground = preferences.themeBackground || themeDefaults.background;
   const displaySurface = preferences.themeSurface || themeDefaults.surface;
   const isLight = relativeLuminance(displayBackground) > 0.42;
@@ -1937,11 +2257,11 @@ function renderWallpaperCard() {
 function renderCardSettings() {
   // Native components: setting-line rows, range-control sliders, button.toggle
   // switches — matches every other settings card exactly.
-  const cardFlag = (flagKey, titleKey, bodyKey) => `<div class="setting-line"><div class="setting-label"><strong>${t(titleKey)}</strong><small>${t(bodyKey)}</small></div><button class="toggle" role="switch" aria-checked="${preferences[flagKey]}" data-card-flag-toggle="${flagKey}" aria-label="${t(titleKey)}"></button></div>`;
+  const cardFlag = (flagKey, titleKey, bodyKey) => `<div class="setting-line"><div class="setting-label"><strong>${t(titleKey)}</strong><small>${t(bodyKey)}</small></div><button class="toggle" role="switch" aria-checked="${preferences[flagKey]}" data-card-flag-toggle="${flagKey}" data-preview="cardFlag:${flagKey}:${preferences[flagKey] ? 'off' : 'on'}" data-preview-label="${escapeHtml(t(titleKey))}" aria-label="${t(titleKey)}"></button></div>`;
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cardTuning.title')}</h2><p>${t('settings.cardTuning.body')}</p></div>${icon('grid', 18)}</div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.size')}</strong><small>${t('settings.cardTuning.sizeHint')}</small></div><label class="range-control"><input type="range" min="0.7" max="1.3" step="0.05" value="${preferences.cardSize}" data-card-size /><span class="range-value" data-card-size-value>${Math.round(preferences.cardSize * 100)}%</span></label></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.radius')}</strong><small>${t('settings.cardTuning.radiusHint')}</small></div><label class="range-control"><input type="range" min="0" max="20" value="${preferences.cardRadius}" data-card-radius /><span class="range-value" data-card-radius-value>${preferences.cardRadius}px</span></label></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.aspect')}</strong><small>${t('settings.cardTuning.aspectHint')}</small></div><div class="segmented">${[['auto',t('settings.cardTuning.aspectAuto')],['square',t('settings.cardTuning.aspectSquare')],['wide',t('settings.cardTuning.aspectWide')],['portrait',t('settings.cardTuning.aspectPortrait')]].map(([value,label])=>`<button class="segment ${preferences.cardAspect === value ? 'active' : ''}" data-pref="cardAspect" data-value="${value}">${label}</button>`).join('')}</div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.size')}</strong><small>${t('settings.cardTuning.sizeHint')}</small></div><label class="range-control"><input type="range" min="0.7" max="1.3" step="0.05" value="${preferences.cardSize}" data-card-size data-preview="cardSize:${preferences.cardSize}" data-preview-label="${escapeHtml(t('settings.cardTuning.size'))}" /><span class="range-value" data-card-size-value>${Math.round(preferences.cardSize * 100)}%</span></label></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.radius')}</strong><small>${t('settings.cardTuning.radiusHint')}</small></div><label class="range-control"><input type="range" min="0" max="20" value="${preferences.cardRadius}" data-card-radius data-preview="cardRadius:${preferences.cardRadius}" data-preview-label="${escapeHtml(t('settings.cardTuning.radius'))}" /><span class="range-value" data-card-radius-value>${preferences.cardRadius}px</span></label></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.aspect')}</strong><small>${t('settings.cardTuning.aspectHint')}</small></div><div class="segmented">${[['auto',t('settings.cardTuning.aspectAuto')],['square',t('settings.cardTuning.aspectSquare')],['wide',t('settings.cardTuning.aspectWide')],['portrait',t('settings.cardTuning.aspectPortrait')]].map(([value,label])=>`<button class="segment ${preferences.cardAspect === value ? 'active' : ''}" data-pref="cardAspect" data-value="${value}" ${previewAttr('cardAspect',value,label)}>${label}</button>`).join('')}</div></div>
       ${cardFlag('cardShowDescription', 'settings.cardTuning.description', 'settings.cardTuning.descriptionHint')}
       ${cardFlag('cardShowLikes', 'settings.cardTuning.likes', 'settings.cardTuning.likesHint')}
       ${cardFlag('cardShowPlaytime', 'settings.cardTuning.playtime', 'settings.cardTuning.playtimeHint')}
@@ -1949,7 +2269,7 @@ function renderCardSettings() {
   </section>
   <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.catalog.title')}</h2><p>${t('settings.catalog.body')}</p></div>${icon('layout', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.catalog.groupByGenre')}</strong><small>${t('settings.catalog.groupByGenreBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.catalogGroupByGenre}" data-toggle="catalogGroupByGenre" aria-label="${t('settings.catalog.groupByGenre')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.catalog.defaultView')}</strong><small>${t('settings.catalog.defaultViewBody')}</small></div><div class="segmented"><button class="segment ${preferences.catalogView === 'grid' ? 'active' : ''}" data-pref="catalogView" data-value="grid">${t('catalog.gridView')}</button><button class="segment ${preferences.catalogView === 'list' ? 'active' : ''}" data-pref="catalogView" data-value="list">${t('catalog.listView')}</button></div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.catalog.defaultView')}</strong><small>${t('settings.catalog.defaultViewBody')}</small></div><div class="segmented"><button class="segment ${preferences.catalogView === 'grid' ? 'active' : ''}" data-pref="catalogView" data-value="grid" ${previewAttr('catalogView','grid',t('catalog.gridView'))}>${t('catalog.gridView')}</button><button class="segment ${preferences.catalogView === 'list' ? 'active' : ''}" data-pref="catalogView" data-value="list" ${previewAttr('catalogView','list',t('catalog.listView'))}>${t('catalog.listView')}</button></div></div>
   </section>
   <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cardPreview.title')}</h2><p>${t('settings.cardPreview.body')}</p></div>${icon('gamepad', 18)}</div>
       <div class="card-tuning-preview">
@@ -1998,7 +2318,7 @@ function segmentsWithPreview(preference, options) {
 
 // Floating preview: every option that carries data-preview="<type>:<value>" shows a small
 // mock of the launcher while the pointer is over it. Each option renders its own mock.
-function previewMarkup(type, value, label) {
+function previewMarkup(type, value, label, detail = '') {
   if (type === 'pageTransition') {
     const variant = { fade: 'fade', slide: 'slide', zoom: 'zoom', none: 'none' }[value] || 'fade';
     return `<div class="hover-preview-mock page-transition-mock ${variant}"><span class="mock-page"><b></b><b class="short"></b></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
@@ -2009,6 +2329,14 @@ function previewMarkup(type, value, label) {
   }
   if (type === 'animationSpeed') return previewAnimationSpeed(value, label);
   if (type === 'animationEasing') return previewAnimationEasing(value, label);
+  if (type === 'glow') {
+    const strength = Math.max(0, Math.min(100, Number(value) || 0));
+    return `<div class="hover-preview-mock glow-preview-mock" style="--preview-glow:${strength / 100}"><i></i><b></b><span></span></div><span class="hover-preview-label">${escapeHtml(label)} · ${strength}%</span>`;
+  }
+  if (type === 'animationDuration') {
+    const duration = Math.max(50, Math.min(200, Number(value) || 100));
+    return `<div class="hover-preview-mock duration-preview-mock"><i style="--preview-duration:${duration / 100}s"></i><b style="--preview-duration:${duration / 100}s"></b></div><span class="hover-preview-label">${escapeHtml(label)} · ${duration}%</span>`;
+  }
   if (type === 'accent') {
     return `<div class="hover-preview-mock accent-mock" style="--mock-accent:${escapeHtml(value)}"><span class="mock-chip"></span><span class="mock-bar"></span><span class="mock-bar short"></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
   }
@@ -2033,33 +2361,62 @@ function previewMarkup(type, value, label) {
   }
 
   if (type === 'uiPart') {
-    return previewUiPart(value, label);
+    return previewUiPart(value, label, detail);
+  }
+  if (type === 'cardAspect') {
+    return `<div class="hover-preview-mock aspect-mock aspect-${escapeHtml(value)}"><i></i><i></i><i></i></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'cardSize' || type === 'cardRadius') {
+    const width = type === 'cardSize' ? Math.max(68, Math.min(100, Math.round(Number(value || 1) * 78))) : 82;
+    const radius = type === 'cardRadius' ? Math.max(2, Math.min(18, Number(value || 0))) : Number(preferences.cardRadius || 12);
+    return `<div class="hover-preview-mock card-tuning-mock" style="--mock-width:${width}%;--mock-radius:${radius}px"><i></i><b></b><span></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'cardFlag') {
+    return `<div class="hover-preview-mock card-flag-mock ${detail === 'off' ? 'is-off' : ''}"><i></i><b></b><span></span><em></em></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'homeCount') {
+    const count = Math.max(3, Math.min(8, Number(value) || 4));
+    return `<div class="hover-preview-mock grid-mock" style="--mock-columns:${count > 6 ? 4 : count > 4 ? 3 : 2}">${'<i></i>'.repeat(count)}</div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'catalogView') {
+    return `<div class="hover-preview-mock catalog-view-mock ${value === 'list' ? 'is-list' : ''}"><i></i><i></i><i></i><i></i></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'homeWidget') {
+    return `<div class="hover-preview-mock widget-preview-mock ${detail === 'off' ? 'is-off' : 'is-on'}"><i></i><b></b><span></span><span></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'motion') {
+    return `<div class="hover-preview-mock motion-preview-mock ${value === 'off' ? 'is-off' : ''}"><i></i><b></b><span></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'contrast') {
+    return `<div class="hover-preview-mock contrast-preview-mock ${value === 'on' ? 'is-strong' : ''}"><i></i><b></b><span></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+  }
+  if (type === 'uiFont') {
+    return `<div class="hover-preview-mock font-preview-mock ${value === 'classic' ? 'is-classic' : ''}"><strong>Vortex</strong><span>Roblox · ${escapeHtml(label)}</span><i></i></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
   }
   return '';
 }
 
 // Interface part previews: each toggle shows its own corner of the launcher with the
 // part highlighted, so every option is visually distinct.
-function previewUiPart(part, label) {
-  const shell = (rows, active) => `<div class="hover-preview-mock ui-part-mock ui-${escapeHtml(part)} ${active ? 'is-on' : 'is-off'}">${rows}</div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+function previewUiPart(part, label, state = '') {
+  const active = state ? state === 'on' : Boolean(preferences[part]);
+  const shell = (rows, current = active) => `<div class="hover-preview-mock ui-part-mock ui-${escapeHtml(part)} ${current ? 'is-on' : 'is-off'}">${rows}</div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
   const spark = '<span class="mock-ui-part"><i></i></span>';
   switch (part) {
     case 'uiSidebarTip':
-      return shell('<span class="mock-ui-nav"></span><span class="mock-ui-nav"></span><span class="mock-ui-tip"></span>', preferences.uiSidebarTip);
-    case 'uiProfileCard':
-      return shell('<span class="mock-ui-nav"></span><span class="mock-ui-profile"><i></i><b></b></span>', preferences.uiProfileCard);
-    case 'uiSidebarFoot':
-      return shell('<span class="mock-ui-nav"></span><span class="mock-ui-foot"></span>', preferences.uiSidebarFoot);
+      return shell('<span class="mock-ui-nav"></span><span class="mock-ui-nav"></span><span class="mock-ui-tip"></span>');
     case 'uiTopbarSearch':
-      return shell('<span class="mock-ui-topbar"><b class="mock-crumb"></b><b class="mock-search"></b><b class="mock-bell"></b></span>', preferences.uiTopbarSearch);
+      return shell('<span class="mock-ui-topbar"><b class="mock-crumb"></b><b class="mock-search"></b><b class="mock-bell"></b></span>');
     case 'uiBreadcrumb':
-      return shell('<span class="mock-ui-topbar"><b class="mock-crumb wide"></b><b class="mock-bell"></b></span>', preferences.uiBreadcrumb);
+      return shell('<span class="mock-ui-topbar"><b class="mock-crumb wide"></b><b class="mock-bell"></b></span>');
     case 'uiNotifications':
-      return shell('<span class="mock-ui-topbar"><b class="mock-crumb wide"></b><b class="mock-bell"></b></span>', preferences.uiNotifications);
+      return shell('<span class="mock-ui-topbar"><b class="mock-crumb wide"></b><b class="mock-bell"></b></span>');
     case 'uiUpdateBanner':
-      return shell('<span class="mock-ui-banner"><i></i><b></b></span>', preferences.uiUpdateBanner);
+      return shell('<span class="mock-ui-banner"><i></i><b></b></span>');
+    case 'sidebarAutoHide':
+      return shell('<span class="mock-ui-nav"></span><span class="mock-ui-nav"></span><span class="mock-ui-arrow"></span>');
     default:
-      return shell(spark, true);
+      return shell(spark);
   }
 }
 
@@ -2076,18 +2433,28 @@ function previewAnimationEasing(value, label) {
 }
 
 function previewTarget(event) {
-  return event.target.closest?.('[data-preview]') || null;
+  const path = event.composedPath?.() || [];
+  const fromPath = path.find((node) => node instanceof Element && node.matches('[data-preview]'));
+  if (fromPath) return fromPath;
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement;
+  return target?.closest?.('[data-preview]') || null;
 }
 
+let activePreviewTarget = null;
+let previewHideTimer = 0;
 function hideHoverPreview() {
+  window.clearTimeout(previewHideTimer);
   const layer = document.getElementById('hover-preview-layer');
   if (layer) layer.hidden = true;
+  activePreviewTarget = null;
 }
 
 function showHoverPreview(target) {
-  const [type, value = ''] = String(target.dataset.preview || '').split(':');
+  if (!target?.isConnected) return;
+  window.clearTimeout(previewHideTimer);
+  const [type, value = '', detail = ''] = String(target.dataset.preview || '').split(':');
   const label = target.dataset.previewLabel || target.textContent.trim();
-  const markup = previewMarkup(type, value, label);
+  const markup = previewMarkup(type, value, label, detail);
   if (!markup) return;
   let layer = document.getElementById('hover-preview-layer');
   if (!layer) {
@@ -2109,57 +2476,93 @@ function showHoverPreview(target) {
   layer.style.top = `${Math.max(8, top)}px`;
 }
 
-document.addEventListener('mouseover', (event) => {
+document.addEventListener('pointerover', (event) => {
   const target = previewTarget(event);
   if (!target) return;
   if (target.contains(event.relatedTarget)) return;
+  if (activePreviewTarget === target) return;
+  activePreviewTarget = target;
   showHoverPreview(target);
 });
-document.addEventListener('mouseout', (event) => {
+document.addEventListener('pointerout', (event) => {
   const target = previewTarget(event);
   if (!target || target.contains(event.relatedTarget)) return;
+  if (activePreviewTarget !== target) return;
+  if (target.contains(document.activeElement)) return;
+  if (previewTarget({ target: event.relatedTarget, composedPath: () => [event.relatedTarget] })) return;
+  window.clearTimeout(previewHideTimer);
+  previewHideTimer = window.setTimeout(() => {
+    if (!activePreviewTarget?.matches(':hover') && !activePreviewTarget?.contains(document.activeElement)) hideHoverPreview();
+  }, 70);
+});
+document.addEventListener('focusin', (event) => {
+  const target = previewTarget(event);
+  if (!target) return;
+  activePreviewTarget = target;
+  showHoverPreview(target);
+});
+document.addEventListener('focusout', (event) => {
+  const target = previewTarget(event);
+  if (!target || target.contains(event.relatedTarget) || target.matches(':hover')) return;
+  if (activePreviewTarget !== target) return;
   hideHoverPreview();
 });
+document.addEventListener('pointermove', (event) => {
+  if (event.pointerType === 'touch') return;
+  const target = previewTarget(event);
+  if (target && target !== activePreviewTarget) {
+    activePreviewTarget = target;
+    showHoverPreview(target);
+  } else if (!target && activePreviewTarget && !activePreviewTarget.contains(document.activeElement)) {
+    hideHoverPreview();
+  } else if (activePreviewTarget && !activePreviewTarget.isConnected) {
+    hideHoverPreview();
+  }
+});
 document.addEventListener('scroll', hideHoverPreview, true);
+window.addEventListener('resize', () => activePreviewTarget?.isConnected ? showHoverPreview(activePreviewTarget) : hideHoverPreview());
 
 function renderEffectSettings() {
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.effects.title')}</h2><p>${t('settings.effects.body')}</p></div>${icon('wand', 18)}</div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.glow.title')}</strong><small>${t('settings.glow.body')}</small></div><label class="range-control"><input type="range" min="0" max="100" value="${preferences.glow}" data-setting="glow" /><span class="range-value" id="glow-value">${preferences.glow}%</span></label></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.ambient.title')}</strong><small>${t('settings.ambient.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.ambient}" data-toggle="ambient" aria-label="${t('settings.ambient.title')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.motion.title')}</strong><small>${t('settings.motion.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.motion}" data-toggle="motion" aria-label="${t('settings.motion.title')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.glow.title')}</strong><small>${t('settings.glow.body')}</small></div><label class="range-control"><input type="range" min="0" max="100" value="${preferences.glow}" data-setting="glow" data-preview="glow:${preferences.glow}" data-preview-label="${escapeHtml(t('settings.glow.title'))}" /><span class="range-value" id="glow-value">${preferences.glow}%</span></label></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.ambient.title')}</strong><small>${t('settings.ambient.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.ambient}" data-toggle="ambient" data-preview="uiPart:ambient:${preferences.ambient ? 'off' : 'on'}" data-preview-label="${escapeHtml(t('settings.ambient.title'))}" aria-label="${t('settings.ambient.title')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.motion.title')}</strong><small>${t('settings.motion.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.motion}" data-toggle="motion" data-preview="motion:${preferences.motion ? 'off' : 'on'}" data-preview-label="${escapeHtml(t('settings.motion.title'))}" aria-label="${t('settings.motion.title')}"></button></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.transitionStyle')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('pageTransition', 'fade', t('settings.transition.fade'), preferences.pageTransition === 'fade')}${renderAnimationOption('pageTransition', 'slide', t('settings.transition.slide'), preferences.pageTransition === 'slide')}${renderAnimationOption('pageTransition', 'zoom', t('settings.transition.zoom'), preferences.pageTransition === 'zoom')}${renderAnimationOption('pageTransition', 'none', t('settings.transition.none'), preferences.pageTransition === 'none')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardAnimation')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('cardAnimation', 'rise', t('settings.cards.rise'), preferences.cardAnimation === 'rise')}${renderAnimationOption('cardAnimation', 'fade', t('settings.cards.fade'), preferences.cardAnimation === 'fade')}${renderAnimationOption('cardAnimation', 'pop', t('settings.cards.pop'), preferences.cardAnimation === 'pop')}${renderAnimationOption('cardAnimation', 'none', t('settings.cards.none'), preferences.cardAnimation === 'none')}</div></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.contrast.title')}</strong><small>${t('settings.contrast.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.contrast}" data-toggle="contrast" aria-label="${t('settings.contrast.title')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.contrast.title')}</strong><small>${t('settings.contrast.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.contrast}" data-toggle="contrast" data-preview="contrast:${preferences.contrast ? 'off' : 'on'}" data-preview-label="${escapeHtml(t('settings.contrast.title'))}" aria-label="${t('settings.contrast.title')}"></button></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.animationSpeed.title')}</strong><small>${t('settings.animationSpeed.body')}</small></div><div class="segmented">${[['slow', t('settings.animationSpeed.slow')], ['normal', t('settings.animationSpeed.normal')], ['fast', t('settings.animationSpeed.fast')]].map(([value, label]) => `<button class="segment ${preferences.animationSpeed === value ? 'active' : ''}" data-pref="animationSpeed" data-value="${value}" data-preview="animationSpeed:${value}" data-preview-label="${escapeHtml(label)}">${label}</button>`).join('')}</div></div>
        <div class="setting-line"><div class="setting-label"><strong>${t('settings.effects.easing')}</strong><small>${t('settings.effects.easingHint')}</small></div><div class="segmented">${[['smooth', t('settings.effects.easingSmooth')], ['spring', t('settings.effects.easingSpring')], ['linear', t('settings.effects.easingLinear')]].map(([value, label]) => `<button class="segment ${preferences.animationEasing === value ? 'active' : ''}" data-pref="animationEasing" data-value="${value}" data-preview="animationEasing:${value}" data-preview-label="${escapeHtml(label)}">${label}</button>`).join('')}</div></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.effects.pageSpeed')}</strong><small>${t('settings.effects.pageSpeedHint')}</small></div><label class="range-control"><input type="range" min="50" max="200" step="10" value="${Math.round((preferences.animationDuration || 1) * 100)}" data-animation-duration /><span class="range-value" data-animation-duration-value>${Math.round((preferences.animationDuration || 1) * 100)}%</span></label></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.effects.pageSpeed')}</strong><small>${t('settings.effects.pageSpeedHint')}</small></div><label class="range-control"><input type="range" min="50" max="200" step="10" value="${Math.round((preferences.animationDuration || 1) * 100)}" data-animation-duration data-preview="animationDuration:${Math.round((preferences.animationDuration || 1) * 100)}" data-preview-label="${escapeHtml(t('settings.effects.pageSpeed'))}" /><span class="range-value" data-animation-duration-value>${Math.round((preferences.animationDuration || 1) * 100)}%</span></label></div>
     </section><p class="catalog-disclaimer">${t('settings.savedLocally')}</p>`;
 }
 
 function renderInterfaceSettings() {
-  const order = navOrder();
-  const rows = order.map((key, index) => {
-    const item = NAV_ITEMS.find((entry) => entry.key === key);
-    if (!item) return '';
-    return `<div class="ui-row" data-ui-row="${key}" data-ui-drag="${key}" role="listitem" tabindex="0" aria-roledescription="${t('settings.ui.dragHint')}">
-      <span class="ui-row-grip" aria-hidden="true">${icon('grip', 14)}</span>
-      <span class="ui-row-icon" data-icon="${item.icon}"></span>
-      <span class="ui-row-copy"><strong>${t(`nav.${item.key}`)}</strong><small>${t(`settings.ui.group.${item.group}`)}</small></span>
-      <button class="ui-row-handle" data-ui-move="${key}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="${t('settings.ui.moveUp')}">${icon('navUp', 12)}</button>
-      <button class="ui-row-handle" data-ui-move="${key}" data-direction="1" ${index === order.length - 1 ? 'disabled' : ''} aria-label="${t('settings.ui.moveDown')}">${icon('navDown', 12)}</button>
-    </div>`;
-  }).join('');
-  const partToggle = (pref, titleKey, bodyKey) => `<div class="setting-line"><div class="setting-label"><strong>${t(titleKey)}</strong><small>${t(bodyKey)}</small></div><button class="toggle" role="switch" aria-checked="${preferences[pref]}" data-toggle="${pref}" data-preview="uiPart:${pref}" data-preview-label="${escapeHtml(t(titleKey))}" aria-label="${t(titleKey)}"></button></div>`;
+  const navGroup = (group, titleKey) => {
+    const order = navOrder(group);
+    const rows = order.map((key, index) => {
+      const item = NAV_ITEMS.find((entry) => entry.key === key);
+      if (!item) return '';
+      return `<div class="ui-row" data-ui-row="${key}" data-ui-drag="${key}" role="listitem" tabindex="0" aria-roledescription="${t('settings.ui.dragHint')}">
+        <span class="ui-row-grip" aria-hidden="true">${icon('grip', 14)}</span>
+        <span class="ui-row-icon" data-icon="${item.icon}"></span>
+        <span class="ui-row-copy"><strong>${t(`nav.${item.key}`)}</strong><small>${t(titleKey)}</small></span>
+        <button class="ui-row-handle" data-ui-move="${key}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="${t('settings.ui.moveUp')}">${icon('navUp', 12)}</button>
+        <button class="ui-row-handle" data-ui-move="${key}" data-direction="1" ${index === order.length - 1 ? 'disabled' : ''} aria-label="${t('settings.ui.moveDown')}">${icon('navDown', 12)}</button>
+      </div>`;
+    }).join('');
+    return `<p class="ui-section-title">${t(titleKey)}</p><div class="ui-list" data-ui-order data-nav-order-group="${group}">${rows}</div>`;
+  };
+  const partToggle = (pref, titleKey, bodyKey) => `<div class="setting-line"><div class="setting-label"><strong>${t(titleKey)}</strong><small>${t(bodyKey)}</small></div><button class="toggle" role="switch" aria-checked="${preferences[pref]}" data-toggle="${pref}" data-preview="uiPart:${pref}:${preferences[pref] ? 'off' : 'on'}" data-preview-label="${escapeHtml(t(titleKey))}" aria-label="${t(titleKey)}"></button></div>`;
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.ui.navTitle')}</h2><p>${t('settings.ui.navBody')}</p></div>${icon('layout', 18)}</div>
-      <div class="ui-list" data-ui-order>${rows}</div>
+      ${navGroup('topbar', 'settings.ui.group.topbar')}
+      ${navGroup('menu', 'settings.ui.group.menu')}
+      <p class="catalog-disclaimer">${t('settings.ui.bottomFixed')}</p>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.ui.partsTitle')}</h2><p>${t('settings.ui.partsBody')}</p></div>${icon('sliders', 18)}</div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.ui.font')}</strong><small>${t('settings.ui.fontHint')}</small></div><div class="segmented">${[['modern',t('settings.ui.fontModern')],['classic',t('settings.ui.fontClassic')]].map(([v,l])=>`<button class="segment ${preferences.uiFont===v?'active':''}" data-pref="uiFont" data-value="${v}">${l}</button>`).join('')}</div></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.ui.autoHide')}</strong><small>${t('settings.ui.autoHideHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.sidebarAutoHide}" data-pref-toggle="sidebarAutoHide" aria-label="${t('settings.ui.autoHide')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.ui.font')}</strong><small>${t('settings.ui.fontHint')}</small></div><div class="segmented">${[['modern',t('settings.ui.fontModern')],['classic',t('settings.ui.fontClassic')]].map(([v,l])=>`<button class="segment ${preferences.uiFont===v?'active':''}" data-pref="uiFont" data-value="${v}" ${previewAttr('uiFont',v,l)}>${l}</button>`).join('')}</div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.ui.autoHide')}</strong><small>${t('settings.ui.autoHideHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.sidebarAutoHide}" data-pref-toggle="sidebarAutoHide" data-preview="uiPart:sidebarAutoHide:${preferences.sidebarAutoHide ? 'off' : 'on'}" data-preview-label="${escapeHtml(t('settings.ui.autoHide'))}" aria-label="${t('settings.ui.autoHide')}"></button></div>
 
       ${partToggle('uiSidebarTip', 'settings.ui.tip', 'settings.ui.tipBody')}
-      ${partToggle('uiProfileCard', 'settings.ui.profile', 'settings.ui.profileBody')}
-      ${partToggle('uiSidebarFoot', 'settings.ui.foot', 'settings.ui.footBody')}
       <p class="ui-section-title">${t('settings.ui.topbar')}</p>
       ${partToggle('uiTopbarSearch', 'settings.ui.search', 'settings.ui.searchBody')}
       ${partToggle('uiBreadcrumb', 'settings.ui.breadcrumb', 'settings.ui.breadcrumbBody')}
@@ -2171,12 +2574,13 @@ function renderInterfaceSettings() {
 }
 
 function moveNavItem(key, direction) {
-  const order = navOrder();
+  const group = NAV_ITEMS.find((item) => item.key === key)?.group === 'topbar' ? 'topbar' : 'menu';
+  const order = navOrder(group);
   const index = order.indexOf(key);
   const target = index + Number(direction);
   if (index < 0 || target < 0 || target >= order.length) return;
   [order[index], order[target]] = [order[target], order[index]];
-  preferences.sidebarOrder = order;
+  preferences[group === 'topbar' ? 'topbarOrder' : 'sidebarOrder'] = order;
   savePreferences();
   renderSidebar();
   renderPage();
@@ -2265,7 +2669,8 @@ function finishUiDrag() {
   if (order[0] && String(order[0]).startsWith('widget:')) {
     preferences.homeWidgetOrder = order.map((k) => String(k).slice(7)).filter(Boolean);
   } else {
-    preferences.sidebarOrder = order;
+    const group = list.dataset.navOrderGroup === 'topbar' ? 'topbarOrder' : 'sidebarOrder';
+    preferences[group] = order;
   }
   savePreferences();
   renderSidebar();
@@ -2340,26 +2745,28 @@ function moveHomeWidget(key, direction) {
 }
 
 function renderUpdateSettings() {
-  const state = latestUpdateState || { status: 'checking', progress: 0 };
+  const state = latestUpdateState || { status: 'idle', progress: 0 };
   const status = state.status;
-  const version = state.latestVersion || state.currentVersion || '';
+  const version = status === 'available' ? state.latestVersion : state.currentVersion;
   const statusMessage = status === 'downloading' ? t('updates.downloading', { percent: Math.max(0, Math.min(100, Number(state.progress) || 0)) })
     : status === 'downloaded' ? t('updates.ready')
       : status === 'applying' ? t('updates.applying')
         : status === 'error' ? t('updates.error', { error: escapeHtml(state.errorMessage || 'Unknown error') })
-          : status === 'current' ? t('updates.current')
+          : status === 'available' ? t('updates.available')
+            : status === 'idle' ? t('updates.notChecked')
+              : status === 'current' ? t('updates.current')
             : status === 'unavailable' ? t('updates.unavailable')
               : status === 'development' ? t('updates.development') : t('updates.checking');
   const progress = Math.max(0, Math.min(100, Number(state.progress) || 0));
   const visualProgress = status === 'applying' || status === 'downloaded' ? 100 : progress;
   const checking = status === 'checking';
   return `<section class="settings-card update-settings-card" id="update-settings-card" data-update-status="${escapeHtml(status)}"><div class="settings-card-head"><div><h2>${t('updates.settingsTitle')}</h2><p>${t('updates.settingsBody')}</p></div>${icon('download', 18)}</div>
-    <div class="update-settings-preview"><div class="update-preview-art" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="update-preview-copy"><strong>${status === 'error' ? t('updates.error', { error: escapeHtml(state.errorMessage || 'Unknown error') }) : escapeHtml(version ? `Vortex ${version}` : t('updates.settingsTitle'))}</strong><small>${statusMessage}</small><span class="update-settings-progress"><i style="--progress:${visualProgress}%"></i></span></div></div>
+    <div class="update-settings-preview"><div class="update-preview-art" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="update-preview-copy"><strong>${escapeHtml(version ? `Vortex ${version}` : t('updates.settingsTitle'))}</strong><small>${statusMessage}</small><span class="update-settings-progress"><i style="--progress:${visualProgress}%"></i></span></div></div>
     <div class="update-settings-meta">
       <span><small>${t('updates.currentVersionLabel')}</small><strong>${escapeHtml(state.currentVersion || '—')}</strong></span>
       <span><small>${t('updates.lastCheckLabel')}</small><strong>${lastUpdateCheckAt ? escapeHtml(new Date(lastUpdateCheckAt).toLocaleString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })) : '—'}</strong></span>
     </div>
-    <button class="ghost-button update-retry-button" data-action="retry-update" ${checking ? 'disabled' : ''}>${icon('rotate', 13)} ${checking ? t('updates.checkingShort') : t('updates.checkNow')}</button>
+    <div class="update-settings-actions"><button class="ghost-button update-retry-button" data-action="retry-update" ${checking ? 'disabled' : ''}>${icon('rotate', 13)} ${checking ? t('updates.checkingShort') : t('updates.checkNow')}</button>${status === 'available' && state.releaseUrl ? `<button class="subtle-button" data-action="open-update-release">${t('updates.openRelease')}</button>` : ''}</div>
   </section>`;
 }
 
@@ -2447,7 +2854,7 @@ function renderApiStatusPlaceholder() {
 }
 
 function renderApiStatus(result) {
-  const labels = { games: t('settings.api.games'), thumbnails: t('settings.api.thumbnails'), badges: t('settings.api.badges') };
+  const labels = { games: t('settings.api.games'), thumbnails: t('settings.api.thumbnails'), badges: t('settings.api.badges'), search: t('settings.api.search'), discover: t('settings.api.discover'), users: t('settings.api.users') };
   return (result?.services || []).map((service) => `<div class="api-status-row ${service.ok ? 'ok' : 'bad'}"><span class="api-status-dot"></span><span><strong>${labels[service.id] || service.id}</strong><small>${service.ok ? t('settings.api.online', { ms: String(service.ms) }) : t('settings.api.offline')}</small></span></div>`).join('');
 }
 
@@ -2467,19 +2874,6 @@ function renderGeneralSettings() {
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.friends.title')}</h2><p>${t('settings.friends.body')}</p></div>${icon('users', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.friends.username')}</strong><small>${t('settings.friends.usernameHint')}</small></div>
         <span class="roblox-username-field"><input type="text" maxlength="20" autocomplete="off" placeholder="Roblox" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username /><button class="ghost-button" data-detect-username>${t('friends.detect')}</button><button class="primary-button" data-save-username>${t('common.save')}</button></span></div>
-    </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.presence.title')}</h2><p>${t('settings.presence.body')}</p></div>${icon('bell', 18)}</div>
-      <div class="presence-form">
-        <label class="presence-label">${t('settings.presence.cookie')}</label>
-        <textarea rows="2" autocomplete="off" spellcheck="false" placeholder=".ROBLOSECURITY" data-presence-cookie></textarea>
-        <small class="presence-cookie-meter" data-presence-meter data-hint="${t('settings.presence.cookieHint')}"></small>
-        <span class="presence-cookie-error" data-presence-error></span>
-        <span class="presence-actions">
-          <button class="primary-button" data-save-presence>${t('common.save')}</button>
-          <button class="ghost-button" data-remove-presence>${t('settings.presence.disable')}</button>
-        </span>
-        <p class="presence-warning">${t('settings.presence.hint')}</p>
-      </div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.history.title')}</h2><p>${t('settings.history.body')}</p></div>${icon('history', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.history.title')}</strong><small>${t('settings.history.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.saveHistory}" data-toggle="saveHistory" aria-label="${t('settings.history.title')}"></button></div>
@@ -2516,7 +2910,8 @@ function renderSettings() {
               : preferences.settingsTab === 'data' ? renderDataSettings()
                 : preferences.settingsTab === 'version' ? `${renderUpdateSettings()}${renderAnnouncementSettings()}`
                   : renderAccentSettings();
-  return `${pageHeading(t('page.settings.eyebrow'), t('page.settings.title'), t('page.settings.description'))}
+  const activeTab = t(`settings.tab.${preferences.settingsTab}`);
+  return `<div class="page-heading settings-page-heading"><nav class="settings-breadcrumb" aria-label="${t('settings.breadcrumb')}"><span class="settings-breadcrumb-parent">${t('nav.settings')}</span><span class="settings-breadcrumb-separator" aria-hidden="true">›</span><h1>${activeTab}</h1></nav></div>
     <div class="settings-layout">${settingsTabs()}<div class="settings-panel">${panel}</div></div>`;
 }
 
@@ -2526,6 +2921,19 @@ function renderIntegrationSettings() {
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.discord')}</strong><small>${t('settings.integrations.discordBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.discordPresence}" data-toggle="discordPresence" aria-label="${t('settings.integrations.discord')}"></button></div>
       <p class="catalog-disclaimer discord-status" data-discord-status>${discordStatusText()}</p>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.friendAlerts')}</strong><small>${t('settings.integrations.friendAlertsBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.friendFavoriteAlerts}" data-toggle="friendFavoriteAlerts" aria-label="${t('settings.integrations.friendAlerts')}"></button></div>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.presence.title')}</h2><p>${t('settings.presence.body')}</p></div>${icon('bell', 18)}</div>
+      <div class="presence-form">
+        <label class="presence-label">${t('settings.presence.cookie')}</label>
+        <textarea rows="2" autocomplete="off" spellcheck="false" placeholder=".ROBLOSECURITY" data-presence-cookie></textarea>
+        <small class="presence-cookie-meter" data-presence-meter data-hint="${t('settings.presence.cookieHint')}"></small>
+        <span class="presence-cookie-error" data-presence-error></span>
+        <span class="presence-actions">
+          <button class="primary-button" data-save-presence>${t('common.save')}</button>
+          <button class="ghost-button" data-remove-presence>${t('settings.presence.disable')}</button>
+        </span>
+        <p class="presence-warning">${t('settings.presence.hint')}</p>
+      </div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.hotkeys.title')}</h2><p>${t('settings.hotkeys.body')}</p></div>${icon('keyboard', 18)}</div>
       <div class="hotkey-list">${HOTKEY_ACTIONS.map((action) => `<div class="hotkey-row"><span>${t(action.label)}</span><button class="hotkey-recorder" data-record-hotkey="${action.id}" aria-label="${t('settings.hotkeys.record')}">${formatHotkey(hotkeyCombo(action.id))}</button></div>`).join('')}</div>
@@ -2565,40 +2973,170 @@ function renderDataSettings() {
     </section>`;
 }
 
-const viewNames = { home: 'nav.home', catalog: 'nav.catalog', search: 'nav.search', favorites: 'nav.favorites', recent: 'nav.recent', friends: 'nav.friends', plans: 'nav.plans', settings: 'nav.settings' };
+const viewNames = { home: 'nav.home', catalog: 'nav.catalog', search: 'nav.search', favorites: 'nav.favorites', recent: 'nav.recent', activity: 'nav.activity', friends: 'nav.friends', plans: 'nav.plans', settings: 'nav.settings' };
+
+function quickGameAvatarMarkup(item) {
+  const thumbnail = safeThumbnail(item.thumbnail);
+  return `<span class="quick-launch-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" decoding="async" />` : icon('gamepad', 16)}</span>`;
+}
+
+function quickGameRowMarkup(item, nested = false) {
+  const title = item.title || t('quick.untitled');
+  return `<div class="quick-launch-row" data-quick-id="${escapeHtml(item.id)}" ${nested ? 'data-quick-nested="true"' : `data-quick-drop-game="${escapeHtml(item.id)}"`}>
+      <button class="quick-launch-button" type="button" data-quick-launch="${escapeHtml(item.id)}" title="${escapeHtml(title)}" aria-label="${t('quick.launchNamed', { title: escapeHtml(title) })}">${quickGameAvatarMarkup(item)}<span class="quick-launch-copy"><strong>${escapeHtml(title)}</strong>${item.hotkey ? `<small>${escapeHtml(formatHotkey(item.hotkey))}</small>` : ''}</span></button>
+      <span class="quick-launch-tools">
+        <button class="quick-launch-tool" type="button" data-quick-edit="${escapeHtml(item.id)}" aria-label="${t('quick.edit')}" title="${t('quick.edit')}">${icon('edit', 12)}</button>
+        <button class="quick-launch-tool ${item.hotkey ? 'has-hotkey' : ''}" type="button" data-quick-hotkey="${escapeHtml(item.id)}" aria-label="${item.hotkey ? t('quick.clearHotkey') : t('quick.setHotkey')}" title="${item.hotkey ? t('quick.clearHotkey') : t('quick.setHotkey')}">${icon('keyboard', 12)}</button>
+        <button class="quick-launch-tool" type="button" data-quick-share="${escapeHtml(item.id)}" aria-label="${t('quick.share')}" title="${t('quick.share')}">${icon('share', 12)}</button>
+        <button class="quick-launch-tool remove" type="button" data-quick-remove="${escapeHtml(item.id)}" data-i18n-aria="quick.remove" aria-label="${t('quick.remove')}" title="${t('quick.remove')}">${icon('close', 12)}</button>
+      </span>
+    </div>`;
+}
+
+function quickFolderMarkup(folder) {
+  const open = quickFoldersOpen.has(folder.id);
+  const folderTitle = folder.title || t('quick.folderDefault');
+  const color = /^#[0-9a-f]{6}$/i.test(String(folder.color || '')) ? folder.color : '#9b7cff';
+  const previews = folder.games.slice(0, 4).map((game) => {
+    const thumbnail = safeThumbnail(game.thumbnail);
+    return `<span class="quick-folder-thumb">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" decoding="async" />` : icon('gamepad', 9)}</span>`;
+  }).join('');
+  return `<div class="quick-folder" data-quick-folder="${escapeHtml(folder.id)}" aria-expanded="${open}" style="--folder-color:${escapeHtml(color)}">
+      <div class="quick-launch-row" data-quick-drop-folder="${escapeHtml(folder.id)}">
+        <button class="quick-launch-button" type="button" data-quick-folder-toggle="${escapeHtml(folder.id)}" title="${escapeHtml(folderTitle)}" aria-label="${escapeHtml(folderTitle)}">
+          <span class="quick-folder-chevron">${icon('chevronLeft', 11)}</span><span class="quick-folder-stack">${previews}</span><span class="quick-launch-copy"><strong>${escapeHtml(folderTitle)}</strong></span>
+        </button>
+        <span class="quick-folder-tools"><button class="quick-folder-tool" type="button" data-quick-folder-edit="${escapeHtml(folder.id)}" aria-label="${t('quick.folderEdit')}" title="${t('quick.folderEdit')}">${icon('edit', 12)}</button><button class="quick-launch-remove" type="button" data-quick-remove="${escapeHtml(folder.id)}" aria-label="${t('quick.remove')}" title="${t('quick.remove')}">${icon('close', 12)}</button></span>
+      </div>
+      <div class="quick-folder-children" ${open ? '' : 'hidden'}>${folder.games.map((game) => quickGameRowMarkup(game, true)).join('')}</div>
+    </div>`;
+}
+
+function renderQuickLaunchItems() {
+  const root = document.getElementById('quick-launch-items');
+  if (!root) return;
+  const items = cleanQuickLaunchItems(preferences.quickLaunchItems);
+  preferences.quickLaunchItems = items;
+  root.innerHTML = items.map((item) => item.type === 'folder' ? quickFolderMarkup(item) : quickGameRowMarkup(item)).join('');
+  mountIcons(root);
+}
+
+function quickLaunchGames() {
+  return preferences.quickLaunchItems.flatMap((entry) => entry.type === 'folder' ? entry.games : [entry]);
+}
+
+function findQuickLaunchGame(id) {
+  return quickLaunchGames().find((entry) => entry.id === String(id));
+}
+
+function updateQuickLaunchGame(id, update) {
+  const visit = (items) => {
+    for (const entry of items) {
+      if (entry.type === 'game' && entry.id === String(id)) {
+        update(entry);
+        return true;
+      }
+      if (entry.type === 'folder' && visit(entry.games)) return true;
+    }
+    return false;
+  };
+  return visit(preferences.quickLaunchItems);
+}
+
+function updateNavigationHistoryControls() {
+  const back = document.querySelector('[data-action="history-back"]');
+  const forward = document.querySelector('[data-action="history-forward"]');
+  if (back) back.disabled = navigationHistoryIndex <= 0;
+  if (forward) forward.disabled = navigationHistoryIndex >= navigationHistory.length - 1;
+}
+
+function pushNavigationHistory(view) {
+  if (view === navigationHistory[navigationHistoryIndex]) return;
+  navigationHistory = navigationHistory.slice(0, navigationHistoryIndex + 1);
+  navigationHistory.push(view);
+  if (navigationHistory.length > 50) navigationHistory.shift();
+  navigationHistoryIndex = navigationHistory.length - 1;
+  updateNavigationHistoryControls();
+}
+
+function navigateHistory(direction) {
+  const nextIndex = navigationHistoryIndex + direction;
+  if (nextIndex < 0 || nextIndex >= navigationHistory.length) return;
+  navigationHistoryIndex = nextIndex;
+  const view = navigationHistory[navigationHistoryIndex];
+  if (view === 'game-detail') {
+    if (!detailGame) { navigationHistoryIndex += direction < 0 ? -1 : 1; return; }
+    currentView = 'game-detail';
+    renderPage();
+    updateNavigationHistoryControls();
+  } else setView(view, { track: false });
+}
 
 function renderSidebar() {
   const groups = renderSidebarNav();
+  const topbar = document.querySelector('[data-nav-group="topbar"]');
   const menu = document.querySelector('[data-nav-group="menu"]');
   const space = document.querySelector('[data-nav-group="space"]');
   const bottom = document.querySelector('.sidebar-nav-bottom');
+  if (topbar) topbar.innerHTML = groups.topbar;
   if (menu) menu.innerHTML = groups.menu;
   if (space) space.innerHTML = groups.space;
   if (bottom) bottom.innerHTML = groups.bottom;
   mountIcons(document.querySelector('.sidebar') || document.body);
+  if (topbar) mountIcons(topbar);
+  renderQuickLaunchItems();
 }
 
 function updateSidebar() {
-  document.querySelectorAll('[data-nav]').forEach((button) => button.classList.toggle('active', button.dataset.nav === currentView));
+  const activeView = ['game-detail', 'search'].includes(currentView) ? 'catalog' : currentView;
+  document.querySelectorAll('[data-nav]').forEach((button) => {
+    const isActive = button.dataset.nav === activeView;
+    button.classList.toggle('active', isActive);
+    if (isActive) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
   // Breadcrumbs are gone from the topbar: the active nav item already shows location.
 }
 
+function updateSidebarCollapse() {
+  const button = document.querySelector('[data-sidebar-hide]');
+  if (!button) return;
+  const collapsed = document.body.classList.contains('sidebar-compact');
+  const label = t(collapsed ? 'sidebar.expand' : 'sidebar.collapse');
+  button.setAttribute('aria-label', label);
+  button.setAttribute('title', label);
+  button.setAttribute('aria-expanded', String(!collapsed));
+}
+
 function renderPage() {
+  hideHoverPreview();
   applyPreferences();
-  document.body.classList.toggle('sidebar-compact', readStored('vortex.sidebarCompact', false));
+  reportRecentGamesToTray();
+  document.body.classList.toggle('sidebar-compact', readStored('vortex.sidebarCompact', true));
+  updateSidebarCollapse();
   updateSidebar();
+  updateNavigationHistoryControls();
+  renderQuickLaunchItems();
   renderUpdateBanner();
-  const pages = { home: renderHome, catalog: renderCatalog, 'game-detail': renderGameDetail, favorites: renderFavorites, recent: renderRecent, friends: renderFriends, plans: renderPlans, settings: renderSettings };
+  const pages = { home: renderHome, catalog: renderCatalog, 'game-detail': renderGameDetail, favorites: renderFavorites, recent: renderRecent, activity: renderActivity, friends: renderFriends, plans: renderPlans, settings: renderSettings };
   pageContent.innerHTML = (pages[currentView] || renderHome)();
   mountIcons(pageContent);
+  if (currentView === 'plans') void loadRoadmap();
   if (currentView === 'settings') refreshDiscordStatus();
   if (preferences.discordPresence) applyDiscordPresence();
   if (pageContent.dataset.renderedView !== currentView) {
     pageContent.dataset.renderedView = currentView;
-    pageContent.dataset.transition = preferences.motion ? preferences.pageTransition : 'none';
+    const systemPrefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+    const shouldTransition = preferences.motion && !systemPrefersReducedMotion && preferences.pageTransition !== 'none';
+    pageContent.dataset.transition = shouldTransition ? preferences.pageTransition : 'none';
     pageContent.classList.remove('page-entering');
-    void pageContent.offsetWidth;
-    pageContent.classList.add('page-entering');
+    if (shouldTransition) {
+      void pageContent.offsetWidth;
+      pageContent.classList.add('page-entering');
+      pageContent.onanimationend = (event) => {
+        if (event.target === pageContent) pageContent.classList.remove('page-entering');
+      };
+    }
   }
 }
 
@@ -2651,7 +3189,8 @@ function buildDataExport() {
       customGames: preferences.customGames || [],
       favorites: [...favorites],
       recentGames,
-      playStats
+      playStats,
+      activityData
     }
   };
 }
@@ -2671,10 +3210,18 @@ function applyDataImport(payload) {
   if (Array.isArray(data.favorites)) favorites = new Set(data.favorites);
   if (Array.isArray(data.recentGames)) recentGames = data.recentGames;
   if (data.playStats && typeof data.playStats === 'object') playStats = data.playStats;
+  if (data.activityData && typeof data.activityData === 'object') {
+    activityData = {
+      days: data.activityData.days && typeof data.activityData.days === 'object' ? data.activityData.days : {},
+      streak: { current: 0, best: 0, lastCompletedDate: '', recoveryUsed: false, ...(data.activityData.streak || {}) },
+      achievements: data.activityData.achievements && typeof data.activityData.achievements === 'object' ? data.activityData.achievements : {}
+    };
+  }
   savePreferences();
   localStorage.setItem('vortex.favorites', JSON.stringify([...favorites]));
   localStorage.setItem('vortex.recent', JSON.stringify(recentGames));
   localStorage.setItem('vortex.playStats', JSON.stringify(playStats));
+  localStorage.setItem('vortex.activity', JSON.stringify(activityData));
   renderSidebar();
   renderPage();
   reportRecentGamesToTray();
@@ -2800,9 +3347,9 @@ function renderAnnouncementList(highlightIds) {
 
     row.appendChild(head);
     if (item.body) {
-      const body = document.createElement('p');
+      const body = document.createElement('div');
       body.className = 'announcement-body';
-      body.textContent = item.body;
+      window.VortexMarkdown?.render(body, item.body);
       row.appendChild(body);
     }
     if (item.url) {
@@ -2923,43 +3470,65 @@ function showToast(message, action) {
   toastTimer = window.setTimeout(() => { region.innerHTML = ''; }, ttl + 400);
 }
 
-// The tray panel shows the five most recently launched games; the renderer owns the
-// history, so it pushes it to the main process on start and after every launch.
-// Tray styling: a subset of preferences that tray.html can apply on its own.
-const TRAY_STYLE_KEYS = ['accent', 'accentMode', 'accentSecondary', 'gradientAngle', 'theme', 'themeBackground', 'themeSurface', 'corners', 'trayScale', 'language'];
+// The custom tray window receives the exact theme tokens computed by the main
+// renderer, so saved colors and theme changes stay in sync.
+const TRAY_STYLE_TOKENS = [
+  '--bg', '--surface', '--surface-2', '--surface-3', '--line', '--line-strong',
+  '--text', '--muted', '--subtle', '--accent', '--accent-rgb', '--accent-secondary',
+  '--accent-secondary-rgb', '--accent-fill', '--accent-wash', '--accent-text',
+  '--accent-contrast', '--accent-border', '--radius-card', '--font-ui'
+];
+
 function trayStylePayload() {
-  const style = {};
-  for (const key of TRAY_STYLE_KEYS) style[key] = preferences[key];
-  style.accentText = getComputedStyle(document.documentElement).getPropertyValue('--accent-text').trim();
-  return style;
+  const computed = getComputedStyle(document.documentElement);
+  const css = Object.fromEntries(TRAY_STYLE_TOKENS.map((key) => [key, computed.getPropertyValue(key).trim()]));
+  return {
+    language: preferences.language,
+    trayScale: preferences.trayScale,
+    corners: preferences.corners,
+    theme: preferences.theme,
+    lightTheme: document.body.classList.contains('light-theme'),
+    css
+  };
 }
 
 function reportRecentGamesToTray() {
   if (!window.vortexDesktop?.reportRecentGames) return;
-  const games = recentGames
-    .map((id) => getGame(id))
-    .filter(Boolean)
+  const lastPlayedFor = (id) => Number(playStats[String(id)]?.lastPlayed) || 0;
+  const favoriteGames = Array.from(favorites, String)
+    .map((id) => getGame(id) || { id, title: t('quick.untitled') + ' ' + id, thumbnail: '' })
+    .sort((first, second) => lastPlayedFor(second.id) - lastPlayedFor(first.id))
+    .slice(0, 5)
     .map((game) => ({
       id: String(game.id),
-      title: String(game.title || ''),
-      // Tray rows show art and a "5 min ago" stamp when available.
+      title: String(game.title || (t('quick.untitled') + ' ' + game.id)),
       thumbnail: safeThumbnail(game.thumbnail) || '',
-      lastPlayed: Number(playStats && playStats[game.id] && playStats[game.id].lastPlayed) || 0
+      lastPlayed: lastPlayedFor(game.id)
     }));
-  // Mini-player: only while a game launched from Vortex is still playing.
-  // A Roblox process alone is not enough — the row stays hidden otherwise.
-  let nowPlaying = null;
-  const sessionActive = Boolean(playSessionStart && playSessionGameId && nowPlayingSnapshot);
-  const sessionAgeMs = sessionActive ? Date.now() - Number(playSessionStart) : 0;
-  if (preferences.trayMiniPlayer && sessionActive && sessionAgeMs < PLAYTIME_SESSION_CAP_SECONDS * 1000) {
-    nowPlaying = {
+  const quickLaunch = quickLaunchGames()
+    .map((item) => ({
+      id: String(item.id),
+      title: String(item.title || ''),
+      thumbnail: safeThumbnail(item.thumbnail) || '',
+      lastPlayed: Number(item.lastPlayed) || lastPlayedFor(item.placeId),
+      method: String(item.method || 'public'),
+      placeId: String(item.placeId || ''),
+      linkCode: String(item.linkCode || ''),
+      shareCode: String(item.shareCode || ''),
+      shareType: String(item.shareType || 'Server')
+    }))
+    .sort((first, second) => second.lastPlayed - first.lastPlayed)
+    .slice(0, 3);
+  const sessionActive = Boolean(preferences.trayMiniPlayer && playSessionStart && playSessionGameId && nowPlayingSnapshot);
+  const nowPlaying = sessionActive && Date.now() - Number(playSessionStart) < PLAYTIME_SESSION_CAP_SECONDS * 1000
+    ? {
       id: String(nowPlayingSnapshot.id),
       title: String(nowPlayingSnapshot.title || ''),
-      thumbnail: nowPlayingSnapshot.thumbnail || '',
+      thumbnail: safeThumbnail(nowPlayingSnapshot.thumbnail) || '',
       startedAt: Number(nowPlayingSnapshot.startedAt) || playSessionStart
-    };
-  }
-  window.vortexDesktop.reportRecentGames({ games, style: trayStylePayload(), nowPlaying });
+    }
+    : null;
+  window.vortexDesktop.reportRecentGames({ favorites: favoriteGames, quickLaunch, nowPlaying, style: trayStylePayload() });
 }
 
 function restorePlaySession() {
@@ -2975,24 +3544,29 @@ function savePlayStats() {
 // Close the current play session: bank the elapsed time (capped) and a launch.
 function bankPlaySession(resetSession = true) {
   if (!playSessionStart || !playSessionGameId) return;
-  const elapsed = Math.max(0, Math.round((Date.now() - playSessionStart) / 1000));
+  const sessionStart = playSessionStart;
+  const elapsed = Math.max(0, Math.round((Date.now() - sessionStart) / 1000));
   const banked = Math.min(elapsed, PLAYTIME_SESSION_CAP_SECONDS);
   const entry = playStats[playSessionGameId] || { seconds: 0, launches: 0, lastPlayed: 0 };
   entry.seconds += banked;
   entry.lastPlayed = Date.now();
   playStats[playSessionGameId] = entry;
+  if (banked > 0) recordActivityTime(playSessionGameId, sessionStart, banked);
   if (resetSession) {
     playSessionStart = null;
     playSessionGameId = null;
     // The mini-player only exists while a Vortex-launched session is active.
     nowPlayingSnapshot = null;
     localStorage.removeItem(PLAYTIME_SESSION_KEY);
-    reportRecentGamesToTray();
   } else {
     playSessionStart = Date.now();
     localStorage.setItem(PLAYTIME_SESSION_KEY, JSON.stringify({ gameId: playSessionGameId, startedAt: playSessionStart }));
   }
   savePlayStats();
+  reportRecentGamesToTray();
+  updateActivityAchievements();
+  persistActivityData();
+  if (!resetSession && currentView === 'activity') renderPage();
 }
 
 function closePlaySession() { bankPlaySession(true); }
@@ -3028,6 +3602,7 @@ function openGame(id, gameId = '', accessCode = '') {
   currentEntry.lastPlayed = playSessionStart;
   playStats[playSessionGameId] = currentEntry;
   savePlayStats();
+  reportRecentGamesToTray();
   if (window.vortexDesktop?.openGame) {
     window.vortexDesktop.openGame(game.id, joinGameId, safeAccessCode).then(() => showToast(t('toast.opening', { game: game.title }))).catch(() => showToast(t('toast.launchError')));
   } else {
@@ -3121,12 +3696,12 @@ async function loadDiscoveryCatalog(sortId = activeDiscoverySort, { force = fals
   activeDiscoverySort = sortId;
   localStorage.setItem('vortex.activeDiscoverySort', JSON.stringify(activeDiscoverySort));
   const cached = discoveryCatalog[sortId];
-  if (!force && !append && cached?.savedAt && Date.now() - cached.savedAt < DISCOVERY_CACHE_TTL && Array.isArray(cached.items)) {
+  if (!force && !append && cached?.savedAt && Date.now() - cached.savedAt < DISCOVERY_CACHE_TTL && Array.isArray(cached.items) && cached.items.length > 0) {
     discoveryStatus = 'success';
     renderPage();
     return;
   }
-  if (append && cached?.savedAt && Date.now() - cached.savedAt < DISCOVERY_CACHE_TTL && Array.isArray(cached.items)) {
+  if (append && cached?.savedAt && Date.now() - cached.savedAt < DISCOVERY_CACHE_TTL && Array.isArray(cached.items) && cached.items.length > 0) {
     // Cached next category: merge into the accumulated list without a request.
     const previous = discoveryCatalog.__accumulated?.items || [];
     const knownIds = new Set(previous.map((game) => String(game.id)));
@@ -3301,10 +3876,468 @@ function toggleFavorite(id) {
     showToast(t('toast.favoriteAdded'));
   }
   localStorage.setItem('vortex.favorites', JSON.stringify([...favorites]));
+  reportRecentGamesToTray();
   renderPage();
 }
 
-function setView(view) {
+function renderQuickGameFields(method = quickGameMethod) {
+  quickGameMethod = ['private', 'share', 'public'].includes(method) ? method : 'public';
+  const fieldHost = document.getElementById('quick-game-fields');
+  if (!fieldHost) return;
+  document.querySelectorAll('[data-quick-method]').forEach((button) => {
+    const active = button.dataset.quickMethod === quickGameMethod;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  const placeField = `<label class="quick-game-field"><span>${t('quick.placeIdLabel')}</span><input name="placeId" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="1234567890" ${quickGameMethod === 'share' ? 'hidden' : 'required'} /><small>${t('quick.placeIdHint')}</small></label>`;
+  const linkField = `<label class="quick-game-field"><span>${t('quick.linkCodeLabel')}</span><input name="linkCode" autocomplete="off" maxlength="100" placeholder="${t('quick.linkCodePlaceholder')}" ${quickGameMethod === 'private' ? 'required' : 'hidden'} /><small>${t('quick.linkCodeHint')}</small></label>`;
+  const shareField = `<label class="quick-game-field"><span>${t('quick.shareCodeLabel')}</span><input name="shareCode" autocomplete="off" maxlength="512" placeholder="${t('quick.shareCodePlaceholder')}" ${quickGameMethod === 'share' ? 'required' : 'hidden'} /><small>${t('quick.shareCodeHint')}</small></label>`;
+  const optionalSharePlace = `<label class="quick-game-field"><span>${t('quick.sharePlaceIdLabel')}</span><input name="placeId" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="${t('quick.sharePlaceIdPlaceholder')}" /><small>${t('quick.sharePlaceIdHint')}</small></label>`;
+  fieldHost.innerHTML = quickGameMethod === 'private' ? `${placeField}${linkField}` : quickGameMethod === 'share' ? `${shareField}${optionalSharePlace}` : placeField;
+}
+
+function setQuickGameDialogMode(isEditing) {
+  const title = document.getElementById('quick-game-title');
+  const iconHost = document.querySelector('[data-quick-submit-icon]');
+  const label = document.querySelector('[data-quick-submit-label]');
+  if (title) title.textContent = t(isEditing ? 'quick.editDialogTitle' : 'quick.dialogTitle');
+  if (iconHost) iconHost.innerHTML = icon(isEditing ? 'check' : 'plus', 13);
+  if (label) label.textContent = t(isEditing ? 'quick.saveChanges' : 'quick.save');
+}
+
+function openQuickGameModal(editId = '') {
+  const modal = document.getElementById('quick-game-modal');
+  if (!modal) return;
+  quickGameDialogReturnFocus = document.activeElement;
+  const item = editId ? findQuickLaunchGame(editId) : null;
+  editingQuickGameId = item?.id || '';
+  document.getElementById('quick-game-error').hidden = true;
+  const form = document.getElementById('quick-game-form');
+  form?.reset();
+  quickGameMethod = item?.method || 'private';
+  setQuickGameDialogMode(Boolean(item));
+  renderQuickGameFields();
+  if (item && form) {
+    form.elements.namedItem('title').value = item.title || '';
+    const setField = (name, value) => {
+      const fields = Array.from(form.elements).filter((field) => field.name === name);
+      const field = fields.find((candidate) => !candidate.hidden) || fields[0];
+      if (field) field.value = value || '';
+    };
+    setField('placeId', item.placeId);
+    setField('linkCode', item.linkCode);
+    setField('shareCode', item.shareCode);
+  }
+  modal.hidden = false;
+  requestAnimationFrame(() => document.querySelector('#quick-game-fields input:not([hidden])')?.focus());
+}
+
+function closeQuickGameModal() {
+  const modal = document.getElementById('quick-game-modal');
+  if (!modal || modal.hidden) return;
+  modal.hidden = true;
+  editingQuickGameId = '';
+  setQuickGameDialogMode(false);
+  const returnFocus = quickGameDialogReturnFocus;
+  quickGameDialogReturnFocus = null;
+  if (returnFocus instanceof HTMLElement) returnFocus.focus();
+}
+
+function openQuickFolderModal(id) {
+  const folder = preferences.quickLaunchItems.find((item) => item.type === 'folder' && item.id === id);
+  const modal = document.getElementById('quick-folder-modal');
+  const form = document.getElementById('quick-folder-form');
+  if (!folder || !modal || !form) return;
+  quickFolderDialogReturnFocus = document.activeElement;
+  editingQuickFolderId = folder.id;
+  form.elements.namedItem('title').value = folder.title || t('quick.folderDefault');
+  form.elements.namedItem('color').value = /^#[0-9a-f]{6}$/i.test(folder.color || '') ? folder.color : '#9b7cff';
+  modal.hidden = false;
+  requestAnimationFrame(() => form.elements.namedItem('title')?.focus());
+}
+
+function closeQuickFolderModal() {
+  const modal = document.getElementById('quick-folder-modal');
+  if (!modal || modal.hidden) return;
+  modal.hidden = true;
+  editingQuickFolderId = '';
+  const returnFocus = quickFolderDialogReturnFocus;
+  quickFolderDialogReturnFocus = null;
+  if (returnFocus instanceof HTMLElement) returnFocus.focus();
+}
+
+function submitQuickFolderForm(event) {
+  event.preventDefault();
+  const folder = preferences.quickLaunchItems.find((item) => item.type === 'folder' && item.id === editingQuickFolderId);
+  const form = event.currentTarget;
+  if (!folder) { closeQuickFolderModal(); return; }
+  folder.title = String(form.elements.namedItem('title').value || '').trim().slice(0, 48) || t('quick.folderDefault');
+  const color = String(form.elements.namedItem('color').value || '').toLowerCase();
+  folder.color = /^#[0-9a-f]{6}$/.test(color) ? color : '#9b7cff';
+  persistQuickLaunchItems();
+  closeQuickFolderModal();
+}
+
+function normalizeShareCode(rawValue) {
+  const raw = String(rawValue || '').trim();
+  if (!raw) return { code: '', type: 'Server' };
+  try {
+    const parsed = new URL(raw);
+    const code = parsed.searchParams.get('code');
+    const type = parsed.searchParams.get('type');
+    if (code) return { code: code.trim(), type: ['Server', 'ExperienceInvite', 'ExperienceDetails'].includes(type) ? type : 'Server' };
+  } catch { /* The user may paste the raw share code. */ }
+  return { code: raw, type: 'Server' };
+}
+
+async function quickGameMetadata(placeId, preferredTitle) {
+  const local = getGame(placeId);
+  if (local) return { title: preferredTitle || local.title || local.name || '', thumbnail: safeThumbnail(local.thumbnail || local.icon) };
+  try {
+    const result = await window.vortexDesktop?.getGameDetails?.({ placeId });
+    const game = result?.game;
+    if (game) return { title: preferredTitle || game.title || game.name || '', thumbnail: safeThumbnail(game.thumbnail || game.icon) };
+  } catch { /* Keep the quick launch usable while Roblox metadata is offline. */ }
+  return { title: preferredTitle || '', thumbnail: '' };
+}
+
+function persistQuickLaunchItems() {
+  preferences.quickLaunchItems = cleanQuickLaunchItems(preferences.quickLaunchItems);
+  savePreferences();
+  renderQuickLaunchItems();
+  void refreshQuickLaunchMetadata();
+}
+
+async function refreshQuickLaunchMetadata() {
+  const games = preferences.quickLaunchItems.flatMap((entry) => entry.type === 'folder' ? entry.games : [entry]);
+  const missing = games.filter((game) => game.placeId && (!game.thumbnail || game.autoTitle)).slice(0, 12);
+  if (!missing.length) return;
+  await Promise.all(missing.map(async (game) => {
+    try {
+      const metadata = await quickGameMetadata(game.placeId);
+      let changed = false;
+      const live = preferences.quickLaunchItems
+        .flatMap((entry) => entry.type === 'folder' ? entry.games : [entry])
+        .find((entry) => entry.id === game.id);
+      if (!live) return;
+      if (!live.thumbnail && metadata.thumbnail) { live.thumbnail = metadata.thumbnail; changed = true; }
+      if (live.autoTitle && metadata.title) { live.title = metadata.title; changed = true; }
+      if (changed) {
+        preferences.quickLaunchItems = cleanQuickLaunchItems(preferences.quickLaunchItems);
+        savePreferences();
+        renderQuickLaunchItems();
+      }
+    } catch { /* Keep the saved shortcut; retry the next time the launcher starts. */ }
+  }));
+}
+
+function replaceQuickLaunchGame(item) {
+  const replace = (items) => {
+    const index = items.findIndex((entry) => entry.id === item.id);
+    if (index >= 0) { items[index] = item; return true; }
+    for (const entry of items) {
+      if (entry.type === 'folder' && replace(entry.games)) return true;
+    }
+    return false;
+  };
+  return replace(preferences.quickLaunchItems);
+}
+
+function encodeQuickLaunchCode(item) {
+  const payload = {
+    version: 1, method: item.method, placeId: item.placeId || '', linkCode: item.linkCode || '',
+    shareCode: item.shareCode || '', shareType: item.shareType || 'Server',
+    title: item.title || '', thumbnail: item.thumbnail || ''
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return 'VORTEXQL1-' + btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+}
+
+function importQuickLaunchCode(raw) {
+  const code = String(raw || '').trim().replace(/^VORTEXQL1-/i, '').replace(/-/g, '+').replace(/_/g, '/');
+  if (!code || code.length > 12000) return false;
+  try {
+    const binary = atob(code + '='.repeat((4 - code.length % 4) % 4));
+    const payload = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0))));
+    if (payload?.version !== 1) return false;
+    const item = cleanQuickLaunchItems([{ ...payload, type: 'game', id: 'quickimport' }])[0];
+    if (!item) return false;
+    quickGameMethod = item.method;
+    renderQuickGameFields();
+    const form = document.getElementById('quick-game-form');
+    if (!form) return false;
+    form.elements.namedItem('title').value = item.title || '';
+    for (const [name, value] of Object.entries({ placeId: item.placeId, linkCode: item.linkCode, shareCode: item.shareCode })) {
+      const fields = Array.from(form.elements).filter((field) => field.name === name);
+      const field = fields.find((candidate) => !candidate.hidden) || fields[0];
+      if (field) field.value = value || '';
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function startQuickLaunchHotkeyRecording(id, button) {
+  button.classList.add('recording');
+  button.title = t('quick.pressHotkey');
+  const finish = (event) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    document.removeEventListener('keydown', finish, true);
+    if (event && !['Control', 'Shift', 'Alt', 'Meta', 'Escape'].includes(event.key)) {
+      const combo = {
+        code: event.code || '', key: event.key,
+        ctrl: Boolean(event.ctrlKey || event.metaKey), shift: Boolean(event.shiftKey), alt: Boolean(event.altKey)
+      };
+      for (const other of quickLaunchGames()) {
+        if (other.id !== id && other.hotkey && matchesHotkey(event, other.hotkey)) other.hotkey = null;
+      }
+      updateQuickLaunchGame(id, (item) => { item.hotkey = combo; });
+      savePreferences();
+    }
+    renderQuickLaunchItems();
+  };
+  document.addEventListener('keydown', finish, true);
+}
+
+async function submitQuickGameForm(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const error = document.getElementById('quick-game-error');
+  const field = (name) => String(form.elements.namedItem(name)?.value || '').trim();
+  const preferredTitle = field('title').slice(0, 64);
+  const existing = editingQuickGameId ? findQuickLaunchGame(editingQuickGameId) : null;
+  const item = {
+    ...(existing || {}),
+    type: 'game', id: existing?.id || quickLaunchId(), method: quickGameMethod,
+    placeId: '', linkCode: '', shareCode: '', title: '', thumbnail: '',
+    lastPlayed: Number(existing?.lastPlayed) || 0, hotkey: existing?.hotkey || null
+  };
+  if (quickGameMethod === 'private') {
+    item.placeId = field('placeId');
+    item.linkCode = field('linkCode');
+    if (!/^\d{1,20}$/.test(item.placeId) || !/^[a-z\d_-]{1,100}$/i.test(item.linkCode)) {
+      error.textContent = t('quick.invalidPrivate'); error.hidden = false; return;
+    }
+  } else if (quickGameMethod === 'public') {
+    item.placeId = field('placeId');
+    if (!/^\d{1,20}$/.test(item.placeId)) { error.textContent = t('quick.invalidPlace'); error.hidden = false; return; }
+  } else {
+    const share = normalizeShareCode(field('shareCode'));
+    item.shareCode = share.code;
+    item.shareType = share.type;
+    if (!/^[a-z\d_-]{1,128}$/i.test(item.shareCode)) { error.textContent = t('quick.invalidShare'); error.hidden = false; return; }
+    item.placeId = field('placeId');
+    if (item.placeId && !/^\d{1,20}$/.test(item.placeId)) { error.textContent = t('quick.invalidPlace'); error.hidden = false; return; }
+  }
+
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  error.hidden = true;
+  try {
+    if (item.placeId) {
+      const metadata = await quickGameMetadata(item.placeId, preferredTitle);
+      item.title = metadata.title || (t('quick.untitled') + ' ' + item.placeId);
+      item.thumbnail = metadata.thumbnail || (existing?.placeId === item.placeId ? existing.thumbnail : '');
+    } else {
+      item.title = preferredTitle || t('quick.shareDefaultTitle');
+      item.thumbnail = existing?.thumbnail || '';
+    }
+    item.autoTitle = !preferredTitle;
+    if (existing) replaceQuickLaunchGame(item);
+    else preferences.quickLaunchItems.push(item);
+    persistQuickLaunchItems();
+    closeQuickGameModal();
+    showToast(t(existing ? 'quick.updated' : 'quick.added', { title: item.title }));
+  } catch {
+    error.textContent = t('quick.saveError'); error.hidden = false;
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+function removeQuickLaunchItem(id) {
+  const removeFrom = (items) => {
+    const index = items.findIndex((item) => item.id === id);
+    if (index >= 0) {
+      const [removed] = items.splice(index, 1);
+      if (removed.type === 'folder') items.splice(index, 0, ...removed.games);
+      return true;
+    }
+    for (let i = 0; i < items.length; i += 1) {
+      const folder = items[i];
+      if (folder.type !== 'folder') continue;
+      const childIndex = folder.games.findIndex((game) => game.id === id);
+      if (childIndex >= 0) {
+        folder.games.splice(childIndex, 1);
+        if (folder.games.length < 2) items.splice(i, 1, ...(folder.games || []));
+        return true;
+      }
+    }
+    return false;
+  };
+  removeFrom(preferences.quickLaunchItems);
+  persistQuickLaunchItems();
+}
+
+function organizeQuickLaunchDrop(sourceId, targetGameId = '', targetFolderId = '') {
+  if (!sourceId || sourceId === targetGameId) return;
+  const items = preferences.quickLaunchItems;
+  let source;
+  const detach = (list) => {
+    const index = list.findIndex((item) => item.type === 'game' && item.id === sourceId);
+    if (index >= 0) { [source] = list.splice(index, 1); return true; }
+    for (let i = 0; i < list.length; i += 1) {
+      const folder = list[i];
+      if (folder.type !== 'folder') continue;
+      const childIndex = folder.games.findIndex((game) => game.id === sourceId);
+      if (childIndex >= 0) {
+        [source] = folder.games.splice(childIndex, 1);
+        if (folder.games.length < 2) list.splice(i, 1, ...folder.games);
+        return true;
+      }
+    }
+    return false;
+  };
+  if (!detach(items) || !source) return;
+  if (targetFolderId) {
+    const folder = items.find((item) => item.type === 'folder' && item.id === targetFolderId);
+    if (folder) {
+      folder.games.push(source);
+      quickFoldersOpen.add(folder.id);
+      persistQuickLaunchItems();
+    } else { items.push(source); }
+    return;
+  }
+  const targetIndex = items.findIndex((item) => item.type === 'game' && item.id === targetGameId);
+  if (targetIndex < 0) { items.push(source); return; }
+  const [target] = items.splice(targetIndex, 1);
+  const folder = { type: 'folder', id: quickLaunchId(), title: t('quick.folderDefault'), color: '#9b7cff', games: [target, source] };
+  items.splice(targetIndex, 0, folder);
+  quickFoldersOpen.add(folder.id);
+  persistQuickLaunchItems();
+}
+
+async function launchQuickGame(id) {
+  const item = findQuickLaunchGame(id);
+  if (!item) return;
+  try {
+    if (!window.vortexDesktop?.launchQuickGame) throw new Error('Desktop launcher unavailable');
+    const launchedAt = Date.now();
+    item.lastPlayed = launchedAt;
+    localStorage.setItem('vortex.preferences', JSON.stringify(preferences));
+    if (item.placeId) {
+      const game = getGame(item.placeId) || { id: item.placeId, title: item.title, thumbnail: item.thumbnail };
+      closePlaySession();
+      if (preferences.saveHistory) {
+        recentGames = [game.id, ...recentGames.filter((recentId) => recentId !== game.id)].slice(0, 12);
+        localStorage.setItem('vortex.recent', JSON.stringify(recentGames));
+      }
+      playSessionStart = Date.now();
+      playSessionGameId = String(game.id);
+      nowPlayingSnapshot = { id: String(game.id), title: String(item.title || game.title || ''), thumbnail: safeThumbnail(item.thumbnail || game.thumbnail) || '', startedAt: playSessionStart };
+      reportRecentGamesToTray();
+      localStorage.setItem(PLAYTIME_SESSION_KEY, JSON.stringify({ gameId: playSessionGameId, startedAt: playSessionStart }));
+      const currentEntry = playStats[playSessionGameId] || { seconds: 0, launches: 0, lastPlayed: 0 };
+      currentEntry.launches += 1;
+      currentEntry.lastPlayed = playSessionStart;
+      playStats[playSessionGameId] = currentEntry;
+      savePlayStats();
+    }
+    reportRecentGamesToTray();
+    await window.vortexDesktop.launchQuickGame({
+      method: item.method, placeId: item.placeId, linkCode: item.linkCode, shareCode: item.shareCode, shareType: item.shareType
+    });
+    showToast(t('quick.launching', { title: item.title }));
+  } catch (launchError) {
+    showToast(t('quick.launchError', { error: String(launchError?.message || launchError || '') }));
+  }
+}
+
+document.getElementById('quick-game-form')?.addEventListener('submit', submitQuickGameForm);
+document.getElementById('quick-folder-form')?.addEventListener('submit', submitQuickFolderForm);
+function clearQuickLaunchDrag() {
+  document.querySelectorAll('.quick-launch-row.is-dragging, .quick-launch-row.is-drop-target').forEach((row) => row.classList.remove('is-dragging', 'is-drop-target'));
+  quickDragState?.ghost?.remove();
+  quickDragState = null;
+}
+
+document.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0 || !(event.target instanceof Element)) return;
+  const row = event.target.closest('.quick-launch-row[data-quick-id]');
+  if (!row || event.target.closest('.quick-launch-tools, .quick-folder-tools')) return;
+  quickDragState = {
+    id: row.dataset.quickId,
+    row,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    dragging: false,
+    target: null,
+    ghost: null
+  };
+  try { row.setPointerCapture(event.pointerId); } catch { /* Pointer capture is optional on WebView2. */ }
+});
+
+document.addEventListener('pointermove', (event) => {
+  const drag = quickDragState;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  if (!drag.dragging && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 7) return;
+  if (!drag.dragging) {
+    drag.dragging = true;
+    drag.row.classList.add('is-dragging');
+    const game = findQuickLaunchGame(drag.id);
+    if (game) {
+      drag.ghost = document.createElement('div');
+      drag.ghost.className = 'quick-launch-drag-ghost';
+      drag.ghost.innerHTML = quickGameAvatarMarkup(game);
+      document.body.appendChild(drag.ghost);
+    }
+  }
+  event.preventDefault();
+  if (drag.ghost) {
+    drag.ghost.style.left = `${event.clientX - 22}px`;
+    drag.ghost.style.top = `${event.clientY - 22}px`;
+  }
+  const hit = document.elementFromPoint(event.clientX, event.clientY);
+  const target = hit instanceof Element ? hit.closest('[data-quick-drop-game], [data-quick-drop-folder]') : null;
+  const validTarget = target && target !== drag.row && target.dataset.quickDropGame !== drag.id ? target : null;
+  if (drag.target !== validTarget) {
+    drag.target?.classList.remove('is-drop-target');
+    drag.target = validTarget;
+    drag.target?.classList.add('is-drop-target');
+  }
+}, { passive: false });
+
+document.addEventListener('pointerup', (event) => {
+  const drag = quickDragState;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  if (drag.dragging) {
+    event.preventDefault();
+    if (drag.target) {
+      const folderId = drag.target.dataset.quickDropFolder || '';
+      const gameId = drag.target.dataset.quickDropGame || '';
+      organizeQuickLaunchDrop(drag.id, gameId, folderId);
+      suppressQuickLaunchClick = true;
+      window.setTimeout(() => { suppressQuickLaunchClick = false; }, 500);
+    }
+  }
+  clearQuickLaunchDrag();
+});
+document.addEventListener('pointercancel', clearQuickLaunchDrag);
+window.addEventListener('blur', clearQuickLaunchDrag);
+document.addEventListener('click', (event) => {
+  if (!suppressQuickLaunchClick) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  suppressQuickLaunchClick = false;
+}, true);
+
+function setView(view, { track = true } = {}) {
+  if (track && view !== currentView) pushNavigationHistory(view);
   currentView = view;
   if (view !== 'favorites') favoritesVisibleCount = 24;
   // The search tab keeps its own results: switching tabs does not wipe them.
@@ -3316,6 +4349,7 @@ function setView(view) {
     searchRequestId += 1;
   }
   renderPage();
+  updateNavigationHistoryControls();
   if (view === 'catalog' && !searchQuery) {
     loadDiscoveryCatalog(activeDiscoverySort);
     if (isGenreSearchActive() && (genreStatus === 'idle' || !genreResults.length)) fetchGenreGames(false);
@@ -3384,6 +4418,42 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
+  const quickMethod = target.closest('[data-quick-method]');
+  if (quickMethod) { renderQuickGameFields(quickMethod.dataset.quickMethod); document.getElementById('quick-game-error').hidden = true; return; }
+  const quickLaunch = target.closest('[data-quick-launch]');
+  if (quickLaunch) { void launchQuickGame(quickLaunch.dataset.quickLaunch); return; }
+  const quickFolderEdit = target.closest('[data-quick-folder-edit]');
+  if (quickFolderEdit) { openQuickFolderModal(quickFolderEdit.dataset.quickFolderEdit); return; }
+  const quickFolderToggle = target.closest('[data-quick-folder-toggle]');
+  if (quickFolderToggle) {
+    const id = quickFolderToggle.dataset.quickFolderToggle;
+    if (quickFoldersOpen.has(id)) quickFoldersOpen.delete(id); else quickFoldersOpen.add(id);
+    renderQuickLaunchItems();
+    return;
+  }
+  const quickEdit = target.closest('[data-quick-edit]');
+  if (quickEdit) { openQuickGameModal(quickEdit.dataset.quickEdit); return; }
+  const quickHotkey = target.closest('[data-quick-hotkey]');
+  if (quickHotkey) {
+    const item = findQuickLaunchGame(quickHotkey.dataset.quickHotkey);
+    if (item?.hotkey) {
+      updateQuickLaunchGame(item.id, (entry) => { entry.hotkey = null; });
+      savePreferences();
+      renderQuickLaunchItems();
+    } else if (item) startQuickLaunchHotkeyRecording(item.id, quickHotkey);
+    return;
+  }
+  const quickShare = target.closest('[data-quick-share]');
+  if (quickShare) {
+    const item = findQuickLaunchGame(quickShare.dataset.quickShare);
+    if (!item) return;
+    if (await copyText(encodeQuickLaunchCode(item))) showToast(t('quick.codeCopied'));
+    else showToast(t('quick.codeCopyFailed'));
+    return;
+  }
+  const quickRemove = target.closest('[data-quick-remove]');
+  if (quickRemove) { removeQuickLaunchItem(quickRemove.dataset.quickRemove); return; }
+
   const nav = target.closest('[data-nav]');
   if (nav) { setView(nav.dataset.nav); return; }
 
@@ -3392,6 +4462,46 @@ document.addEventListener('click', async (event) => {
 
   const action = target.closest('[data-action]');
   if (action) {
+    if (action.dataset.action === 'history-back') { navigateHistory(-1); return; }
+    if (action.dataset.action === 'history-forward') { navigateHistory(1); return; }
+    if (action.dataset.action === 'open-update-release') { window.vortexDesktop?.openExternalUrl?.(latestUpdateState?.releaseUrl); return; }
+    if (action.dataset.action === 'open-quick-game-modal') { openQuickGameModal(); return; }
+    if (action.dataset.action === 'close-quick-game-modal') { closeQuickGameModal(); return; }
+    if (action.dataset.action === 'close-quick-folder-modal') { closeQuickFolderModal(); return; }
+    if (action.dataset.action === 'import-quick-code') {
+      const input = document.querySelector('[data-quick-code]');
+      if (importQuickLaunchCode(input?.value)) {
+        input.value = '';
+        showToast(t('quick.codeImported'));
+      } else showToast(t('quick.codeInvalid'));
+      return;
+    }
+    if (action.dataset.action === 'toggle-friends-drawer') {
+      if (document.getElementById('friends-drawer')?.classList.contains('is-open')) closeFriendsDrawer();
+      else openFriendsDrawer();
+      return;
+    }
+    if (action.dataset.action === 'close-friends-drawer') { closeFriendsDrawer(); return; }
+    if (action.dataset.action === 'friends-drawer-view-all') { closeFriendsDrawer(); setView('friends'); return; }
+    if (action.dataset.action === 'refresh-friends-drawer') {
+      const username = String(preferences.robloxUsername || '').trim();
+      if (username) void loadFriends(username, true);
+      else autoDetectRobloxAccountOnce();
+      return;
+    }
+    if (action.dataset.action === 'restore-activity-streak') {
+      if (!activityRecoveryAvailable()) return;
+      activityData.streak.lastCompletedDate = shiftActivityDate(activityDateKey(), -1);
+      activityData.streak.current = Number(activityData.streak.current || 0) + 1;
+      activityData.streak.best = Math.max(activityData.streak.best, activityData.streak.current);
+      activityData.streak.recoveryUsed = true;
+      if (activityQualifiedGames().length >= ACTIVITY_DAILY_GAMES) completeDailyActivity();
+      updateActivityAchievements();
+      persistActivityData();
+      showToast(t('activity.recoveryDone'));
+      renderPage();
+      return;
+    }
     if (action.dataset.action === 'open-social-link') { window.vortexDesktop?.openExternalUrl?.(action.dataset.url); return; }
     if (action.dataset.action === 'toggle-detail-description') { detailDescriptionExpanded = !detailDescriptionExpanded; renderPage(); return; }
     if (action.dataset.action === 'favorites-more') { favoritesVisibleCount += 24; renderPage(); return; }
@@ -3406,7 +4516,7 @@ document.addEventListener('click', async (event) => {
       renderPage();
       return;
     }
-    if (action.dataset.action === 'detail-back') { currentView = 'catalog'; restoreCatalogScroll(); renderPage(); return; }
+    if (action.dataset.action === 'detail-back') { if (navigationHistoryIndex > 0) navigateHistory(-1); else { setView('catalog'); restoreCatalogScroll(); } return; }
     if (action.dataset.action === 'open-details') { captureCatalogScroll(); openGameDetails(action.dataset.id); return; }
     if (action.dataset.action === 'export-data') {
       const blob = new Blob([JSON.stringify(buildDataExport(), null, 2)], { type: 'application/json' });
@@ -3513,6 +4623,7 @@ document.addEventListener('click', async (event) => {
     }
     if (action.dataset.action === 'reset-interface') {
       preferences.sidebarOrder = [];
+      preferences.topbarOrder = [];
       preferences.uiSidebarTip = true;
       preferences.uiProfileCard = true;
       preferences.uiTopbarSearch = true;
@@ -3611,7 +4722,13 @@ document.addEventListener('click', async (event) => {
   }
 
   const sidebarHide = target.closest('[data-sidebar-hide]');
-  if (sidebarHide) { const compact = !document.body.classList.contains('sidebar-compact'); localStorage.setItem('vortex.sidebarCompact', JSON.stringify(compact)); renderPage(); return; }
+  if (sidebarHide) {
+    const compact = !document.body.classList.contains('sidebar-compact');
+    localStorage.setItem('vortex.sidebarCompact', JSON.stringify(compact));
+    document.body.classList.toggle('sidebar-compact', compact);
+    updateSidebarCollapse();
+    return;
+  }
   const catalogView = target.closest('[data-catalog-view]');
   if (catalogView) { preferences.catalogView = catalogView.dataset.catalogView === 'list' ? 'list' : 'grid'; savePreferences(); renderPage(); return; }
 
@@ -3800,6 +4917,7 @@ document.addEventListener('click', async (event) => {
         friendsCache = { at: 0, data: null };
         savePreferences();
         renderPage();
+        renderFriendsDrawer();
         showToast(t('friends.detected', { user: result.account.name }));
       } else showToast(t('friends.detectFailed'));
     } catch { showToast(t('friends.detectFailed')); }
@@ -3864,6 +4982,7 @@ document.addEventListener('click', async (event) => {
   if (friendJoin) {
     const placeId = friendJoin.dataset.friendJoin;
     const gameId = friendJoin.dataset.friendGame || '';
+    closeFriendsDrawer();
     openGame(placeId, gameId);
     return;
   }
@@ -4016,22 +5135,28 @@ document.addEventListener('input', (event) => {
   }
   if (event.target.matches('[data-animation-duration]')) {
     preferences.animationDuration = Math.max(0.5, Math.min(2, Number(event.target.value) / 100 || 1));
+    event.target.dataset.preview = `animationDuration:${Math.round(preferences.animationDuration * 100)}`;
     pageContent.querySelector('[data-animation-duration-value]')?.replaceChildren(Math.round(preferences.animationDuration * 100) + '%');
     savePreferences(); applyPreferences();
+    if (activePreviewTarget === event.target) showHoverPreview(event.target);
     return;
   }
   if (event.target.matches('[data-card-size]')) {
     preferences.cardSize = Math.max(0.7, Math.min(1.3, Number(event.target.value) || 1));
+    event.target.dataset.preview = `cardSize:${preferences.cardSize}`;
     pageContent.querySelector('[data-card-size-value]')?.replaceChildren(Math.round(preferences.cardSize * 100) + '%');
     savePreferences(); applyPreferences(); refreshCardPreview();
+    if (activePreviewTarget === event.target) showHoverPreview(event.target);
     return;
   }
 
   if (event.target.matches('[data-card-radius]')) {
     preferences.cardRadius = Math.max(0, Math.min(20, Number(event.target.value) || 0));
     preferences.customCardRadius = true;
+    event.target.dataset.preview = `cardRadius:${preferences.cardRadius}`;
     pageContent.querySelector('[data-card-radius-value]')?.replaceChildren(preferences.cardRadius + 'px');
     savePreferences(); applyPreferences(); refreshCardPreview();
+    if (activePreviewTarget === event.target) showHoverPreview(event.target);
     return;
   }
   if (event.target.matches('[data-wallpaper-blur]')) {
@@ -4138,10 +5263,12 @@ document.addEventListener('input', (event) => {
   }
   if (event.target.matches('[data-setting="glow"]')) {
     preferences.glow = Number(event.target.value);
+    event.target.dataset.preview = `glow:${preferences.glow}`;
     savePreferences();
     applyPreferences();
     const value = document.getElementById('glow-value');
     if (value) value.textContent = `${preferences.glow}%`;
+    if (activePreviewTarget === event.target) showHoverPreview(event.target);
     return;
   }
   if (event.target.matches('[data-setting="gradientAngle"]')) {
@@ -4177,6 +5304,32 @@ document.addEventListener('dblclick', (event) => {
 
 document.addEventListener('keydown', (event) => {
   const isTyping = event.target instanceof HTMLElement && (event.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName));
+  if (event.key === 'Escape' && !document.getElementById('quick-game-modal')?.hidden) {
+    event.preventDefault();
+    closeQuickGameModal();
+    return;
+  }
+  if (event.key === 'Escape' && !document.getElementById('quick-folder-modal')?.hidden) {
+    event.preventDefault();
+    closeQuickFolderModal();
+    return;
+  }
+  if (event.key === 'Escape' && document.getElementById('friends-drawer')?.classList.contains('is-open')) {
+    event.preventDefault();
+    closeFriendsDrawer();
+    document.querySelector('[data-action="toggle-friends-drawer"]')?.focus();
+    return;
+  }
+  if (event.key === 'Tab') {
+    const drawer = document.getElementById('friends-drawer');
+    if (drawer?.classList.contains('is-open')) {
+      const items = [...drawer.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((item) => !item.hidden);
+      const first = items[0];
+      const last = items.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }
+  }
   // Escape always closes the palette, no matter where focus currently is.
   if (event.key === 'Escape' && paletteOpen()) {
     event.preventDefault();
@@ -4225,6 +5378,12 @@ document.addEventListener('keydown', (event) => {
     setView('friends');
     return;
   }
+  const quickShortcut = quickLaunchGames().find((item) => item.hotkey && matchesHotkey(event, item.hotkey));
+  if (quickShortcut && !isTyping) {
+    event.preventDefault();
+    void launchQuickGame(quickShortcut.id);
+    return;
+  }
   // event.target may be document (not an Element), which has no matches().
   const targetIs = (selector) => typeof event.target?.matches === 'function' && event.target.matches(selector);
   if (event.key === 'Enter' && targetIs('[data-search-page-input]')) {
@@ -4244,9 +5403,8 @@ document.addEventListener('keydown', (event) => {
   }
   if (matchesHotkey(event, hotkeyCombo('back')) && currentView === 'game-detail') {
     event.preventDefault();
-    currentView = 'catalog';
-    restoreCatalogScroll();
-    renderPage();
+    if (navigationHistoryIndex > 0) navigateHistory(-1);
+    else { setView('catalog'); restoreCatalogScroll(); }
     return;
   }
   if (event.key === 'Escape' && document.activeElement === searchInput) {
@@ -4394,8 +5552,15 @@ function runPaletteIndex(index) {
 // Friend card hover preview: floating panel with avatar, name, game and a
 // join action. Sits above the grid and follows the hovered card.
 let friendPreviewEl = null;
+let friendPreviewCard = null;
 function showFriendPreview(card) {
+  if (!card || card.classList.contains('offline')) {
+    hideFriendPreview();
+    return;
+  }
+  if (friendPreviewCard === card && friendPreviewEl?.isConnected) return;
   hideFriendPreview();
+  friendPreviewCard = card;
   const name = card.dataset.friendName || '?';
   const avatar = card.dataset.friendAvatar || '';
   const game = card.dataset.gameName || '';
@@ -4427,14 +5592,29 @@ function showFriendPreview(card) {
 function hideFriendPreview() {
   friendPreviewEl?.remove();
   friendPreviewEl = null;
+  friendPreviewCard = null;
 }
-document.addEventListener('mouseover', (event) => {
+document.addEventListener('pointerover', (event) => {
+  const card = event.target.closest?.('.friend-card');
+  if (card) {
+    if (!card.contains(event.relatedTarget)) showFriendPreview(card);
+  } else if (event.target.closest?.('.friend-preview')) {
+    return;
+  } else {
+    hideFriendPreview();
+  }
+});
+document.addEventListener('pointerout', (event) => {
+  const card = event.target.closest?.('.friend-card');
+  if (card && !card.contains(event.relatedTarget) && !friendPreviewEl?.contains(event.relatedTarget)) hideFriendPreview();
+});
+document.addEventListener('focusin', (event) => {
   const card = event.target.closest?.('.friend-card');
   if (card) showFriendPreview(card);
-  else if (!event.target.closest?.('.friend-preview')) hideFriendPreview();
 });
-document.addEventListener('mouseout', (event) => {
-  if (event.target.closest?.('.friend-card') && !event.relatedTarget?.closest?.('.friend-card')) hideFriendPreview();
+document.addEventListener('focusout', (event) => {
+  const card = event.target.closest?.('.friend-card');
+  if (card && !card.contains(event.relatedTarget) && !card.matches(':hover')) hideFriendPreview();
 });
 document.addEventListener('scroll', hideFriendPreview, true);
 
@@ -4444,14 +5624,19 @@ mountIcons();
 renderSidebar();
 applyPreferences();
 renderPage();
+void refreshQuickLaunchMetadata();
 reportRecentGamesToTray();
 window.addEventListener('beforeunload', closePlaySession);
-// The Electron close button hides the window into the tray, so unload is not
+// The desktop close action may hide the window into the tray, so unload is not
 // guaranteed. Periodic checkpoints keep playtime accurate without ending the
 // current session when the launcher is merely hidden.
 window.setInterval(checkpointPlaySession, 60 * 1000);
 window.vortexDesktop?.onWindowState?.(({ isMaximized }) => setWindowMaximized(Boolean(isMaximized)));
 window.vortexDesktop?.onUpdateState?.(renderUpdateBanner);
+window.vortexDesktop?.onTrayLaunch?.(({ kind, id }) => {
+  if (kind === 'quick') void launchQuickGame(String(id));
+  else if (kind === 'favorite') openGame(String(id));
+});
 window.vortexDesktop?.getUpdateState?.().then(renderUpdateBanner).catch(() => {});
 hydrateFeaturedGames();
 loadDiscoveryCatalog(activeDiscoverySort);

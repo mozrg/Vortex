@@ -1,55 +1,17 @@
 {
   "name": "vortex-roblox-launcher",
-  "version": "1.0.22",
+  "version": "1.1.1",
   "private": true,
-  "description": "A customizable desktop launcher for Roblox experiences.",
-  "main": "electron/main.cjs",
+  "description": "A Rust/Tauri desktop launcher for Roblox experiences.",
   "scripts": {
-    "start": "electron .",
-    "prepare:assets": "node scripts/prepare-assets.mjs",
-    "build:win": "npm run prepare:assets && electron-builder --win nsis"
+    "tauri:dev": "cargo tauri dev",
+    "tauri:build": "cargo tauri build --ci",
+    "rust:check": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "rust:fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
+    "prepare:assets": "node scripts/prepare-assets.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
-    "electron": "^44.7.0",
-    "electron-builder": "^26.0.12",
     "pngjs": "^7.0.0"
-  },
-  "build": {
-    "appId": "com.vortex.launcher",
-    "productName": "Vortex Launcher",
-    "asar": true,
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "src/app.js",
-      "src/js/*.js",
-      "src/index.html",
-      "src/startup.html",
-      "src/tray.html",
-      "src/styles.css",
-      "electron/**/*",
-      "assets/vortex-app-icon.svg",
-      "assets/vortex-app-icon.ico",
-      "assets/vortex-logo.svg",
-      "package.json"
-    ],
-    "win": {
-      "icon": "assets/vortex-app-icon.ico",
-      "target": [
-        "nsis"
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "installerIcon": "assets/vortex-app-icon.ico",
-      "uninstallerIcon": "assets/vortex-app-icon.ico",
-      "installerHeader": "assets/installer-header.bmp",
-      "installerSidebar": "assets/installer-sidebar.bmp"
-    }
   }
 }

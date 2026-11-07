@@ -56,6 +56,7 @@ const icons = {
   grip: '<circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/>',
   tray: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 15h16"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 9h18"/>',
   keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/>',
   database: '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
   activity: '<path d="M3 12h3l3-8 4 16 3-8h5"/>',
@@ -76,6 +77,8 @@ const icons = {
   film: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 4v16M17 4v16M2 9h5m10 0h5M2 15h5m10 0h5"/>',
   award: '<circle cx="12" cy="9" r="6"/><path d="m8.5 14-1.5 7 5-3 5 3-1.5-7"/>',
   link: '<path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/>',
+  share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.7 6.8-4.4m-6.8 7 6.8 4.1"/>',
+  edit: '<path d="m15 5 4 4M4 20l4.2-.8L19 8.4a2.8 2.8 0 0 0-4-4L4.8 15 4 20Z"/>',
   discord: '<path d="M8.5 8.5c2.3-.8 4.7-.8 7 0"/><path d="M8 17c-1.4-2-2.3-4.4-2.5-7A10 10 0 0 1 9 8l.7 1.3a8 8 0 0 1 4.6 0L15 8a10 10 0 0 1 3.5 2c-.2 2.6-1.1 5-2.5 7"/><path d="M8 17c2.6 1 5.4 1 8 0"/><circle cx="9.5" cy="13" r="1"/><circle cx="14.5" cy="13" r="1"/>',
   youtube: '<rect x="2" y="5" width="20" height="14" rx="4"/><path d="m10 9 5 3-5 3z"/>',
   twitter: '<path d="M4 4l7.5 9.5L4.5 20h2.2l6-6.6L17.5 20H20l-7.8-9.9L19.5 4h-2.2l-5.5 6L7 4z"/>',
@@ -95,5 +98,5 @@ function mountIcons(root = document) {
   });
 }
 
-// Classic-script mode: publish for app.js (file:// and Electron both work).
+// Classic-script mode: publish for the browser/Tauri renderer.
 window.__vortexIcons = { icons, icon, mountIcons };

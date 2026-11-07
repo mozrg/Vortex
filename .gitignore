@@ -4,6 +4,7 @@ out/
 .DS_Store
 npm-debug.log*
 dist-update-test/
+/src-tauri/target/
 *.TMP
 ~$*
 

@@ -13,6 +13,19 @@
         "en": "Game picks based on your interests and launch history."
       },
       "stage": "design"
+    },
+    {
+      "id": "plan-mw743604",
+      "icon": "flag",
+      "stage": "idea",
+      "title": {
+        "ru": "Тест",
+        "en": "Test"
+      },
+      "body": {
+        "ru": "",
+        "en": ""
+      }
     }
   ]
 }

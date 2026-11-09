@@ -50,6 +50,7 @@ const icons = {
   windowMaximize: '<rect x="5" y="5" width="14" height="14" rx="1.5"/>',
   windowRestore: '<rect x="8" y="5" width="11" height="11" rx="1.5"/><path d="M16 16v3H5V8h3"/>',
   chevronDown: '<path d="m6 9 6 6 6-6"/>',
+  chevronUp: '<path d="m18 15-6-6-6 6"/>',
   chevronLeft: '<path d="m15 18-6-6 6-6"/>',
   navUp: '<path d="M12 19V5m-7 7 7-7 7 7"/>',
   navDown: '<path d="M12 5v14m7-7-7 7-7-7"/>',

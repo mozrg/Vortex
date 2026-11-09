@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::state::AppState;
 
-const CLIENT_ID: &str = "1536230039870505020";
+const DEFAULT_CLIENT_ID: &str = "1536230039870505020";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct DiscordCommand {
@@ -56,15 +56,32 @@ pub async fn send_activity(
         .map_err(|_| "Discord worker stopped".to_string())?
 }
 
+/// The handshake id: a custom application id from Settings when present,
+/// otherwise the id Vortex ships with.
+pub fn effective_client_id(state: &AppState) -> String {
+    let custom = state
+        .discord_client_id
+        .lock()
+        .map(|value| value.trim().to_string())
+        .unwrap_or_default();
+    if custom.chars().all(|c| c.is_ascii_digit()) && custom.len() >= 15 {
+        custom
+    } else {
+        DEFAULT_CLIENT_ID.to_string()
+    }
+}
+
 pub fn public_status(state: &AppState, enabled: bool) -> Result<Value, String> {
     let discord = state
         .discord
         .lock()
         .map_err(|_| "Discord state unavailable".to_string())?;
+    let client_id = effective_client_id(state);
     Ok(json!({
         "enabled": enabled,
         "connected": discord.connected,
-        "hasClientId": true,
+        "hasClientId": !client_id.is_empty(),
+        "clientId": client_id,
         "error": discord.error,
         "account": discord.account
     }))
@@ -73,6 +90,7 @@ pub fn public_status(state: &AppState, enabled: bool) -> Result<Value, String> {
 pub async fn run(mut commands: mpsc::UnboundedReceiver<DiscordCommand>, state: Arc<AppState>) {
     let mut connection: Option<Connection> = None;
     let mut enabled = false;
+    let mut active_client_id = effective_client_id(&state);
     let mut reconnect = tokio::time::interval(Duration::from_secs(10));
     reconnect.tick().await;
     loop {
@@ -80,6 +98,12 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<DiscordCommand>, state: A
             command = commands.recv() => {
                 let Some(command) = command else { break };
                 enabled = command.enabled;
+                // A changed application id needs a fresh IPC handshake.
+                let wanted_client_id = effective_client_id(&state);
+                if wanted_client_id != active_client_id {
+                    active_client_id = wanted_client_id;
+                    connection = None;
+                }
                 if !enabled {
                     connection = None;
                     set_connection_state(&state, false, "");
@@ -88,7 +112,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<DiscordCommand>, state: A
                 }
                 if connection.as_mut().is_some_and(|active| active.closed.try_recv().is_ok()) { connection = None; }
                 if connection.is_none() {
-                    match start_connection(&state).await {
+                    match start_connection(&state, &active_client_id).await {
                         Ok(active) => connection = Some(active),
                         Err(error) => {
                             set_connection_state(&state, false, &error);
@@ -114,8 +138,13 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<DiscordCommand>, state: A
                     connection = None;
                     set_connection_state(&state, false, "discord-not-running");
                 }
+                let wanted_client_id = effective_client_id(&state);
+                if wanted_client_id != active_client_id {
+                    active_client_id = wanted_client_id;
+                    connection = None;
+                }
                 if connection.is_none() {
-                    if let Ok(active) = start_connection(&state).await {
+                    if let Ok(active) = start_connection(&state, &active_client_id).await {
                         connection = Some(active);
                         let activity = state.discord.lock().ok().and_then(|discord| discord.activity.as_ref().map(|value| json!({"details": value.details, "state": value.state})));
                         if let Some(active) = connection.as_ref() {
@@ -131,8 +160,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<DiscordCommand>, state: A
     }
 }
 
-async fn start_connection(state: &AppState) -> Result<Connection, String> {
-    let (mut reader, writer) = open_connection().await?;
+async fn start_connection(state: &AppState, client_id: &str) -> Result<Connection, String> {
+    let (mut reader, writer) = open_connection(client_id).await?;
     let (closed_tx, closed_rx) = oneshot::channel();
     let writer = Arc::new(AsyncMutex::new(writer));
     let reader_writer = writer.clone();
@@ -183,7 +212,9 @@ async fn send_rpc_activity(
         .map_err(|error| error.to_string())
 }
 
-async fn open_connection() -> Result<
+async fn open_connection(
+    client_id: &str,
+) -> Result<
     (
         tokio::io::ReadHalf<NamedPipeClient>,
         tokio::io::WriteHalf<NamedPipeClient>,
@@ -195,7 +226,7 @@ async fn open_connection() -> Result<
         let path = format!(r"\\?\pipe\discord-ipc-{index}");
         match ClientOptions::new().open(&path) {
             Ok(mut pipe) => {
-                let handshake = json!({ "v": 1, "client_id": CLIENT_ID });
+                let handshake = json!({ "v": 1, "client_id": client_id });
                 let payload = serde_json::to_vec(&handshake).map_err(|error| error.to_string())?;
                 write_frame(&mut pipe, 0, &payload)
                     .await

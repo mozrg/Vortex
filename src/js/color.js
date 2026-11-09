@@ -33,6 +33,32 @@ function hslToHex(hue, saturation, lightness) {
   return `#${[channel(0), channel(8), channel(4)].map((value) => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
+function rgbToHsv(hex) {
+  const [red, green, blue] = hexToRgb(hex).map((channel) => channel / 255);
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const delta = max - min;
+  let hue = 0;
+  if (delta) {
+    if (max === red) hue = ((green - blue) / delta + (green < blue ? 6 : 0)) / 6;
+    else if (max === green) hue = ((blue - red) / delta + 2) / 6;
+    else hue = ((red - green) / delta + 4) / 6;
+  }
+  return { hue: Math.round(hue * 360), saturation: Math.round((max ? delta / max : 0) * 100), value: Math.round(max * 100) };
+}
+
+function hsvToHex(hue, saturation, value) {
+  const h = (((Number(hue) % 360) + 360) % 360) / 60;
+  const s = Math.max(0, Math.min(100, Number(saturation))) / 100;
+  const v = Math.max(0, Math.min(100, Number(value))) / 100;
+  const channel = (index) => {
+    const k = (index + h) % 6;
+    const result = v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+    return Math.round(result * 255);
+  };
+  return `#${[5, 3, 1].map((index) => channel(index).toString(16).padStart(2, '0')).join('')}`;
+}
+
 function relativeLuminance(hex) {
   const channels = hexToRgb(hex).map((value) => {
     const normalized = value / 255;
@@ -47,4 +73,4 @@ function mixHex(first, second, amount) {
   return `#${a.map((value, index) => Math.round(value * (1 - amount) + b[index] * amount).toString(16).padStart(2, '0')).join('')}`;
 }
 
-window.__vortexColor = { hexToRgb, rgbToHsl, hslToHex, relativeLuminance, mixHex };
+window.__vortexColor = { hexToRgb, rgbToHsl, hslToHex, rgbToHsv, hsvToHex, relativeLuminance, mixHex };

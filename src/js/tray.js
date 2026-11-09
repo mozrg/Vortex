@@ -2,11 +2,12 @@
   const invoke = (command, args = {}) => window.__TAURI__?.core?.invoke?.(command, args);
   const eventApi = window.__TAURI__?.event;
   const copy = {
-    ru: { favorites: 'Избранное', quick: 'Быстрый запуск', open: 'Открыть Vortex', quit: 'Выход', launch: 'Запустить', launchHint: 'Нажмите, чтобы запустить', emptyFavorites: 'Добавьте игры в избранное, чтобы запускать их отсюда.', emptyQuick: 'Добавьте игры через «Быстрый запуск» в приложении.', justNow: 'только что', minutes: 'мин назад', hours: 'ч назад', days: 'дн назад', launching: 'Запускаем…', playing: 'Играет' },
-    en: { favorites: 'Favorites', quick: 'Quick launch', open: 'Open Vortex', quit: 'Quit', launch: 'Launch', launchHint: 'Click to launch', emptyFavorites: 'Add games to your favorites to launch them here.', emptyQuick: 'Add games from Quick launch in the app.', justNow: 'just now', minutes: 'm ago', hours: 'h ago', days: 'd ago', launching: 'Launching…', playing: 'Playing' }
+    ru: { favorites: 'Избранное', quick: 'Быстрый запуск', open: 'Открыть Vortex', quit: 'Выход', launch: 'Запустить', launchHint: 'Нажмите, чтобы запустить', emptyFavorites: 'Добавьте игры в избранное, чтобы запускать их отсюда.', emptyQuick: 'Добавьте игры через «Быстрый запуск» в приложении.', justNow: 'только что', minutes: 'мин назад', hours: 'ч назад', days: 'дн назад', launching: 'Запускаем…', playing: 'Играет', collapse: 'Свернуть раздел', expand: 'Развернуть раздел' },
+    en: { favorites: 'Favorites', quick: 'Quick launch', open: 'Open Vortex', quit: 'Quit', launch: 'Launch', launchHint: 'Click to launch', emptyFavorites: 'Add games to your favorites to launch them here.', emptyQuick: 'Add games from Quick launch in the app.', justNow: 'just now', minutes: 'm ago', hours: 'h ago', days: 'd ago', launching: 'Launching…', playing: 'Playing', collapse: 'Collapse section', expand: 'Expand section' }
   };
   const cssTokens = ['--bg', '--surface', '--surface-2', '--surface-3', '--line', '--line-strong', '--text', '--muted', '--subtle', '--accent', '--accent-rgb', '--accent-secondary', '--accent-secondary-rgb', '--accent-fill', '--accent-wash', '--accent-text', '--accent-contrast', '--accent-border', '--radius-card', '--font-ui'];
-  const state = { favorites: [], quickLaunch: [], style: {}, language: 'ru' };
+  const state = { favorites: [], quickLaunch: [], style: {}, language: 'ru', collapsed: {} };
+  try { state.collapsed = JSON.parse(localStorage.getItem('vortex.trayCollapsed') || '{}') || {}; } catch { state.collapsed = {}; }
   const $ = (selector) => document.querySelector(selector);
   let toastTimer = 0;
   let nowPlayingTimer = 0;
@@ -41,6 +42,7 @@
       const key = node.dataset.copy;
       node.textContent = strings()[key] || node.textContent;
     });
+    applyCollapsed();
     $('[data-tray-action="quit"]')?.setAttribute('aria-label', state.language === 'en' ? 'Quit Vortex completely' : 'Закрыть Vortex полностью');
   }
 
@@ -62,21 +64,54 @@
   }
 
   function render(data = {}) {
-    state.favorites = Array.isArray(data.favorites) ? data.favorites.slice(0, 5) : [];
-    state.quickLaunch = Array.isArray(data.quickLaunch) ? data.quickLaunch.slice(0, 3) : [];
+    state.favorites = Array.isArray(data.favorites) ? data.favorites : [];
+    state.quickLaunch = Array.isArray(data.quickLaunch) ? data.quickLaunch : [];
     $('#tray-favorites').innerHTML = state.favorites.length
       ? state.favorites.map((game, index) => gameRow(game, 'favorite', index)).join('')
       : emptyRow(strings().emptyFavorites);
     $('#tray-quick-launch').innerHTML = state.quickLaunch.length
       ? state.quickLaunch.map((game, index) => gameRow(game, 'quick', index)).join('')
       : emptyRow(strings().emptyQuick);
-    $('[data-favorite-count]').textContent = `${state.favorites.length} / 5`;
-    $('[data-quick-count]').textContent = `${state.quickLaunch.length} / 3`;
+    const favoriteLimit = Number(state.style.trayFavoriteLimit) === 0
+      ? null
+      : Number(state.style.trayFavoriteLimit) || 5;
+    const quickLimit = Number(state.style.trayQuickLimit) === 0
+      ? null
+      : Number(state.style.trayQuickLimit) || 3;
+    $('[data-favorite-count]').textContent = `${state.favorites.length}${favoriteLimit === null ? ' / ∞' : ` / ${favoriteLimit}`}`;
+    $('[data-quick-count]').textContent = `${state.quickLaunch.length}${quickLimit === null ? ' / ∞' : ` / ${quickLimit}`}`;
+    applyCollapsed();
     renderNowPlaying(data.nowPlaying);
-    window.requestAnimationFrame(() => {
-      const height = Math.ceil(document.documentElement.scrollHeight);
-      if (height > 0) void Promise.resolve(invoke('tray_fit_content', { height })).catch(() => {});
+    fitContent();
+  }
+
+  function applyCollapsed() {
+    document.querySelectorAll('[data-tray-collapse]').forEach((button) => {
+      const key = button.dataset.trayCollapse;
+      const collapsed = state.collapsed[key] === true;
+      button.setAttribute('aria-expanded', String(!collapsed));
+      button.setAttribute('aria-label', collapsed ? strings().expand : strings().collapse);
+      button.classList.toggle('is-collapsed', collapsed);
+      const section = button.closest('.tray-section');
+      const list = section?.querySelector('.tray-list');
+      if (list) list.hidden = collapsed;
     });
+  }
+
+  function fitContent() {
+    window.requestAnimationFrame(() => {
+      const shell = document.querySelector('.tray-shell');
+      const height = Math.ceil((shell?.getBoundingClientRect().height || 0) + 12);
+      if (height < 60 || Math.abs(window.innerHeight - height) < 2) return;
+      void Promise.resolve(invoke('tray_fit_content', { height })).catch(() => {});
+    });
+  }
+
+  function syncCollapsed() {
+    void Promise.resolve(invoke('tray_set_collapsed', {
+      favorites: state.collapsed.favorites === true,
+      quick: state.collapsed.quick === true
+    })).catch(() => {});
   }
 
   function renderNowPlaying(nowPlaying) {
@@ -127,6 +162,15 @@
     const action = target.closest('[data-tray-action]')?.dataset.trayAction;
     if (action === 'open') { await invoke('tray_open_app'); return; }
     if (action === 'quit') { await invoke('tray_quit_app'); return; }
+    const collapse = target.closest('[data-tray-collapse]');
+    if (collapse) {
+      const key = collapse.dataset.trayCollapse;
+      state.collapsed[key] = state.collapsed[key] !== true;
+      try { localStorage.setItem('vortex.trayCollapsed', JSON.stringify(state.collapsed)); } catch { /* ignore */ }
+      applyCollapsed();
+      syncCollapsed();
+      return;
+    }
     const launchButton = target.closest('[data-tray-launch]');
     if (!launchButton) return;
     const list = launchButton.dataset.trayLaunch === 'favorite' ? state.favorites : state.quickLaunch;
@@ -147,5 +191,10 @@
     render(data);
   });
   eventApi?.listen?.('tray:opened', () => { void refresh(); });
+  if (window.ResizeObserver) {
+    const shell = document.querySelector('.tray-shell');
+    if (shell) new ResizeObserver(() => fitContent()).observe(shell);
+  }
+  syncCollapsed();
   void refresh();
 })();

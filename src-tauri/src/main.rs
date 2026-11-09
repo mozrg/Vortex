@@ -8,18 +8,25 @@ mod friends;
 mod legacy_storage;
 mod plans;
 mod roblox;
+mod runtime;
 mod state;
 
 use serde_json::{json, Value};
-use state::AppState;
+use sha2::{Digest, Sha256};
+use state::{AppState, PendingUpdate};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder,
-    WindowEvent,
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
+    WebviewWindowBuilder, WindowEvent,
 };
+use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 fn value_string(value: Option<&Value>) -> String {
     value
@@ -85,6 +92,64 @@ fn compare_versions(left: &str, right: &str) -> std::cmp::Ordering {
     std::cmp::Ordering::Equal
 }
 
+fn update_dir() -> PathBuf {
+    AppState::user_data_dir().join("updates")
+}
+
+fn valid_update_asset_url(url: &str) -> bool {
+    url.starts_with("https://github.com/mozrg/Vortex/releases/download/")
+}
+
+fn safe_update_filename(name: &str) -> Option<String> {
+    let safe: String = name
+        .chars()
+        .filter(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_' | ' ')
+        })
+        .collect();
+    safe.to_ascii_lowercase()
+        .ends_with(".exe")
+        .then_some(safe)
+        .filter(|name| !name.is_empty() && name.len() <= 180)
+}
+
+fn pending_from_asset(version: &str, asset: &Value, assets: &[Value]) -> Option<PendingUpdate> {
+    let asset_name = asset.get("name").and_then(Value::as_str)?.to_string();
+    let asset_url = asset
+        .get("browser_download_url")
+        .and_then(Value::as_str)
+        .filter(|url| valid_update_asset_url(url))?
+        .to_string();
+    let digest = asset
+        .get("digest")
+        .and_then(Value::as_str)
+        .and_then(|digest| digest.strip_prefix("sha256:"))
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let sha_name = format!("{asset_name}.sha256");
+    let sha_url = assets
+        .iter()
+        .find(|candidate| {
+            candidate
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.eq_ignore_ascii_case(&sha_name))
+        })
+        .and_then(|candidate| candidate.get("browser_download_url"))
+        .and_then(Value::as_str)
+        .filter(|url| valid_update_asset_url(url))
+        .unwrap_or_default()
+        .to_string();
+    Some(PendingUpdate {
+        version: version.to_string(),
+        asset_name,
+        asset_url,
+        sha256: digest,
+        sha_url,
+        path: None,
+    })
+}
+
 async fn run_update_check(app: AppHandle, state: Arc<AppState>) -> Result<(), String> {
     {
         let mut running = state
@@ -134,48 +199,365 @@ async fn run_update_check(app: AppHandle, state: Arc<AppState>) -> Result<(), St
             .map(str::trim)
             .filter(|version| !version.is_empty())
             .ok_or_else(|| "В ответе GitHub нет версии релиза".to_string())?;
+        let latest = version.trim_start_matches(['v', 'V']).to_string();
         let url = release
             .get("html_url")
             .and_then(Value::as_str)
             .filter(|url| url.starts_with("https://github.com/mozrg/Vortex/"))
             .map(str::to_owned);
-        Ok::<_, String>((version.trim_start_matches(['v', 'V']).to_string(), url))
+        let assets: Vec<Value> = release
+            .get("assets")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let asset = assets
+            .iter()
+            .find(|asset| {
+                let name = asset
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                name.ends_with(".exe") && (name.contains("setup") || name.contains("installer"))
+            })
+            .or_else(|| {
+                assets.iter().find(|asset| {
+                    asset
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_ascii_lowercase()
+                        .ends_with(".exe")
+                })
+            });
+        let pending = asset.and_then(|asset| pending_from_asset(&latest, asset, &assets));
+        Ok::<_, String>((latest, url, pending))
     }
     .await;
 
+    let mut pending_update = None;
     let final_state = {
         let mut update = state
             .update_state
             .lock()
             .map_err(|_| "update state unavailable")?;
-        update.progress = 100;
-        update.stage = None;
         match result {
-            Ok((latest, url)) => {
-                update.status = if compare_versions(&update.current_version, &latest)
-                    == std::cmp::Ordering::Less
-                {
-                    "available".to_string()
+            Ok((latest, url, pending)) => {
+                if compare_versions(&update.current_version, &latest) == std::cmp::Ordering::Less {
+                    if pending.is_some() {
+                        update.status = "available".to_string();
+                        update.progress = 0;
+                        pending_update = pending;
+                        update.error_message = None;
+                    } else {
+                        update.status = "error".to_string();
+                        update.progress = 0;
+                        update.error_message =
+                            Some("В релизе нет подходящего установщика Vortex (.exe)".to_string());
+                    }
                 } else {
-                    "current".to_string()
-                };
+                    update.status = "current".to_string();
+                    update.progress = 100;
+                    update.error_message = None;
+                }
+                update.stage = None;
                 update.latest_version = Some(latest);
                 update.release_url = url;
-                update.error_message = None;
             }
             Err(error) => {
                 update.status = "error".to_string();
                 update.progress = 0;
+                update.stage = None;
                 update.error_message = Some(error.chars().take(240).collect());
             }
         }
         update.clone()
     };
+    if let Ok(mut pending) = state.update_pending.lock() {
+        *pending = pending_update.clone();
+    }
     if let Ok(mut running) = state.update_check_running.lock() {
         *running = false;
     }
     let _ = app.emit("updates:state", final_state.public());
+    // The installer is downloaded in the background; the UI only needs to show
+    // progress and then offer the install/restart button.
+    if final_state.status == "available" && pending_update.is_some() {
+        let download_app = app.clone();
+        let download_state = state.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = download_update_inner(download_app, download_state).await;
+        });
+    }
     Ok(())
+}
+
+fn publish_update_state(app: &AppHandle, state: &AppState) {
+    if let Ok(update) = state.update_state.lock() {
+        let _ = app.emit("updates:state", update.public());
+    }
+}
+
+async fn download_update_inner(app: AppHandle, state: Arc<AppState>) -> Result<(), String> {
+    {
+        let mut downloading = state
+            .update_downloading
+            .lock()
+            .map_err(|_| "update state unavailable".to_string())?;
+        if *downloading {
+            return Ok(());
+        }
+        *downloading = true;
+    }
+
+    let result = async {
+        let pending = state
+            .update_pending
+            .lock()
+            .map_err(|_| "update state unavailable".to_string())?
+            .clone()
+            .ok_or_else(|| "Нет установщика для этой версии в релизе GitHub".to_string())?;
+        if !valid_update_asset_url(&pending.asset_url) {
+            return Err("Небезопасная ссылка на установщик".to_string());
+        }
+        let filename = safe_update_filename(&pending.asset_name)
+            .ok_or_else(|| "Некорректное имя установщика".to_string())?;
+        let folder = update_dir();
+        tokio::fs::create_dir_all(&folder)
+            .await
+            .map_err(|error| format!("Не удалось создать папку обновления: {error}"))?;
+        let final_path = folder.join(filename);
+        let partial_path = final_path.with_extension("exe.part");
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .user_agent(concat!("Vortex/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .map_err(|error| error.to_string())?;
+        let mut response = client
+            .get(&pending.asset_url)
+            .send()
+            .await
+            .map_err(|error| format!("Не удалось скачать установщик: {error}"))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "GitHub вернул HTTP {} при скачивании",
+                response.status().as_u16()
+            ));
+        }
+        let total = response.content_length().unwrap_or(0);
+        if total == 0 || total > 200 * 1024 * 1024 {
+            return Err("Размер установщика отсутствует или превышает 200 МБ".to_string());
+        }
+        {
+            let mut update = state
+                .update_state
+                .lock()
+                .map_err(|_| "update state unavailable".to_string())?;
+            update.status = "downloading".to_string();
+            update.progress = 0;
+            update.stage = Some("downloading".to_string());
+        }
+        publish_update_state(&app, &state);
+
+        let mut file = tokio::fs::File::create(&partial_path)
+            .await
+            .map_err(|error| format!("Не удалось создать файл обновления: {error}"))?;
+        let mut downloaded = 0u64;
+        let mut hasher = Sha256::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|error| format!("Ошибка загрузки установщика: {error}"))?
+        {
+            downloaded = downloaded.saturating_add(chunk.len() as u64);
+            if downloaded > total || downloaded > 200 * 1024 * 1024 {
+                return Err("Размер загруженного файла не совпал с ожидаемым".to_string());
+            }
+            hasher.update(&chunk);
+            file.write_all(&chunk)
+                .await
+                .map_err(|error| format!("Не удалось записать установщик: {error}"))?;
+            let progress = ((downloaded.saturating_mul(100) / total).min(99)) as u32;
+            {
+                let mut update = state
+                    .update_state
+                    .lock()
+                    .map_err(|_| "update state unavailable".to_string())?;
+                update.status = "downloading".to_string();
+                update.progress = progress;
+                update.stage = Some("downloading".to_string());
+            }
+            publish_update_state(&app, &state);
+        }
+        file.flush()
+            .await
+            .map_err(|error| format!("Не удалось завершить запись установщика: {error}"))?;
+        if downloaded != total {
+            return Err("Загрузка установщика завершилась не полностью".to_string());
+        }
+        let actual_hash = format!("{:x}", hasher.finalize());
+        let expected_hash = if pending.sha256.len() == 64
+            && pending
+                .sha256
+                .chars()
+                .all(|character| character.is_ascii_hexdigit())
+        {
+            pending.sha256.to_ascii_lowercase()
+        } else if !pending.sha_url.is_empty() && valid_update_asset_url(&pending.sha_url) {
+            let response = client
+                .get(&pending.sha_url)
+                .send()
+                .await
+                .map_err(|error| format!("Не удалось скачать контрольную сумму: {error}"))?;
+            if !response.status().is_success() {
+                return Err(format!(
+                    "GitHub вернул HTTP {} для контрольной суммы",
+                    response.status().as_u16()
+                ));
+            }
+            let text = response.text().await.map_err(|error| error.to_string())?;
+            text.split_whitespace()
+                .find(|token| {
+                    token.len() == 64
+                        && token.chars().all(|character| character.is_ascii_hexdigit())
+                })
+                .map(str::to_ascii_lowercase)
+                .ok_or_else(|| "Файл контрольной суммы имеет неверный формат".to_string())?
+        } else {
+            return Err("В релизе отсутствует SHA-256 контрольная сумма".to_string());
+        };
+        if actual_hash != expected_hash {
+            return Err("SHA-256 установщика не совпадает с релизом".to_string());
+        }
+        tokio::fs::rename(&partial_path, &final_path)
+            .await
+            .map_err(|error| format!("Не удалось сохранить проверенный установщик: {error}"))?;
+        let mut ready = pending;
+        ready.path = Some(final_path);
+        if let Ok(mut stored) = state.update_pending.lock() {
+            *stored = Some(ready);
+        }
+        Ok::<(), String>(())
+    }
+    .await;
+
+    if let Ok(mut downloading) = state.update_downloading.lock() {
+        *downloading = false;
+    }
+    match result {
+        Ok(()) => {
+            if let Ok(mut update) = state.update_state.lock() {
+                update.status = "downloaded".to_string();
+                update.progress = 100;
+                update.stage = None;
+                update.error_message = None;
+            }
+        }
+        Err(ref error) => {
+            let partial_path = state
+                .update_pending
+                .lock()
+                .ok()
+                .and_then(|pending| {
+                    pending
+                        .as_ref()
+                        .and_then(|pending| safe_update_filename(&pending.asset_name))
+                })
+                .map(|filename| update_dir().join(filename).with_extension("exe.part"));
+            if let Some(partial_path) = partial_path {
+                let _ = tokio::fs::remove_file(partial_path).await;
+            }
+            if let Ok(mut update) = state.update_state.lock() {
+                update.status = "error".to_string();
+                update.progress = 0;
+                update.stage = None;
+                update.error_message = Some(error.chars().take(240).collect());
+            }
+        }
+    }
+    publish_update_state(&app, &state);
+    result
+}
+
+#[cfg(windows)]
+fn write_update_apply_script(installer: &std::path::Path) -> Result<PathBuf, String> {
+    let script_path = update_dir().join("apply-update.ps1");
+    let installer = installer
+        .to_str()
+        .ok_or_else(|| "Invalid installer path".to_string())?;
+    let installer = installer.replace('\'', "''");
+    let app_path = std::env::current_exe().map_err(|error| error.to_string())?;
+    let app_path = app_path
+        .to_str()
+        .ok_or_else(|| "Invalid application path".to_string())?
+        .replace('\'', "''");
+    let script = format!(
+        "$ErrorActionPreference = 'Stop'\n$installer = '{installer}'\n$app = '{app_path}'\n$deadline = (Get-Date).AddMinutes(3)\ndo {{\n  Start-Sleep -Milliseconds 400\n  $running = Get-Process -Name 'vortex-launcher' -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq $app }}\n}} while ($running -and (Get-Date) -lt $deadline)\nif ($running) {{ exit 2 }}\n$p = Start-Process -FilePath $installer -ArgumentList @('/S', '/UPDATE') -PassThru -Wait\nif ($p.ExitCode -ne 0) {{ exit $p.ExitCode }}\nStart-Sleep -Seconds 2\nStart-Process -FilePath $app\n"
+    );
+    std::fs::write(&script_path, script).map_err(|error| error.to_string())?;
+    Ok(script_path)
+}
+
+#[cfg(windows)]
+fn spawn_update_apply(script: &std::path::Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ])
+        .arg(script)
+        .creation_flags(CREATE_NO_WINDOW | 0x00000200)
+        .spawn()
+        .map_err(|error| format!("Не удалось запустить установщик: {error}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn updates_install(
+    app: AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let pending = state
+        .update_pending
+        .lock()
+        .map_err(|_| "update state unavailable".to_string())?
+        .clone()
+        .ok_or_else(|| "Сначала скачай обновление".to_string())?;
+    let installer = pending
+        .path
+        .filter(|path| path.is_file())
+        .ok_or_else(|| "Проверенный установщик не найден".to_string())?;
+    #[cfg(windows)]
+    {
+        let script = write_update_apply_script(&installer)?;
+        if let Ok(mut update) = state.update_state.lock() {
+            update.status = "applying".to_string();
+            update.progress = 100;
+            update.stage = Some("installing".to_string());
+            update.error_message = None;
+        }
+        publish_update_state(&app, &state);
+        spawn_update_apply(&script)?;
+        if let Some(window) = app.get_webview_window("main") {
+            save_window_state(&window);
+        }
+        // The helper waits for this process to disappear before starting the
+        // NSIS installer, then launches the freshly installed binary.
+        app.exit(0);
+        return Ok(());
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Err("Автоматическая установка этой сборки пока поддерживается только в Windows".to_string())
+    }
 }
 
 fn game_row_to_raw(row: &Value) -> Option<Value> {
@@ -293,7 +675,131 @@ async fn window_toggle_maximize(handle: AppHandle) -> bool {
 #[tauri::command]
 async fn window_close(handle: AppHandle) {
     if let Some(window) = handle.get_webview_window("main") {
+        save_window_state(&window);
         let _ = window.hide();
+    }
+}
+
+// Window geometry is remembered across hides/restarts: the app closes to the
+// tray instead of exiting, so the last visible size/position is the natural
+// restore point.
+fn window_state_path() -> std::path::PathBuf {
+    AppState::user_data_dir().join("window-state.json")
+}
+
+fn persist_window_geometry(
+    position: Option<PhysicalPosition<i32>>,
+    size: Option<PhysicalSize<u32>>,
+    maximized: bool,
+) {
+    let mut payload = serde_json::Map::new();
+    if let Some(position) = position {
+        payload.insert("x".into(), json!(position.x));
+        payload.insert("y".into(), json!(position.y));
+    }
+    if let Some(size) = size {
+        payload.insert("width".into(), json!(size.width));
+        payload.insert("height".into(), json!(size.height));
+    }
+    payload.insert("maximized".into(), json!(maximized));
+    let path = window_state_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, Value::Object(payload).to_string());
+}
+
+fn save_window_state<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    // Windows reports -32000/-32000 for a minimized window. Persisting that
+    // position made the next launch restore itself completely off-screen.
+    let minimized = window.is_minimized().unwrap_or(false);
+    let position = if minimized {
+        None
+    } else {
+        window
+            .outer_position()
+            .ok()
+            .filter(|position| position.x > -30000 && position.y > -30000)
+    };
+    persist_window_geometry(
+        position,
+        window.inner_size().ok(),
+        window.is_maximized().unwrap_or(false),
+    );
+}
+
+fn window_has_visible_position<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> bool {
+    let Ok(position) = window.outer_position() else {
+        return false;
+    };
+    if position.x <= -30000 || position.y <= -30000 {
+        return false;
+    }
+    let size = window.outer_size().unwrap_or(PhysicalSize::new(800, 600));
+    window
+        .monitor_from_point(
+            position.x as f64 + size.width as f64 / 2.0,
+            position.y as f64 + size.height as f64 / 2.0,
+        )
+        .ok()
+        .flatten()
+        .is_some()
+}
+
+fn center_window<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    let Ok(Some(monitor)) = window.current_monitor() else {
+        return;
+    };
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let window_size = window.outer_size().unwrap_or(PhysicalSize::new(1200, 800));
+    let x =
+        monitor_position.x + ((monitor_size.width as i32 - window_size.width as i32) / 2).max(0);
+    let y =
+        monitor_position.y + ((monitor_size.height as i32 - window_size.height as i32) / 2).max(0);
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+}
+
+fn ensure_window_on_screen<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    if !window_has_visible_position(window) {
+        center_window(window);
+    }
+}
+
+fn restore_window_geometry<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    let Ok(raw) = std::fs::read_to_string(window_state_path()) else {
+        return;
+    };
+    let Ok(state) = serde_json::from_str::<Value>(&raw) else {
+        return;
+    };
+    if let (Some(width), Some(height)) = (
+        state.get("width").and_then(Value::as_u64),
+        state.get("height").and_then(Value::as_u64),
+    ) {
+        if width >= 640 && height >= 480 {
+            let _ = window.set_size(PhysicalSize::new(width as u32, height as u32));
+        }
+    }
+    let mut positioned = false;
+    if let (Some(x), Some(y)) = (
+        state.get("x").and_then(Value::as_i64),
+        state.get("y").and_then(Value::as_i64),
+    ) {
+        if x > -30000 && y > -30000 {
+            let _ = window.set_position(PhysicalPosition::new(x as i32, y as i32));
+            positioned = window_has_visible_position(window);
+        }
+    }
+    if !positioned {
+        center_window(window);
+    }
+    if state
+        .get("maximized")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        let _ = window.maximize();
     }
 }
 
@@ -616,6 +1122,65 @@ async fn games_similar(
         .filter(|id| valid_numeric_id(id))
         .collect();
     Ok(roblox::get_game_details_by_universe(&*state, &ids).await)
+}
+
+#[tauri::command]
+async fn games_online(
+    state: tauri::State<'_, Arc<AppState>>,
+    universe_id: Option<String>,
+    place_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mut universe = universe_id.unwrap_or_default();
+    let place = place_id.unwrap_or_default();
+    if !valid_numeric_id(&universe) && valid_numeric_id(&place) {
+        if let Ok(payload) = roblox::fetch_cached_json(
+            &*state,
+            &format!(
+                "https://apis.roblox.com/universes/v1/places/{}/universe",
+                place
+            ),
+        )
+        .await
+        {
+            universe = value_string(payload.get("universeId"));
+        }
+    }
+    if !valid_numeric_id(&universe) {
+        return Ok(json!({"ok": false, "error": "invalid-id"}));
+    }
+    let payload = roblox::fetch_json(
+        &format!("https://games.roblox.com/v1/games?universeIds={}", universe),
+        None,
+    )
+    .await?;
+    let Some(raw) = payload
+        .get("data")
+        .and_then(Value::as_array)
+        .and_then(|rows| rows.first())
+    else {
+        return Ok(json!({"ok": false, "error": "not-found"}));
+    };
+    let votes = roblox::fetch_json(
+        &format!("https://games.roblox.com/v1/games/{}/votes", universe),
+        None,
+    )
+    .await
+    .unwrap_or(Value::Null);
+    Ok(json!({
+        "ok": true,
+        "playing": raw.get("playing").cloned().unwrap_or(json!(0)),
+        "visits": raw.get("visits").cloned().unwrap_or(json!(0)),
+        "favorites": raw.get("favorites").cloned().unwrap_or(json!(0)),
+        "updated": raw.get("updated").cloned().unwrap_or(Value::Null),
+        "upVotes": votes.get("upVotes").cloned().unwrap_or(json!(0)),
+        "downVotes": votes.get("downVotes").cloned().unwrap_or(json!(0)),
+        "fetchedAt": chrono::Utc::now().to_rfc3339()
+    }))
+}
+
+#[tauri::command]
+async fn roblox_runtime_status() -> Result<serde_json::Value, String> {
+    Ok(runtime::status())
 }
 
 #[tauri::command]
@@ -1041,10 +1606,24 @@ async fn report_recent_games(
     let now_playing = tray_json
         .get("nowPlaying")
         .is_some_and(|value| !value.is_null());
-    let (width, height) =
-        tray_window_dimensions(tray_scale, favorites_count, quick_count, now_playing);
+    let (favorites_collapsed, quick_collapsed) = state
+        .tray_collapsed
+        .lock()
+        .map(|collapsed| *collapsed)
+        .unwrap_or((false, false));
+    let (width, height) = tray_window_dimensions(
+        tray_scale,
+        favorites_count,
+        quick_count,
+        now_playing,
+        favorites_collapsed,
+        quick_collapsed,
+    );
     if let Some(window) = app.get_webview_window("tray") {
         let _ = window.set_size(LogicalSize::new(width, height));
+        if window.is_visible().unwrap_or(false) {
+            position_tray_window(&app, width, height);
+        }
     }
     let _ = app.emit_to("tray", "tray:updated", tray_json);
     Ok(())
@@ -1055,112 +1634,50 @@ fn tray_window_dimensions(
     favorites: usize,
     quick_launch: usize,
     now_playing: bool,
+    favorites_collapsed: bool,
+    quick_collapsed: bool,
 ) -> (f64, f64) {
     let (width, factor) = match scale {
         "compact" => (310.0, 0.82),
         "large" => (370.0, 1.0),
         _ => (338.0, 0.9),
     };
-    // The UI renders one placeholder row for each empty section. Match its
-    // intrinsic content height so the transparent popup never has a blank tail.
-    let favorite_rows = favorites.clamp(0, 5).max(1) as f64;
-    let quick_rows = quick_launch.clamp(0, 3).max(1) as f64;
-    let row_height = favorite_rows * if favorites == 0 { 39.0 } else { 39.0 * factor }
-        + quick_rows
-            * if quick_launch == 0 {
-                39.0
-            } else {
-                39.0 * factor
-            };
-    let height = 133.0 + row_height + if now_playing { 40.0 } else { 0.0 };
-    (width, height.ceil())
+    // The UI renders one placeholder row for each empty section. Match the
+    // rendered card heights exactly; a short window clips the footer buttons.
+    let list_height = |count: usize, cap: usize, collapsed: bool| {
+        if collapsed {
+            return 0.0;
+        }
+        if count == 0 {
+            return 39.0;
+        }
+        if count > cap {
+            // Mirrors the list max-heights in tray.css (rows plus their gaps).
+            return cap as f64 * 39.0 * factor + if cap == 8 { 28.0 } else { 20.0 };
+        }
+        let row = (39.0 * factor).max(30.0 * factor + 8.0);
+        count as f64 * row + count.saturating_sub(1) as f64 * 4.0
+    };
+    let mut height = 143.0 + if now_playing { 41.0 } else { 0.0 };
+    height += list_height(favorites, 8, favorites_collapsed);
+    height += list_height(quick_launch, 6, quick_collapsed);
+    // Sub-pixel row rounding in WebView2 can add a pixel or two at compact
+    // scale; keep a small transparent margin so the footer never clips.
+    (width, height.ceil() + 3.0)
 }
 
-#[tauri::command]
-async fn tray_get_state(
-    state: tauri::State<'_, Arc<AppState>>,
-) -> Result<serde_json::Value, String> {
-    let tray = state
-        .tray
-        .lock()
-        .map_err(|_| "tray state unavailable".to_string())?;
-    Ok(json!({
-        "favorites": tray.favorites,
-        "quickLaunch": tray.quick_launch,
-        "nowPlaying": tray.now_playing,
-        "style": tray.style
-    }))
-}
-
-#[tauri::command]
-async fn tray_fit_content(window: tauri::WebviewWindow, height: f64) -> Result<(), String> {
-    let width = window
-        .inner_size()
-        .map_err(|error| error.to_string())?
-        .to_logical::<f64>(window.scale_factor().unwrap_or(1.0))
-        .width;
-    window
-        .set_size(LogicalSize::new(width, height.clamp(160.0, 680.0)))
-        .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-async fn tray_open_app(app: AppHandle) -> Result<(), String> {
-    if let Some(tray_window) = app.get_webview_window("tray") {
-        let _ = tray_window.hide();
-    }
-    if let Some(window) = app.get_webview_window("main") {
-        window.unminimize().map_err(|error| error.to_string())?;
-        window.show().map_err(|error| error.to_string())?;
-        window.set_focus().map_err(|error| error.to_string())?;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-async fn tray_dismiss(app: AppHandle) {
-    if let Some(window) = app.get_webview_window("tray") {
-        let _ = window.hide();
-    }
-}
-
-#[tauri::command]
-async fn tray_quit_app(app: AppHandle) {
-    app.exit(0);
-}
-
-#[tauri::command]
-async fn tray_launch_game(app: AppHandle, kind: String, id: String) -> Result<(), String> {
-    if !matches!(kind.as_str(), "favorite" | "quick") || id.is_empty() || id.len() > 64 {
-        return Err("invalid tray shortcut".to_string());
-    }
-    app.emit_to("main", "tray:launch", json!({ "kind": kind, "id": id }))
-        .map_err(|error| error.to_string())
-}
-
-fn show_tray_popup(app: &AppHandle, rect: tauri::Rect) {
+fn position_tray_window(app: &AppHandle, logical_width: f64, logical_height: f64) {
     let Some(window) = app.get_webview_window("tray") else {
         return;
     };
-    if window.is_visible().unwrap_or(false) {
-        let _ = window.hide();
-        return;
-    }
-
     let scale = window.scale_factor().unwrap_or(1.0);
-    let current_size = window.inner_size().ok();
-    let width = current_size
-        .map(|size| size.width as f64)
-        .unwrap_or(338.0 * scale);
-    let height = current_size
-        .map(|size| size.height as f64)
-        .unwrap_or(470.0 * scale);
-    let icon_position = rect.position.to_physical::<f64>(1.0);
-    let icon_size = rect.size.to_physical::<f64>(1.0);
-    let icon_x = icon_position.x;
-    let icon_y = icon_position.y;
-    let icon_width = icon_size.width;
-    let icon_height = icon_size.height;
+    let width = logical_width * scale;
+    let height = logical_height * scale;
+    let state = app.state::<Arc<AppState>>();
+    let anchor = state.tray_anchor.lock().ok().and_then(|anchor| *anchor);
+    let Some((icon_x, icon_y, icon_width, icon_height)) = anchor else {
+        return;
+    };
     let monitor = window
         .monitor_from_point(icon_x + icon_width / 2.0, icon_y + icon_height / 2.0)
         .ok()
@@ -1190,8 +1707,175 @@ fn show_tray_popup(app: &AppHandle, rect: tauri::Rect) {
     } else {
         (monitor_y + monitor_height - height).max(monitor_y)
     };
-
     let _ = window.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
+}
+
+#[tauri::command]
+async fn tray_get_state(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<serde_json::Value, String> {
+    let tray = state
+        .tray
+        .lock()
+        .map_err(|_| "tray state unavailable".to_string())?;
+    Ok(json!({
+        "favorites": tray.favorites,
+        "quickLaunch": tray.quick_launch,
+        "nowPlaying": tray.now_playing,
+        "style": tray.style
+    }))
+}
+
+#[tauri::command]
+async fn tray_set_collapsed(
+    app: AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+    favorites: bool,
+    quick: bool,
+) -> Result<(), String> {
+    if let Ok(mut collapsed) = state.tray_collapsed.lock() {
+        *collapsed = (favorites, quick);
+    }
+    let Some(window) = app.get_webview_window("tray") else {
+        return Ok(());
+    };
+    let (tray_scale, favorites_count, quick_count, now_playing) = state
+        .tray
+        .lock()
+        .map(|tray| {
+            (
+                tray.style.tray_scale.clone(),
+                tray.favorites.len(),
+                tray.quick_launch.len(),
+                tray.now_playing.is_some(),
+            )
+        })
+        .unwrap_or(("normal".to_string(), 0, 0, false));
+    let (width, height) = tray_window_dimensions(
+        &tray_scale,
+        favorites_count,
+        quick_count,
+        now_playing,
+        favorites,
+        quick,
+    );
+    window
+        .set_size(LogicalSize::new(width, height))
+        .map_err(|error| error.to_string())?;
+    if window.is_visible().unwrap_or(false) {
+        position_tray_window(&app, width, height);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn tray_fit_content(app: AppHandle, height: f64) -> Result<(), String> {
+    let window = app
+        .get_webview_window("tray")
+        .ok_or_else(|| "tray window unavailable".to_string())?;
+    // Once the popup is on screen the size is already authoritative. Resizing
+    // here would make the window visibly jump right after it opens.
+    if window.is_visible().unwrap_or(false) {
+        return Ok(());
+    }
+    let width = window
+        .inner_size()
+        .map_err(|error| error.to_string())?
+        .to_logical::<f64>(window.scale_factor().unwrap_or(1.0))
+        .width;
+    let height = height.clamp(120.0, 680.0);
+    window
+        .set_size(LogicalSize::new(width, height))
+        .map_err(|error| error.to_string())?;
+    // Resizing anchors top-left; keep the popup attached to the tray icon.
+    position_tray_window(&app, width, height);
+    Ok(())
+}
+
+#[tauri::command]
+async fn tray_open_app(app: AppHandle) -> Result<(), String> {
+    if let Some(tray_window) = app.get_webview_window("tray") {
+        let _ = tray_window.hide();
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        window.unminimize().map_err(|error| error.to_string())?;
+        ensure_window_on_screen(&window);
+        window.show().map_err(|error| error.to_string())?;
+        window.set_focus().map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn tray_dismiss(app: AppHandle) {
+    if let Some(window) = app.get_webview_window("tray") {
+        let _ = window.hide();
+    }
+}
+
+#[tauri::command]
+async fn tray_quit_app(app: AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        save_window_state(&window);
+    }
+    app.exit(0);
+}
+
+#[tauri::command]
+async fn tray_launch_game(app: AppHandle, kind: String, id: String) -> Result<(), String> {
+    if !matches!(kind.as_str(), "favorite" | "quick") || id.is_empty() || id.len() > 64 {
+        return Err("invalid tray shortcut".to_string());
+    }
+    app.emit_to("main", "tray:launch", json!({ "kind": kind, "id": id }))
+        .map_err(|error| error.to_string())
+}
+
+fn show_tray_popup(app: &AppHandle, rect: tauri::Rect) {
+    let Some(window) = app.get_webview_window("tray") else {
+        return;
+    };
+    if window.is_visible().unwrap_or(false) {
+        let _ = window.hide();
+        return;
+    }
+
+    let icon_position = rect.position.to_physical::<f64>(1.0);
+    let icon_size = rect.size.to_physical::<f64>(1.0);
+    let icon_x = icon_position.x;
+    let icon_y = icon_position.y;
+    let icon_width = icon_size.width;
+    let icon_height = icon_size.height;
+    let state = app.state::<Arc<AppState>>();
+    if let Ok(mut anchor) = state.tray_anchor.lock() {
+        *anchor = Some((icon_x, icon_y, icon_width, icon_height));
+    }
+    let (tray_scale, favorites_count, quick_count, now_playing) = state
+        .tray
+        .lock()
+        .map(|tray| {
+            (
+                tray.style.tray_scale.clone(),
+                tray.favorites.len(),
+                tray.quick_launch.len(),
+                tray.now_playing.is_some(),
+            )
+        })
+        .unwrap_or(("normal".to_string(), 0, 0, false));
+    let (favorites_collapsed, quick_collapsed) = state
+        .tray_collapsed
+        .lock()
+        .map(|collapsed| *collapsed)
+        .unwrap_or((false, false));
+    let (width, height) = tray_window_dimensions(
+        &tray_scale,
+        favorites_count,
+        quick_count,
+        now_playing,
+        favorites_collapsed,
+        quick_collapsed,
+    );
+    let _ = window.set_size(LogicalSize::new(width, height));
+    position_tray_window(app, width, height);
     let _ = window.show();
     let _ = window.set_focus();
     let _ = app.emit_to("tray", "tray:opened", ());
@@ -1231,6 +1915,20 @@ async fn roblox_api_status(
 #[tauri::command]
 async fn import_legacy_local_storage() -> Result<legacy_storage::LegacyStorageImport, String> {
     legacy_storage::import_legacy_local_storage()
+}
+
+#[tauri::command]
+async fn roblox_account(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<serde_json::Value, String> {
+    let cookie = state.roblox_cookie.lock().unwrap().clone();
+    if let Some(account) = friends::detect_authenticated_account(&*state, &cookie).await {
+        return Ok(json!({"ok": true, "account": account}));
+    }
+    if let Some(account) = friends::detect_local_roblox_account(&*state).await {
+        return Ok(json!({"ok": true, "account": account}));
+    }
+    Ok(json!({"ok": false, "account": null}))
 }
 
 #[tauri::command]
@@ -1520,6 +2218,36 @@ async fn discord_set_enabled(
 }
 
 #[tauri::command]
+async fn discord_set_client_id(
+    state: tauri::State<'_, Arc<AppState>>,
+    client_id: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let clean = client_id
+        .unwrap_or_default()
+        .chars()
+        .filter(|character| character.is_ascii_digit())
+        .take(22)
+        .collect::<String>();
+    let valid = clean.is_empty() || (clean.len() >= 15 && clean.len() <= 22);
+    let stored = if valid { clean } else { String::new() };
+    *state.discord_client_id.lock().unwrap() = stored;
+    let enabled = state
+        .discord
+        .lock()
+        .map(|discord| discord.enabled)
+        .unwrap_or(false);
+    let activity = state.discord.lock().ok().and_then(|discord| {
+        discord
+            .activity
+            .as_ref()
+            .map(|value| json!({"details": value.details, "state": value.state}))
+    });
+    // Wake the worker so a changed id triggers a new IPC handshake right away.
+    let _ = discord::send_activity(&*state, enabled, activity, false).await;
+    discord::public_status(&*state, enabled)
+}
+
+#[tauri::command]
 async fn discord_status(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<serde_json::Value, String> {
@@ -1587,6 +2315,14 @@ async fn updates_retry(
     run_update_check(app, state.inner().clone()).await
 }
 
+#[tauri::command]
+async fn updates_download(
+    app: AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    download_update_inner(app, state.inner().clone()).await
+}
+
 fn main() {
     let app_state = Arc::new(AppState::new());
 
@@ -1645,6 +2381,7 @@ fn main() {
                 .expect("the main window is declared in tauri.conf.json");
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_millis(400));
+                restore_window_geometry(&window);
                 let _ = window.show();
                 let _ = window.set_focus();
             });
@@ -1662,6 +2399,9 @@ fn main() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();
+                    if let Some(main) = window.app_handle().get_webview_window("main") {
+                        save_window_state(&main);
+                    }
                     let _ = window.hide();
                 }
             }
@@ -1674,6 +2414,7 @@ fn main() {
             shell_open_external,
             games_search,
             games_details,
+            games_online,
             games_similar,
             games_featured,
             games_discover,
@@ -1688,11 +2429,14 @@ fn main() {
             report_recent_games,
             tray_get_state,
             tray_fit_content,
+            tray_set_collapsed,
             tray_open_app,
             tray_dismiss,
             tray_quit_app,
             tray_launch_game,
             roblox_api_status,
+            roblox_runtime_status,
+            roblox_account,
             friends_detect_account,
             friends_list,
             friends_presence_status,
@@ -1703,10 +2447,13 @@ fn main() {
             announcements_open,
             notifications_friend_playing,
             discord_set_enabled,
+            discord_set_client_id,
             discord_status,
             discord_set_activity,
             updates_get_state,
             updates_retry,
+            updates_download,
+            updates_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

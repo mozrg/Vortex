@@ -149,7 +149,7 @@ body.light-theme .search-page-field { background: #fff; box-shadow: 0 12px 30px 
 .update-banner-copy small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
 .update-banner-progress { width: 120px; height: 4px; flex: 0 0 auto; overflow: hidden; border-radius: 4px; background: var(--line-strong); }
 .update-banner-progress i { display: block; width: var(--progress, 0%); height: 100%; border-radius: inherit; background: var(--accent-gradient); transition: width .25s ease; }
-.update-banner .ghost-button { min-height: 32px; white-space: nowrap; }
+.update-banner .ghost-button, .update-banner .primary-button { min-height: 32px; white-space: nowrap; }
 .update-settings-preview { display: flex; align-items: center; gap: 15px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(120deg, var(--accent-wash), color-mix(in srgb, var(--surface-2) 70%, transparent)); }
 .update-preview-art { position: relative; display: grid; width: 78px; height: 54px; flex: 0 0 auto; grid-template-columns: repeat(2, 1fr); gap: 5px; padding: 6px; border: 1px solid var(--accent-border); border-radius: 10px; background: color-mix(in srgb, var(--surface) 82%, transparent); }
 .update-preview-art i { border: 1px solid rgba(var(--accent-rgb),.34); border-radius: 5px; background: linear-gradient(145deg, var(--accent-wash), color-mix(in srgb, var(--surface-2) 55%, transparent)); animation: update-tile 1.25s ease-in-out infinite alternate; }
@@ -2022,3 +2022,383 @@ body.sidebar-compact .quick-launch-tools { display: none; }
 .detail-like-total { color: var(--muted) !important; font-size: 10px; font-weight: 500; }
 .detail-like-legend { gap: 10px; font-size: 9px; }
 .detail-like-legend span { color: var(--muted); }
+
+/* ==========================================================================
+   Unified app bar, glass, indicators and the 1.2 redesign fixes
+   ========================================================================== */
+:root { --window-titlebar-height: 58px; }
+
+.window-titlebar.app-bar {
+  height: var(--window-titlebar-height);
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 0 10px;
+  background: color-mix(in srgb, var(--surface) calc(100% - var(--glass-strength, .84) * 45%), transparent);
+  backdrop-filter: blur(calc(8px + var(--glass-strength, .84) * 26px)) saturate(140%);
+}
+.app-bar-brand { flex: 0 0 auto; height: 100%; gap: 10px; padding: 0 11px 0 2px; }
+.app-bar-logo { display: block; width: 28px; height: 30px; object-fit: contain; }
+.app-bar .window-app-caption { color: var(--text); font: 700 11px/1 var(--font-display); letter-spacing: .18em; }
+.app-bar .nav-history-controls { margin: 0 4px 0 0; }
+.app-bar .topbar-nav { gap: 2px; margin-right: 0; }
+.app-bar .topbar-nav-item { min-height: 36px; }
+.app-bar .topbar-nav-item::after { bottom: 0; }
+.app-bar .search-field { width: min(320px, 27vw); height: 36px; margin-left: auto; }
+.app-bar-actions { display: flex; align-items: center; gap: 6px; }
+.app-bar-actions .notification-button { width: 34px; height: 34px; }
+.app-bar .avatar-small { width: 34px; height: 34px; overflow: hidden; border-radius: 9px; }
+.avatar .avatar-letter { display: grid; width: 100%; height: 100%; place-items: center; }
+.avatar .avatar-photo { display: block; width: 100%; height: 100%; background-image: var(--avatar-image); background-position: center; background-size: cover; }
+.avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.app-bar .window-controls { margin-left: 2px; }
+.app-bar .window-control { width: 44px; }
+.app-bar button, .app-bar input, .app-bar label { -webkit-app-region: no-drag; }
+
+.main-area {
+  background: var(--bg);
+}
+.page-content { min-height: calc(100vh - var(--window-titlebar-height)); padding-top: 30px; }
+body .app-shell { height: calc(100vh - var(--window-titlebar-height)); }
+
+@media (max-width: 1180px) {
+  .app-bar .search-field { width: min(230px, 24vw); }
+  .app-bar .topbar-nav-label { display: none; }
+  .app-bar .topbar-nav-item { padding-inline: 9px; }
+}
+@media (max-width: 860px) {
+  .app-bar .search-field kbd { display: none; }
+  .app-bar .search-field { width: min(190px, 30vw); }
+  .app-bar-brand { padding-right: 4px; }
+}
+@media (max-width: 700px) {
+  .app-bar { gap: 2px; padding-left: 2px; }
+  .app-bar .window-app-caption, .app-bar .search-field { display: none; }
+  .app-bar-brand { padding: 0 4px; }
+  .app-bar .nav-history-controls { margin: 0; }
+  .app-bar .topbar-nav { display: none; }
+  .page-content { min-height: calc(100vh - var(--window-titlebar-height)); padding: 22px 16px 42px; }
+}
+
+/* Auto-hide sidebar: a narrow hover strip keeps it reachable while the rest of
+   the window gets the space back. */
+body.sidebar-auto-hide .sidebar {
+  position: absolute; z-index: 25; top: 0; bottom: 0; left: 0;
+  width: var(--sidebar-width);
+  transform: translateX(-100%);
+}
+body.sidebar-auto-hide .sidebar:hover,
+body.sidebar-auto-hide .sidebar:has(:focus-visible),
+body.sidebar-auto-hide .app-shell:has(.sidebar-hover-zone:hover) .sidebar { transform: translateX(0); }
+.sidebar-hover-zone { display: none; }
+body.sidebar-auto-hide .sidebar-hover-zone { position: absolute; z-index: 26; top: 0; bottom: 0; left: 0; display: block; width: 15px; }
+body.sidebar-auto-hide .main-area { width: 100%; }
+
+/* Settings tabs mirror the top bar, but the underline carries no accent while
+   a tab is selected: the accent appears only while hovering. */
+.settings-tab {
+  position: relative;
+  border-radius: 8px;
+  transition: background-color .14s ease, color .14s ease;
+}
+body .settings-tabs .settings-tab,
+body .settings-tabs .settings-tab.active {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+}
+body .settings-tabs .settings-tab:hover {
+  background: var(--surface-2);
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--text);
+}
+body .settings-tabs .settings-tab.active {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+}
+body .settings-tabs .settings-tab span,
+body .settings-tabs .settings-tab.active span { color: inherit; }
+body .settings-tabs .settings-tab::after {
+  content: ''; position: absolute; right: 10px; bottom: 1px; left: 10px; height: 2px;
+  border-radius: 2px; background: var(--accent); opacity: 0; transform: scaleX(.45);
+  pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease, background-color .16s ease;
+}
+body .settings-tabs .settings-tab.active::after {
+  opacity: 1; transform: scaleX(1);
+  background: var(--muted);
+}
+body .settings-tabs .settings-tab:hover::after,
+body .settings-tabs .settings-tab.active:hover::after {
+  opacity: 1; transform: scaleX(1); background: var(--accent);
+}
+
+/* Glass strength actually changes surfaces now: more glass = more transparency
+   and a stronger blur over the tinted app background. */
+.sidebar {
+  background: color-mix(in srgb, var(--surface) calc(100% - var(--glass-strength, .84) * 48%), transparent);
+  backdrop-filter: blur(calc(8px + var(--glass-strength, .84) * 28px)) saturate(135%);
+}
+.game-card, .settings-card, .settings-tabs, .friend-card, .detail-section, .detail-hero,
+.home-empty-state, .update-banner, .toast, .quick-game-dialog, .friend-preview {
+  background-color: color-mix(in srgb, var(--surface) calc(100% - var(--glass-strength, .84) * 42%), transparent);
+  background-image: linear-gradient(145deg, rgba(var(--accent-rgb), calc(var(--glass-strength, .84) * .09)), transparent 58%);
+  backdrop-filter: blur(calc(var(--glass-strength, .84) * 18px)) saturate(130%);
+}
+body.light-theme .game-card, body.light-theme .settings-card, body.light-theme .settings-tabs,
+body.light-theme .home-empty-state, body.light-theme .detail-section, body.light-theme .detail-hero {
+  background-color: color-mix(in srgb, var(--surface) calc(100% - var(--glass-strength, .84) * 42%), transparent);
+  background-image: linear-gradient(145deg, rgba(var(--accent-rgb), calc(var(--glass-strength, .84) * .07)), transparent 58%);
+}
+
+/* Hero banner: copy on the left, the game's real artwork filling the right half
+   instead of leaving it blank. */
+.hero-card {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  align-items: center;
+  min-height: 264px;
+  padding: 30px 34px;
+  gap: 28px;
+  background: var(--surface);
+}
+.hero-card::after { display: none; }
+.hero-media { position: absolute; z-index: 0; inset: 0 0 0 40%; overflow: hidden; pointer-events: none; }
+.hero-media img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.hero-media::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, var(--surface) 0%, color-mix(in srgb, var(--surface) 78%, transparent) 24%, transparent 68%); }
+.hero-media.is-fallback { display: grid; place-items: center; color: var(--accent-text); opacity: .72; background-image: url('./assets/vortex-logo.svg'), radial-gradient(circle at 68% 36%, rgba(var(--accent-rgb), .35), transparent 54%), linear-gradient(135deg, color-mix(in srgb, var(--surface-2) 80%, transparent), var(--surface)); background-repeat: no-repeat; background-position: 68% 54%, center, center; background-size: 230px, cover, cover; }
+.hero-scrim { z-index: 1; background: linear-gradient(90deg, var(--surface) 0 40%, color-mix(in srgb, var(--surface) 92%, transparent) 55%, transparent 100%); }
+.hero-avatar { z-index: 2; width: 168px; height: 168px; }
+.hero-avatar img { object-fit: contain; background: var(--surface-2); }
+.hero-copy { z-index: 2; max-width: 640px; }
+.home-view[data-home-layout="library"] .hero-card { min-height: 210px; }
+@media (max-width: 900px) {
+  .hero-card { grid-template-columns: 118px minmax(0, 1fr); min-height: 220px; padding: 22px; gap: 18px; }
+  .hero-avatar { width: 118px; height: 118px; }
+  .hero-media { inset: 0 0 0 48%; opacity: .55; }
+}
+@media (max-width: 640px) {
+  .hero-card { grid-template-columns: 1fr; min-height: 0; }
+  .hero-avatar { width: 84px; height: 84px; }
+  .hero-media { opacity: .35; }
+}
+
+/* Game covers: the chosen shape applies, and non-16:9 images are contained over
+   a blurred copy of themselves so nothing important is cropped away. */
+.game-card .game-cover { height: auto; aspect-ratio: var(--card-aspect, 16 / 9); }
+.game-cover-bg { display: none; }
+.game-cover .game-thumbnail { z-index: 1; object-fit: cover; }
+.game-cover .cover-shine { z-index: 2; }
+.game-cover .game-cover-action { z-index: 3; }
+.game-cover .favorite-button { z-index: 4; }
+.catalog-list-view .game-cover { aspect-ratio: auto; height: 100%; }
+.catalog-list-view .game-cover .game-thumbnail { object-fit: cover; }
+
+/* Compact custom color picker */
+.color-field { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 0; border-top: 1px solid var(--line); }
+.color-field-label { color: var(--muted); font-size: 12px; }
+.color-trigger { display: inline-flex; min-width: 128px; min-height: 36px; align-items: center; justify-content: flex-start; gap: 8px; padding: 4px 10px 4px 5px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-2); color: var(--text); cursor: pointer; }
+.color-trigger:hover { border-color: var(--accent-border); background: var(--surface-3); }
+.color-swatch { display: block; width: 24px; height: 24px; flex: 0 0 24px; border-radius: 6px; background: var(--sample-color, #9b7cff); box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+.color-trigger-code { margin-right: auto; color: var(--muted); font: 500 11px/1 ui-monospace, 'Cascadia Mono', monospace; letter-spacing: .03em; }
+.color-trigger-chevron { display: grid; color: var(--subtle); }
+.color-popover { position: fixed; z-index: 130; display: grid; width: 264px; gap: 10px; padding: 12px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); box-shadow: 0 22px 60px rgba(0,0,0,.48); }
+.color-popover[hidden] { display: none; }
+.color-popover-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.color-popover-head strong { font-size: 12px; font-weight: 600; }
+.color-popover-head .icon-button { width: 26px; height: 26px; }
+.color-sv { position: relative; height: 142px; overflow: hidden; border-radius: 9px; background: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, var(--pop-hue, hsl(270 100% 50%))); cursor: crosshair; }
+.color-sv-thumb { position: absolute; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.55); transform: translate(-50%, -50%); pointer-events: none; }
+.color-hue-row { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 9px; color: var(--muted); font-size: 10px; }
+.color-hue-row input { width: 100%; height: 12px; margin: 0; border-radius: 6px; background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); appearance: none; }
+.color-hue-row input::-webkit-slider-thumb { width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%; background: var(--text); appearance: none; cursor: pointer; }
+.color-popover-foot { display: grid; gap: 9px; }
+.color-hex-field { display: flex; align-items: center; gap: 4px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--subtle); font: 500 12px/1 ui-monospace, 'Cascadia Mono', monospace; }
+.color-hex-field input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; letter-spacing: .08em; }
+.color-presets { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; }
+.color-preset { width: 100%; aspect-ratio: 1; padding: 0; border: 1px solid rgba(255,255,255,.16); border-radius: 5px; background: var(--preset); cursor: pointer; }
+.color-preset:hover { transform: scale(1.1); }
+.quick-folder-color { display: grid; gap: 6px; }
+.quick-folder-color .color-trigger { width: 100%; justify-content: space-between; }
+.quick-folder-form { grid-template-columns: minmax(0, 1fr) minmax(128px, 150px); align-items: end; }
+.quick-folder-color .color-trigger { width: 100%; }
+
+/* Motion switch: dependent animation controls are visibly inactive but keep
+   their saved values. */
+.setting-line.is-disabled { opacity: .4; filter: grayscale(.6); pointer-events: none; }
+.setting-line.is-disabled .toggle { pointer-events: none; }
+
+/* Horizontal top-bar ordering chips in Settings → Interface */
+.ui-list-horizontal { display: flex; flex-wrap: wrap; gap: 6px; }
+.ui-list-horizontal .ui-row { width: auto; flex: 0 0 auto; gap: 6px; padding: 7px 8px; cursor: grab; }
+.ui-list-horizontal .ui-row-grip { display: none; }
+.ui-list-horizontal .ui-row-icon { width: 22px; height: 22px; border: 0; background: transparent; }
+.ui-list-horizontal .ui-row-copy { flex: 0 0 auto; }
+.ui-list-horizontal .ui-row-copy strong { font-size: 11px; white-space: nowrap; }
+.ui-list-horizontal .ui-row-copy small { display: none; }
+.ui-list-horizontal .ui-row-handle { width: 22px; height: 24px; }
+.ui-list-horizontal .ui-row-handle svg { width: 11px; height: 11px; }
+
+/* Discord setup instructions */
+.discord-guide { padding: 14px 16px; margin-bottom: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.discord-guide-head { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+.discord-guide-head strong { font-size: 12px; font-weight: 600; }
+.discord-guide-icon { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-wash); color: var(--accent-text); }
+.discord-steps { display: grid; gap: 6px; margin: 0; padding-left: 18px; color: var(--muted); font-size: 11.5px; line-height: 1.55; }
+.discord-steps li::marker { color: var(--accent-text); font-weight: 700; }
+.discord-id-field { display: inline-flex; align-items: center; gap: 7px; }
+.discord-id-field input { width: 210px; min-height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); color: var(--text); font: 500 12px ui-monospace, 'Cascadia Mono', monospace; }
+.discord-id-line .setting-label { max-width: 420px; }
+@media (max-width: 760px) { .discord-id-field { width: 100%; } .discord-id-field input { flex: 1; width: auto; } .discord-id-line { align-items: flex-start; flex-direction: column; } }
+
+/* Catalog recommendations */
+.recommendation-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.recommendation-head .result-note { margin: 0; }
+.recommendation-refresh { min-height: 34px; }
+
+/* Friends refresh */
+.friends-refresh { flex: 0 0 auto; }
+
+/* Game detail: editorial hero, live stat cards, refreshable online count. */
+.game-detail { display: grid; gap: 16px; max-width: 1180px; margin: 0 auto; }
+.detail-back { margin-bottom: 4px; }
+.detail-hero { position: relative; display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 26px; align-items: center; min-height: 252px; overflow: hidden; padding: 28px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
+.detail-hero-backdrop { position: absolute; z-index: 0; inset: -10%; background-image: var(--detail-art, none); background-size: cover; background-position: center; filter: blur(30px) saturate(1.25); opacity: .3; pointer-events: none; }
+.detail-hero::before { content: ''; position: absolute; z-index: 0; inset: 0; background: linear-gradient(90deg, var(--surface) 0%, color-mix(in srgb, var(--surface) 82%, transparent) 48%, transparent 100%); }
+.detail-hero > *:not(.detail-hero-backdrop) { position: relative; z-index: 1; }
+.detail-avatar { width: 176px; height: 176px; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface-2); }
+.detail-avatar img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.detail-hero-copy h1 { margin: 8px 0 7px; font: 600 clamp(26px, 3vw, 38px)/1.1 var(--font-display); letter-spacing: -.035em; }
+.detail-creator-line { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+.detail-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 18px; }
+.detail-playtime { display: inline-flex; align-items: center; gap: 5px; margin-left: 4px; color: var(--muted); font-size: 11px; }
+.detail-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.detail-stat { display: flex; min-height: 120px; flex-direction: column; justify-content: center; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.detail-stat-head { display: flex; min-height: 26px; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; }
+.detail-stat-head > span { display: inline-flex; align-items: center; gap: 6px; }
+.detail-stat > strong { display: block; margin-top: 7px; font: 600 27px/1 var(--font-display); letter-spacing: -.03em; }
+.detail-stat > small { display: block; margin-top: 5px; color: var(--subtle); font-size: 10px; }
+.detail-like-stat > strong { color: #78d6a6; }
+.detail-refresh { display: grid; width: 27px; height: 27px; flex: 0 0 27px; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2); color: var(--muted); cursor: pointer; }
+.detail-refresh:hover { border-color: var(--accent-border); color: var(--accent-text); }
+.detail-refresh.is-loading svg { animation: detail-spin .8s linear infinite; }
+@keyframes detail-spin { to { transform: rotate(360deg); } }
+.detail-columns { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(240px, 1fr); align-items: start; gap: 16px; }
+.detail-columns .detail-section { margin: 0; height: 100%; }
+.detail-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.detail-meta > div { padding: 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2); }
+.detail-like-stat { justify-content: flex-start; }
+.detail-like-bar { margin-top: 10px; }
+@media (max-width: 980px) {
+  .detail-hero { grid-template-columns: 132px minmax(0, 1fr); padding: 22px; gap: 18px; }
+  .detail-avatar { width: 132px; height: 132px; }
+  .detail-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .detail-columns { grid-template-columns: 1fr; }
+}
+@media (max-width: 620px) {
+  .detail-hero { grid-template-columns: 1fr; }
+  .detail-avatar { width: 104px; height: 104px; }
+  .detail-stats { grid-template-columns: 1fr 1fr; }
+}
+.detail-avatar-fallback { display: grid; width: 100%; height: 100%; place-items: center; background: linear-gradient(145deg, rgba(var(--accent-rgb), .18), var(--surface-2)); color: var(--accent-text); font: 700 64px/1 var(--font-display); }
+body.sidebar-auto-hide .app-shell::after { content: ''; position: absolute; z-index: 30; top: 50%; left: 0; width: 3px; height: 64px; transform: translateY(-50%); border-radius: 0 4px 4px 0; background: var(--accent); opacity: .55; pointer-events: none; }
+body.sidebar-auto-hide .sidebar { transition: transform .24s var(--animation-easing, cubic-bezier(.2,.72,.25,1)), opacity .2s ease; }
+
+/* Refinements pass: hint toggle, icon-only refresh, stronger glass */
+.discord-help-toggle { display: inline-flex; align-items: center; gap: 6px; margin: 8px 0 10px 2px; padding: 2px 0; border: 0; background: none; color: var(--accent-text); font: 500 11px/1.4 var(--font-ui); cursor: pointer; }
+.discord-help-toggle:hover { text-decoration: underline; }
+.discord-help-toggle svg { transition: transform .16s ease; }
+.discord-help-panel {
+  display: grid; grid-template-rows: 0fr; margin: 0; opacity: 0; transform: translateY(-7px);
+  transition: grid-template-rows .3s cubic-bezier(.2, .8, .2, 1), opacity .22s ease,
+    transform .24s cubic-bezier(.2, .8, .2, 1), margin .24s ease;
+}
+.discord-help-panel.is-open { grid-template-rows: 1fr; margin-bottom: 12px; opacity: 1; transform: translateY(0); }
+.discord-help-inner { min-height: 0; overflow: hidden; padding-left: 13px; border-left: 1px solid var(--accent-border); }
+.discord-help-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.icon-only-button { display: inline-grid; width: 36px; min-width: 36px; height: 36px; place-items: center; padding: 0; }
+.icon-only-button svg { width: 15px; height: 15px; }
+
+/* The library rail marks the active destination with a plain left stripe,
+   not an inset shadow that curls around the rounded button. */
+.sidebar .nav-item { position: relative; }
+.sidebar .nav-item.active { border-color: transparent; background: transparent; color: var(--text); box-shadow: none; }
+.sidebar .nav-item.active::before {
+  content: ''; position: absolute; left: 0; top: 7px; bottom: 7px; width: 2px;
+  border-radius: 2px; background: var(--accent); opacity: 1;
+}
+.sidebar .nav-item.active .nav-icon { color: var(--accent); }
+.game-live-stats { flex-wrap: wrap; row-gap: 3px; }
+.game-live-stats span { min-width: 0; }
+
+/* Top navigation matches the settings tabs: neutral underline on the active
+   tab, accent underline only while hovering. */
+.app-bar .topbar-nav-item.active {
+  border-color: transparent; background: var(--surface-2); color: var(--text); box-shadow: none;
+}
+.app-bar .topbar-nav-item.active .topbar-nav-icon { color: inherit; }
+.app-bar .topbar-nav-item.active::after { background: var(--muted); }
+.app-bar .topbar-nav-item:hover::after {
+  opacity: 1; transform: scaleX(1); background: var(--accent);
+}
+.app-bar .topbar-nav-item.active:hover::after { background: var(--accent); }
+
+/* Library menu uses the settings-tab language while expanded. */
+.sidebar .nav-item { position: relative; }
+.sidebar .nav-item::after {
+  content: ''; position: absolute; right: 10px; bottom: 1px; left: 10px; height: 2px;
+  border-radius: 2px; background: var(--accent); opacity: 0; transform: scaleX(.45);
+  pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease, background-color .16s ease;
+}
+.sidebar .nav-item.active {
+  border-color: transparent; background: var(--surface-2); box-shadow: none; color: var(--text);
+}
+.sidebar .nav-item.active::before { content: none; }
+.sidebar .nav-item.active::after {
+  opacity: 1; transform: scaleX(1); background: var(--muted);
+}
+.sidebar .nav-item:hover { background: var(--surface-2); color: var(--text); }
+.sidebar .nav-item:hover::after { opacity: 1; transform: scaleX(1); background: var(--accent); }
+.sidebar .nav-item.active .nav-icon { color: inherit; }
+
+/* Tab hotkey / auto-hide: the rail itself is neutral until the pointer reaches
+   the reveal strip, then it shows the accent. */
+body.sidebar-hidden .sidebar,
+body.sidebar-auto-hide:not(.sidebar-revealed) .sidebar {
+  position: absolute; z-index: 25; top: 0; bottom: 0; left: 0;
+  width: var(--sidebar-width);
+  transform: translateX(-100%);
+}
+body.sidebar-hidden .sidebar:has(:focus-visible),
+body.sidebar-hidden .app-shell:has(.sidebar-hover-zone:hover) .sidebar,
+body.sidebar-auto-hide:not(.sidebar-hidden) .sidebar:hover,
+body.sidebar-auto-hide:not(.sidebar-hidden) .sidebar:has(:focus-visible),
+body.sidebar-auto-hide:not(.sidebar-hidden) .app-shell:has(.sidebar-hover-zone:hover) .sidebar,
+body.sidebar-revealed .sidebar,
+body.sidebar-peek .sidebar { transform: translateX(0); }
+body.sidebar-hidden .sidebar-hover-zone,
+body.sidebar-auto-hide .sidebar-hover-zone {
+  position: absolute; z-index: 26; top: 0; bottom: 0; left: 0; display: block; width: 15px;
+}
+body.sidebar-hidden .main-area,
+body.sidebar-auto-hide .main-area { width: 100%; }
+body.sidebar-auto-hide .app-shell::after,
+body.sidebar-hidden .app-shell::after {
+  content: ''; position: absolute; z-index: 30; top: 50%; left: 0; width: 3px; height: 64px;
+  transform: translateY(-50%); border-radius: 0 4px 4px 0;
+  background: var(--muted); opacity: .38; pointer-events: none;
+  transition: background-color .16s ease, opacity .16s ease;
+}
+body.sidebar-auto-hide .app-shell:has(.sidebar-hover-zone:hover)::after,
+body.sidebar-hidden .app-shell:has(.sidebar-hover-zone:hover)::after {
+  background: var(--accent); opacity: .95;
+}
+
+/* Tray limits: a compact slider plus a "no limit" switch on one line. */
+.tray-limit-control { display: flex; min-width: 260px; flex: 0 0 auto; align-items: center; justify-content: flex-end; gap: 18px; flex-wrap: wrap; }
+.tray-limit-toggle { display: inline-flex; align-items: center; gap: 7px; }
+.tray-limit-toggle small { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.tray-limit-control input[type="range"]:disabled { opacity: .45; }

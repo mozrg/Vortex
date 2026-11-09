@@ -9,10 +9,10 @@
   --text: #f4f4f6;
   --muted: #8d909e;
   --subtle: #636776;
-  --accent: #64bedd;
-  --accent-rgb: 100,190,221;
-  --accent-secondary: #9bdae8;
-  --accent-secondary-rgb: 155,218,232;
+  --accent: #9b7cff;
+  --accent-rgb: 155,124,255;
+  --accent-secondary: #c274ec;
+  --accent-secondary-rgb: 194,116,236;
   --accent-fill: var(--accent);
   --accent-wash: rgba(var(--accent-rgb),.14);
   --accent-text: var(--accent);
@@ -77,3 +77,17 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tray-toast.is-visible { opacity: 1; transform: translateY(0); }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+
+/* Collapsible tray categories */
+.tray-section-heading { justify-content: flex-start; gap: 6px; }
+.tray-section-heading small { margin-left: auto; }
+.tray-collapse { display: grid; width: 18px; height: 18px; flex: 0 0 18px; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.tray-collapse:hover { background: var(--surface-2); color: var(--text); }
+.tray-collapse svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform 160ms ease; }
+.tray-collapse.is-collapsed svg { transform: rotate(-90deg); }
+.tray-list[hidden] { display: none; }
+
+/* Unlimited favorites / quick launch stay usable: the popup keeps a sane
+   height and the list scrolls instead of growing past the screen. */
+#tray-favorites { max-height: calc(8 * 39px * var(--tray-scale) + 28px); overflow-y: auto; scrollbar-width: thin; }
+#tray-quick-launch { max-height: calc(6 * 39px * var(--tray-scale) + 20px); overflow-y: auto; scrollbar-width: thin; }

@@ -16,18 +16,19 @@ const LEGACY_STARTER_GAMES_DISABLED = [
   { id: '9872472334', title: 'Evade', genre: 'Выживание', genreKey: 'survival', art: 'evade', iconKey: 'run', tag: 'ВЫЖИВАНИЕ', tagKey: 'survival', description: 'Держись рядом с командой и беги к выходу.', descriptionKey: 'evadeDescription', search: 'эвейд выживание escape team' }
 ];
 
+// Accent presets follow the public site palette: a violet family with a few
+// restrained supporting tones instead of the old rainbow set.
 const palettes = [
-  { key: 'sky', color: '#64bedd' },
-  { key: 'amethyst', color: '#9b7cff' },
-  { key: 'azure', color: '#59a9f2' },
-  { key: 'mint', color: '#55c7a4' },
-  { key: 'rose', color: '#ee79ad' },
-  { key: 'amber', color: '#e8a94d' },
-  { key: 'crimson', color: '#ef626f' },
-  { key: 'aqua', color: '#37c3cf' },
-  { key: 'lime', color: '#9bc95d' },
+  { key: 'violet', color: '#9b7cff' },
+  { key: 'lavender', color: '#b9a4ff' },
   { key: 'orchid', color: '#c274ec' },
-  { key: 'slate', color: '#8190a7' }
+  { key: 'iris', color: '#7b6cff' },
+  { key: 'periwinkle', color: '#8f9cff' },
+  { key: 'rose', color: '#e58bb6' },
+  { key: 'mint', color: '#75c9a8' },
+  { key: 'amber', color: '#e0b06a' },
+  { key: 'crimson', color: '#e37680' },
+  { key: 'slate', color: '#8d909e' }
 ];
 
 // Navigation order is user-configurable in Settings → Interface. Primary
@@ -76,7 +77,7 @@ function renderSidebarNav() {
 }
 
 const preferenceDefaults = {
-  accent: '#64bedd', accentMode: 'solid', accentSecondary: '#9bdae8', gradientAngle: 135,
+  accent: '#9b7cff', accentMode: 'solid', accentSecondary: '#c274ec', gradientAngle: 135,
   theme: 'dark', themeBackground: '', themeSurface: '',
   density: 'comfortable', corners: 'soft', showDescriptions: true, showStats: true,
   homeGreeting: '', customGames: [], homeFeaturedGame: '', homePicks: [], homeGameCount: 4, quickLaunchItems: [],
@@ -86,13 +87,15 @@ const preferenceDefaults = {
   uiBreadcrumb: true, uiNotifications: true, uiSidebarFoot: true, uiUpdateBanner: true,
   pageTransition: 'fade', cardAnimation: 'rise', animationEasing: 'smooth', animationDuration: 1, glow: 72, ambient: true, motion: true,
   contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home', trayScale: 'normal', robloxUsername: '', friendsNoticeAccepted: false,
+  robloxAccountId: '', robloxDisplayName: '', robloxAvatar: '',
   themeText: '', themeMuted: '', themeLine: '',
   themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeGrainStrength: 0.05, themeVignette: false, themeVignetteStrength: 1,
   cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true,
   homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal',
-  homeSectionTitles: {}, homeSectionScale: 1, catalogView: 'grid', catalogGenre: 'all', catalogAccess: 'all', cardAspect: 'auto', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern',
-  discordPresence: false, friendFavoriteAlerts: false,
+  homeSectionTitles: {}, homeSectionScale: 1, catalogView: 'grid', catalogGenre: 'all', catalogAccess: 'all', cardAspect: 'square', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern',
+  discordPresence: false, friendFavoriteAlerts: false, discordClientId: '',
   diskCache: true, lazyImages: true, onlineHistoryLimit: 'week', trayMiniPlayer: true,
+  trayFavoritesLimit: 5, trayQuickLimit: 3, trayFavoritesUnlimited: false, trayQuickUnlimited: false,
   catalogGroupByGenre: false,
   // Ids of announcements already seen; drives the unread dot on the bell.
   readAnnouncements: [], announcementsSeeded: false,
@@ -107,6 +110,7 @@ const HOTKEY_ACTIONS = [
   { id: 'palette', label: 'settings.hotkeys.palette', fallback: { code: 'KeyP', key: 'p', ctrl: true, shift: true } },
   { id: 'settings', label: 'settings.hotkeys.settings', fallback: { code: 'Comma', key: ',', ctrl: true, shift: false } },
   { id: 'friends', label: 'settings.hotkeys.friends', fallback: { code: 'KeyF', key: 'f', ctrl: true, shift: true } },
+  { id: 'sidebar', label: 'settings.hotkeys.sidebar', fallback: { code: 'Tab', key: 'Tab', ctrl: false, shift: false } },
   { id: 'back', label: 'settings.hotkeys.back', fallback: { code: 'Escape', key: 'Escape', ctrl: false, shift: false } }
 ];
 
@@ -114,6 +118,20 @@ function hotkeyCombo(id) {
   const custom = preferences.hotkeys?.[id];
   if (custom && (custom.code || custom.key)) return custom;
   return HOTKEY_ACTIONS.find((action) => action.id === id)?.fallback || null;
+}
+
+// Show/hide the left rail from the keyboard without touching the saved
+// auto-hide preference. The two body classes are runtime-only.
+function toggleSidebarVisibility() {
+  const body = document.body;
+  const sidebar = document.querySelector('.sidebar');
+  const matrix = sidebar ? new DOMMatrixReadOnly(getComputedStyle(sidebar).transform) : null;
+  const visuallyOpen = !body.classList.contains('sidebar-hidden')
+    && (body.classList.contains('sidebar-revealed') || !preferences.sidebarAutoHide || Math.abs(matrix?.m41 || 0) < 1);
+  body.classList.toggle('sidebar-hidden', visuallyOpen);
+  body.classList.toggle('sidebar-revealed', !visuallyOpen);
+  if (visuallyOpen) body.classList.remove('sidebar-peek');
+  if (visuallyOpen && document.activeElement?.closest?.('.sidebar')) document.activeElement.blur();
 }
 
 // Turn a physical key code into the label shown in settings.
@@ -277,6 +295,13 @@ const readStored = (key, fallback) => {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) : fallback; } catch { return fallback; }
 };
 const preferences = { ...preferenceDefaults, ...readStored('vortex.preferences', {}) };
+// Square covers are the new default. Migrate the old implicit "auto" once,
+// while keeping "auto" available if the user picks it again later.
+if (localStorage.getItem('vortex.cardAspectDefault') !== 'square') {
+  if (preferences.cardAspect === 'auto') preferences.cardAspect = 'square';
+  localStorage.setItem('vortex.cardAspectDefault', 'square');
+  localStorage.setItem('vortex.preferences', JSON.stringify(preferences));
+}
 window.preferences = preferences;
 let favorites = new Set(readStored('vortex.favorites', []));
 let recentGames = readStored('vortex.recent', []);
@@ -296,6 +321,9 @@ const PLAYTIME_SESSION_CAP_SECONDS = 3 * 60 * 60;
 const PLAYTIME_SESSION_KEY = 'vortex.playSession';
 let playSessionStart = null;
 let playSessionGameId = null;
+let playSessionSource = '';
+let runtimePollTimer = null;
+let runtimeResolvingPlace = '';
 // Snapshot of the game launched from Vortex: drives the tray mini-player, so it
 // works even when the title came from a friend's server rather than the catalog.
 let nowPlayingSnapshot = null;
@@ -320,6 +348,8 @@ let detailBadgesExpanded = true;
 let detailGalleryIndex = 0;
 let detailDescriptionExpanded = false;
 let detailGalleryCount = 0;
+let detailOnlineRefreshing = false;
+let detailOnlineUpdatedAt = 0;
 
 let searchQuery = '';
 let activeCategory = preferences.catalogGenre || 'all';
@@ -349,6 +379,110 @@ let discoverySessionId = readStored('vortex.discoverySessionId', '') || createSe
 let discoveryStatus = 'idle';
 let discoveryRequestId = 0;
 let catalogVisibleCount = CATALOG_PAGE_SIZE;
+
+// Catalog recommendations are a pseudo Discover sort built locally from the
+// games the user actually plays and keeps in favorites.
+const RECOMMENDED_SORT = { id: 'recommended', title: 'Рекомендации' };
+let recommendationState = { status: 'idle', items: [], signature: '', fetchedAt: 0, seeds: 0 };
+
+function catalogSorts() {
+  const base = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
+  if (base.some((sort) => sort.id === RECOMMENDED_SORT.id)) return base;
+  const list = [...base];
+  const after = list.findIndex((sort) => sort.id === 'top-revisited');
+  list.splice(after >= 0 ? after + 1 : list.length, 0, RECOMMENDED_SORT);
+  return list;
+}
+
+function recommendationSeeds() {
+  const weights = new Map();
+  const add = (id, weight) => {
+    const key = String(id || '');
+    if (!key || !getGame(key)) return;
+    weights.set(key, Math.max(Number(weights.get(key)) || 0, weight));
+  };
+  for (const id of favorites) add(id, 1000);
+  const played = Object.entries(playStats || {})
+    .sort((first, second) => Number(second[1]?.seconds || 0) - Number(first[1]?.seconds || 0))
+    .slice(0, 8);
+  played.forEach(([id, entry], index) => add(id, 500 - index * 20 + Math.min(400, Number(entry?.seconds || 0) / 60)));
+  recentGames.slice(0, 8).forEach((id, index) => add(id, 200 - index * 10));
+  return [...weights.entries()]
+    .sort((first, second) => second[1] - first[1])
+    .map(([id, weight]) => ({ game: getGame(id), weight }))
+    .filter((entry) => entry.game)
+    .slice(0, 6);
+}
+
+async function loadRecommendations(force = false) {
+  if (recommendationState.status === 'loading' && !force) return;
+  const seeds = recommendationSeeds();
+  const signature = seeds.slice(0, 4).map((entry) => entry.game.id).join(',');
+  if (!force && recommendationState.status === 'success' && recommendationState.signature === signature && Date.now() - recommendationState.fetchedAt < 10 * 60 * 1000) return;
+  if (!seeds.length) {
+    recommendationState = { status: 'empty', items: [], signature: '', fetchedAt: Date.now(), seeds: 0 };
+    if (currentView === 'catalog') renderPage();
+    return;
+  }
+  recommendationState = { ...recommendationState, status: 'loading', seeds: seeds.length };
+  if (currentView === 'catalog') renderPage();
+  try {
+    if (!window.vortexDesktop?.getSimilarGames) throw new Error('desktop only');
+    const lists = await Promise.all(seeds.slice(0, 4).map(({ game }) => window.vortexDesktop.getSimilarGames({
+      universeId: String(game.universeId || ''),
+      genre: String(game.genre || ''),
+      title: String(game.title || '')
+    }).catch(() => [])));
+    const genreWeight = new Map();
+    seeds.forEach(({ game, weight }) => {
+      const genre = String(game.genreKey || inferGenreKey(game));
+      if (!genre) return;
+      genreWeight.set(genre, (genreWeight.get(genre) || 0) + weight);
+    });
+    const seen = new Set([...favorites].map(String));
+    seeds.forEach(({ game }) => seen.add(String(game.id)));
+    const found = new Map();
+    for (const list of lists) {
+      for (const game of Array.isArray(list) ? list : []) {
+        const id = String(game?.id || '');
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const genre = String(game.genreKey || inferGenreKey(game));
+        game.recommendationScore = (genreWeight.get(genre) || 0) + Math.log10(Number(game.playerCount) + 10) * 24 + (Number(game.upVotes) || 0) / Math.max(1, Number(game.upVotes) + Number(game.downVotes)) * 30;
+        found.set(id, game);
+      }
+    }
+    let items = [...found.values()].sort((first, second) => second.recommendationScore - first.recommendationScore || Number(second.playerCount || 0) - Number(first.playerCount || 0)).slice(0, 36);
+    if (!items.length) {
+      // Last resort: use the already cached Discover catalog, still excluding
+      // games the user owns or has already seen in their lists.
+      const cached = Object.values(discoveryCatalog || {}).flatMap((entry) => Array.isArray(entry?.items) ? entry.items : []);
+      items = cached.filter((game) => !seen.has(String(game.id))).slice(0, 36);
+    }
+    // Recommendation cards must behave exactly like every other card: online
+    // count, open details, playtime. That needs live-shaped entries that the
+    // rest of the app can look up by id, so merge them into the discovery cache.
+    items = items.map((game) => ({ ...game, live: true, playerCount: Number(game.playerCount) || 0 }));
+    if (items.length) {
+      const index = new Map(dynamicGames.map((game) => [String(game.id), game]));
+      for (const game of items) {
+        index.set(String(game.id), { ...index.get(String(game.id)), ...game, id: String(game.id) });
+      }
+      dynamicGames = [...index.values()].slice(-1200);
+      try { localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames)); } catch { /* keep the in-memory list */ }
+    }
+    recommendationState = {
+      status: items.length ? 'success' : 'empty',
+      items,
+      signature,
+      fetchedAt: Date.now(),
+      seeds: seeds.length
+    };
+  } catch {
+    recommendationState = { status: 'error', items: [], signature, fetchedAt: Date.now(), seeds: seeds.length };
+  }
+  if (currentView === 'catalog') renderPage();
+}
 
 const pageContent = document.getElementById('page-content');
 const searchInput = document.getElementById('global-search');
@@ -413,18 +547,204 @@ function savePreferences() {
   reportRecentGamesToTray();
 }
 
+// Compact color field: the full picker lives in a popover that opens on click,
+// so the settings page stays dense and the picker itself matches the app.
 function renderColorTuner(name, color, label) {
-  const hsl = rgbToHsl(color);
-  const axes = [
-    ['hue', 'settings.colorHue', 0, 360],
-    ['saturation', 'settings.colorSaturation', 0, 100],
-    ['lightness', 'settings.colorLightness', 0, 100]
-  ];
-  return `<div class="color-tuner" data-color-tuner="${name}">
-    <div class="color-tuner-head"><strong>${label}</strong><label class="hex-field"><span class="color-preview" style="--sample-color:${color}"></span><input type="text" value="${color.toUpperCase()}" maxlength="7" spellcheck="false" data-color-hex="${name}" aria-label="${t('settings.colorCode')}" /></label></div>
-    <div class="color-tuner-controls">${axes.map(([axis, labelKey, min, max]) => `<label class="color-range"><span>${t(labelKey)}</span><input type="range" min="${min}" max="${max}" value="${hsl[axis]}" data-color-axis="${axis}" data-color-target="${name}" /><output data-color-value="${axis}" data-color-target="${name}">${hsl[axis]}${axis === 'hue' ? '°' : '%'}</output></label>`).join('')}</div>
+  return `<div class="color-field" data-color-field="${name}">
+    <span class="color-field-label">${label}</span>
+    <button class="color-trigger" type="button" data-color-open="${name}" data-color-current="${color}" aria-haspopup="dialog" aria-expanded="false" aria-label="${escapeHtml(label)}">
+      <span class="color-swatch" style="--sample-color:${color}"></span>
+      <span class="color-trigger-code" data-color-code="${name}">${color.toUpperCase()}</span>
+      <span class="color-trigger-chevron">${icon('chevronDown', 12)}</span>
+    </button>
   </div>`;
 }
+
+// ---------------------------------------------------------------------------
+// Color popover
+// The settings page used to show three sliders per color, which took a lot of
+// room. Every color is now a trigger; the picker opens on click and uses the
+// same design language as the rest of the launcher.
+// ---------------------------------------------------------------------------
+let colorPopoverEl = null;
+let colorPopoverState = { name: '', trigger: null, hue: 0, saturation: 0, value: 0, dragging: false, saveTimer: 0 };
+
+function colorValueForTarget(name) {
+  const trigger = document.querySelector(`[data-color-open="${name}"]`);
+  const current = trigger?.dataset.colorCurrent;
+  if (/^#[0-9a-f]{6}$/i.test(String(current || ''))) return String(current).toLowerCase();
+  const value = name === 'folderColor'
+    ? document.querySelector('[data-folder-color-value]')?.value
+    : preferences[name];
+  return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value).toLowerCase() : '#9b7cff';
+}
+
+function syncFolderColorTrigger() {
+  const inputValue = document.querySelector('[data-folder-color-value]')?.value;
+  const value = /^#[0-9a-f]{6}$/i.test(String(inputValue || '')) ? String(inputValue).toLowerCase() : '#9b7cff';
+  const trigger = document.querySelector('[data-color-open="folderColor"]');
+  if (!trigger) return;
+  trigger.dataset.colorCurrent = value;
+  trigger.querySelector('.color-swatch')?.style.setProperty('--sample-color', value);
+  trigger.querySelector('[data-color-code]')?.replaceChildren(value.toUpperCase());
+}
+
+function persistColorTarget(name, color) {
+  if (name === 'folderColor') {
+    const input = document.querySelector('[data-folder-color-value]');
+    if (input) input.value = color;
+    syncFolderColorTrigger();
+    return;
+  }
+  preferences[name] = color;
+  applyPreferences();
+  syncColorTuner(name, color);
+  if (name === 'accent') {
+    document.querySelectorAll('.palette-option').forEach((button) => button.classList.toggle('active', button.dataset.accent === color));
+    const code = document.querySelector('[data-color-code="accent"]');
+    if (code) code.textContent = color.toUpperCase();
+  }
+}
+
+function updateColorPopoverUI(apply = true) {
+  if (!colorPopoverEl) return;
+  const color = hsvToHex(colorPopoverState.hue, colorPopoverState.saturation, colorPopoverState.value);
+  const sv = colorPopoverEl.querySelector('[data-color-sv]');
+  if (sv) {
+    sv.style.setProperty('--pop-hue', `hsl(${colorPopoverState.hue} 100% 50%)`);
+    const thumb = sv.querySelector('[data-color-thumb]');
+    if (thumb) {
+      thumb.style.left = `${colorPopoverState.saturation}%`;
+      thumb.style.top = `${100 - colorPopoverState.value}%`;
+    }
+  }
+  const hue = colorPopoverEl.querySelector('[data-color-hue]');
+  if (hue) hue.value = colorPopoverState.hue;
+  const hex = colorPopoverEl.querySelector('[data-color-pop-hex]');
+  if (hex && document.activeElement !== hex) hex.value = color.slice(1).toUpperCase();
+  // Opening the picker must never commit the displayed fallback color: that
+  // silently turned a theme preset into a custom color before the user picked
+  // anything. Only pointer/hex/preset input applies a value.
+  if (!apply) return;
+  persistColorTarget(colorPopoverState.name, color);
+  // Keep the live value even while dragging, but write localStorage only after
+  // the pointer pauses so a drag does not spam the tray and disk.
+  window.clearTimeout(colorPopoverState.saveTimer);
+  colorPopoverState.saveTimer = window.setTimeout(() => {
+    if (colorPopoverState.name && colorPopoverState.name !== 'folderColor') savePreferences();
+  }, 140);
+}
+
+function createColorPopover() {
+  const el = document.createElement('div');
+  el.id = 'color-popover';
+  el.className = 'color-popover';
+  el.setAttribute('role', 'dialog');
+  el.hidden = true;
+  el.innerHTML = `<div class="color-popover-head"><strong data-color-title>${t('settings.customColor')}</strong><button class="icon-button" type="button" data-color-close aria-label="${t('common.close')}">${icon('close', 13)}</button></div>
+    <div class="color-sv" data-color-sv><span class="color-sv-thumb" data-color-thumb></span></div>
+    <label class="color-hue-row"><span>${t('settings.colorHue')}</span><input type="range" min="0" max="360" step="1" data-color-hue /></label>
+    <div class="color-popover-foot">
+      <label class="color-hex-field"><span>#</span><input type="text" maxlength="6" spellcheck="false" autocomplete="off" data-color-pop-hex /></label>
+      <div class="color-presets" role="group" aria-label="${t('settings.accent.title')}">${palettes.map((palette) => `<button type="button" class="color-preset" data-color-preset="${palette.color}" style="--preset:${palette.color}" title="${escapeHtml(t(`palette.${palette.key}`))}" aria-label="${escapeHtml(t(`palette.${palette.key}`))}"></button>`).join('')}</div>
+    </div>`;
+  document.body.appendChild(el);
+
+  const sv = el.querySelector('[data-color-sv]');
+  const pointColor = (event) => {
+    const box = sv.getBoundingClientRect();
+    colorPopoverState.saturation = Math.max(0, Math.min(100, Math.round((event.clientX - box.left) / Math.max(1, box.width) * 100)));
+    colorPopoverState.value = Math.max(0, Math.min(100, Math.round((1 - (event.clientY - box.top) / Math.max(1, box.height)) * 100)));
+    updateColorPopoverUI();
+  };
+  sv.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    colorPopoverState.dragging = true;
+    sv.setPointerCapture?.(event.pointerId);
+    pointColor(event);
+  });
+  sv.addEventListener('pointermove', (event) => { if (colorPopoverState.dragging) pointColor(event); });
+  const endDrag = () => { colorPopoverState.dragging = false; savePreferences(); };
+  sv.addEventListener('pointerup', endDrag);
+  sv.addEventListener('pointercancel', endDrag);
+
+  el.querySelector('[data-color-hue]').addEventListener('input', (event) => {
+    colorPopoverState.hue = Number(event.target.value) || 0;
+    updateColorPopoverUI();
+  });
+  const hexInput = el.querySelector('[data-color-pop-hex]');
+  hexInput.addEventListener('change', () => {
+    const raw = String(hexInput.value || '').replace(/[^0-9a-f]/gi, '');
+    if (raw.length !== 6) return;
+    const next = rgbToHsv(`#${raw.toLowerCase()}`);
+    colorPopoverState.hue = next.hue;
+    colorPopoverState.saturation = next.saturation;
+    colorPopoverState.value = next.value;
+    updateColorPopoverUI();
+    savePreferences();
+  });
+  el.querySelector('[data-color-close]').addEventListener('click', closeColorPopover);
+  el.addEventListener('click', (event) => {
+    const preset = event.target.closest('[data-color-preset]');
+    if (!preset) return;
+    const next = rgbToHsv(preset.dataset.colorPreset);
+    colorPopoverState.hue = next.hue;
+    colorPopoverState.saturation = next.saturation;
+    colorPopoverState.value = next.value;
+    updateColorPopoverUI();
+    savePreferences();
+  });
+  return el;
+}
+
+function closeColorPopover() {
+  if (!colorPopoverEl || colorPopoverEl.hidden) return;
+  colorPopoverEl.hidden = true;
+  colorPopoverState.trigger?.setAttribute('aria-expanded', 'false');
+  colorPopoverState.trigger = null;
+  colorPopoverState.dragging = false;
+}
+
+function openColorPopover(name, trigger) {
+  colorPopoverEl ||= createColorPopover();
+  colorPopoverState.name = name;
+  colorPopoverState.trigger = trigger;
+  const color = colorValueForTarget(name);
+  const hsv = rgbToHsv(color);
+  colorPopoverState.hue = hsv.hue;
+  colorPopoverState.saturation = hsv.saturation;
+  colorPopoverState.value = hsv.value;
+  const label = name === 'folderColor'
+    ? t('quick.folderColor')
+    : document.querySelector(`[data-color-field="${name}"] .color-field-label`)?.textContent || t('settings.customColor');
+  colorPopoverEl.querySelector('[data-color-title]').textContent = label;
+  trigger.setAttribute('aria-expanded', 'true');
+  colorPopoverEl.hidden = false;
+  updateColorPopoverUI(false);
+  const box = trigger.getBoundingClientRect();
+  const width = colorPopoverEl.offsetWidth || 264;
+  const height = colorPopoverEl.offsetHeight || 330;
+  const left = Math.max(8, Math.min(window.innerWidth - width - 8, box.left));
+  const below = box.bottom + 8;
+  const top = below + height <= window.innerHeight - 8 ? below : Math.max(8, box.top - height - 8);
+  colorPopoverEl.style.left = `${left}px`;
+  colorPopoverEl.style.top = `${top}px`;
+}
+
+document.addEventListener('pointerdown', (event) => {
+  if (!colorPopoverEl || colorPopoverEl.hidden) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target || colorPopoverEl.contains(target) || target.closest('[data-color-open]')) return;
+  closeColorPopover();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && colorPopoverEl && !colorPopoverEl.hidden) {
+    event.preventDefault();
+    closeColorPopover();
+  }
+});
+window.addEventListener('resize', closeColorPopover);
+document.addEventListener('scroll', closeColorPopover, true);
 
 function hexToRgba(hex, alpha) {
   const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''));
@@ -495,6 +815,43 @@ function quickLaunchId() {
   return globalThis.crypto?.randomUUID?.() || `quick-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// Topbar avatar: the local Roblox headshot once the account is known (cookie or
+// the local Roblox folder), otherwise the first letter / V fallback.
+function renderAccountAvatar() {
+  const host = document.querySelector('[data-account-avatar]');
+  if (!host) return;
+  const avatar = safeThumbnail(preferences.robloxAvatar);
+  const name = String(preferences.robloxDisplayName || preferences.robloxUsername || 'V').trim();
+  const initial = (name[0] || 'V').toLocaleUpperCase();
+  host.classList.toggle('has-image', Boolean(avatar));
+  host.innerHTML = avatar
+    ? `<span class="avatar-photo" style="--avatar-image:url('${escapeHtml(avatar)}')" aria-hidden="true"></span>`
+    : escapeHtml(initial);
+}
+
+function rememberRobloxAccount(account) {
+  if (!account) return false;
+  preferences.robloxAccountId = /^\d{1,20}$/.test(String(account.id || '')) ? String(account.id) : preferences.robloxAccountId;
+  preferences.robloxDisplayName = String(account.displayName || account.name || '').slice(0, 32);
+  const avatar = safeThumbnail(account.avatar);
+  if (avatar) preferences.robloxAvatar = avatar;
+  if (!preferences.robloxUsername && account.name) {
+    preferences.robloxUsername = String(account.name).slice(0, 20);
+    friendsCache = { at: 0, data: null };
+  }
+  savePreferences();
+  renderAccountAvatar();
+  return true;
+}
+
+async function refreshRobloxAccount() {
+  try {
+    const result = await window.vortexDesktop?.getRobloxAccount?.();
+    const account = result?.ok ? result.account : null;
+    if (account) rememberRobloxAccount(account);
+  } catch { /* avatar is decorative; keep the letter fallback */ }
+}
+
 function applyPreferences() {
   if (!['ru', 'en'].includes(preferences.language)) preferences.language = 'ru';
   if (!['home', 'accent', 'cards', 'effects', 'interface', 'general', 'integrations', 'data', 'version'].includes(preferences.settingsTab)) preferences.settingsTab = 'home';
@@ -562,11 +919,17 @@ function applyPreferences() {
   if (!['all', 'adventure', 'horror', 'roleplay', 'fashion', 'parkour', 'action', 'simulator', 'survival'].includes(preferences.catalogGenre)) preferences.catalogGenre = 'all';
   preferences.animationDuration = Math.max(0.5, Math.min(2, Number(preferences.animationDuration) || 1));
   if (!['smooth', 'spring', 'linear'].includes(preferences.animationEasing)) preferences.animationEasing = 'smooth';
-  if (!['auto', 'square', 'wide', 'portrait'].includes(preferences.cardAspect)) preferences.cardAspect = 'auto';
+  if (!['auto', 'square', 'wide', 'portrait'].includes(preferences.cardAspect)) preferences.cardAspect = 'square';
   preferences.glassStrength = Math.max(0, Math.min(100, Number(preferences.glassStrength) || 0));
+  preferences.trayFavoritesLimit = Math.max(1, Math.min(20, Number(preferences.trayFavoritesLimit) || 5));
+  preferences.trayQuickLimit = Math.max(1, Math.min(20, Number(preferences.trayQuickLimit) || 3));
   if (!['manual', 'system', 'clock'].includes(preferences.themeSchedule)) preferences.themeSchedule = 'manual';
   if (!['dark', 'light', 'oled'].includes(preferences.scheduleDay)) preferences.scheduleDay = 'dark';
   if (!['dark', 'light', 'oled'].includes(preferences.scheduleNight)) preferences.scheduleNight = 'oled';
+  preferences.discordClientId = /^\d{15,22}$/.test(String(preferences.discordClientId || '')) ? String(preferences.discordClientId) : '';
+  preferences.robloxAccountId = /^\d{1,20}$/.test(String(preferences.robloxAccountId || '')) ? String(preferences.robloxAccountId) : '';
+  preferences.robloxDisplayName = String(preferences.robloxDisplayName || '').slice(0, 32);
+  preferences.robloxAvatar = safeThumbnail(preferences.robloxAvatar);
   const clockHour = new Date().getHours();
   if (preferences.themeSchedule === 'system' && window.matchMedia) {
     preferences.theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
@@ -654,8 +1017,9 @@ function applyPreferences() {
   syncWallpaperLayer();
   root.setProperty('--card-size', preferences.cardSize);
   root.setProperty('--card-radius', preferences.cardRadius + 'px');
-  root.setProperty('--card-aspect', ({ auto: 'auto', square: '1 / 1', wide: '16 / 9', portrait: '4 / 5' }[preferences.cardAspect] || 'auto'));
+  root.setProperty('--card-aspect', ({ auto: '16 / 9', square: '1 / 1', wide: '16 / 9', portrait: '4 / 5' }[preferences.cardAspect] || '16 / 9'));
   root.setProperty('--glass-strength', String(preferences.glassStrength / 100));
+  document.body.dataset.coverFit = ['square', 'portrait'].includes(preferences.cardAspect) ? 'contain' : 'cover';
   root.setProperty('--animation-duration', String(preferences.animationDuration));
   root.setProperty('--animation-easing', ({ smooth: 'cubic-bezier(.22,1,.36,1)', spring: 'cubic-bezier(.16,1.2,.3,1)', linear: 'linear' }[preferences.animationEasing] || 'cubic-bezier(.22,1,.36,1)'));
   document.documentElement.style.setProperty('--glow-strength', String(Number(preferences.glow) / 100));
@@ -670,6 +1034,7 @@ function applyPreferences() {
   document.body.classList.toggle('font-classic', preferences.uiFont === 'classic');
   document.body.classList.toggle('sidebar-auto-hide', preferences.sidebarAutoHide === true);
   document.body.classList.toggle('no-motion', !preferences.motion);
+  document.body.classList.toggle('animations-off', !preferences.motion);
   document.body.classList.toggle('no-glow', !preferences.ambient);
   document.body.classList.toggle('high-contrast', preferences.contrast);
   document.body.dataset.cardAnimation = preferences.cardAnimation;
@@ -686,6 +1051,7 @@ function applyPreferences() {
   document.body.classList.toggle('ui-no-breadcrumb', !preferences.uiBreadcrumb);
   document.body.classList.toggle('ui-no-notifications', !preferences.uiNotifications);
   applyStaticTranslations();
+  renderAccountAvatar();
 }
 
 function applyStaticTranslations() {
@@ -777,6 +1143,7 @@ function openGameDetails(id) {
   const game = getGame(id)
     || genreResults.find((item) => String(item.id) === String(id))
     || searchResults.find((item) => String(item.id) === String(id))
+    || recommendationState.items.find((item) => String(item.id) === String(id))
     || paidGames.find((item) => String(item.id) === String(id));
   if (!game) return;
   const requestId = ++detailRequestId;
@@ -785,6 +1152,7 @@ function openGameDetails(id) {
   detailGalleryIndex = 0;
   detailDescriptionExpanded = false;
   detailGalleryCount = 0;
+  detailOnlineUpdatedAt = 0;
   detailGame = { ...game, upVotes: Number(game.upVotes) || 0, downVotes: Number(game.downVotes) || 0, playing: Number(game.playerCount) || 0, visits: Number(game.visits) || 0, favorites: Number(game.favorites) || 0 };
   detailStatus = 'loading';
   pushNavigationHistory('game-detail');
@@ -825,6 +1193,40 @@ async function loadSimilarGames(requestId = detailRequestId) {
     detailGame = { ...detailGame, ...patch };
     renderPage();
   } catch { /* similar games and release log are optional */ }
+}
+
+// Refresh just the live numbers of the open game: the rest of the page keeps
+// its scroll and its loaded media.
+async function refreshGameOnline() {
+  if (!detailGame || detailOnlineRefreshing) return;
+  detailOnlineRefreshing = true;
+  renderPage();
+  try {
+    const response = await window.vortexDesktop?.getGameOnline?.({
+      universeId: String(detailGame.universeId || ''),
+      placeId: String(detailGame.id || '')
+    });
+    if (response?.ok && currentView === 'game-detail') {
+      detailGame = {
+        ...detailGame,
+        playing: Number(response.playing) || 0,
+        visits: Number(response.visits) || detailGame.visits,
+        favorites: Number(response.favorites) || detailGame.favorites,
+        updated: response.updated || detailGame.updated,
+        upVotes: Number(response.upVotes) || detailGame.upVotes,
+        downVotes: Number(response.downVotes) || detailGame.downVotes
+      };
+      detailOnlineUpdatedAt = Date.now();
+      writeDetailCache(String(detailGame.universeId || detailGame.id), detailGame);
+    } else if (response && !response.ok) {
+      showToast(t('game.onlineRefreshError'));
+    }
+  } catch {
+    showToast(t('game.onlineRefreshError'));
+  } finally {
+    detailOnlineRefreshing = false;
+    if (currentView === 'game-detail') renderPage();
+  }
 }
 
 function renderGameDetail() {
@@ -868,14 +1270,30 @@ function renderGameDetail() {
     ? `<section class="detail-section"><h2>${t('game.releaseHistory')}</h2><div class="release-history">${game.releaseHistory.slice(0, 8).map((entry) => `<div class="release-row"><span class="release-dot"></span><span><strong>${escapeHtml(new Date(entry.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: 'long', year: 'numeric' }))}</strong><small>${t('game.releaseSeen')}</small></span></div>`).join('')}</div><p class="catalog-disclaimer">${t('game.releaseHistoryHint')}</p></section>`
     : '';
   const similar = '';
+  const heroArt = thumbnail || safeThumbnail(screenshots[0]?.url);
+  const onlineUpdated = detailOnlineUpdatedAt
+    ? new Date(detailOnlineUpdatedAt).toLocaleTimeString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { hour: '2-digit', minute: '2-digit' })
+    : '';
+  const refreshOnline = `<button class="icon-button detail-refresh ${detailOnlineRefreshing ? 'is-loading' : ''}" type="button" data-action="refresh-online" ${detailOnlineRefreshing ? 'disabled' : ''} aria-label="${t('game.refreshOnline')}" title="${t('game.refreshOnline')}">${icon('refreshCw', 14)}</button>`;
+  const stats = `<section class="detail-stats">
+    <div class="detail-stat detail-stat-online"><div class="detail-stat-head"><span>${icon('users', 13)} ${t('game.online')}</span>${refreshOnline}</div><strong>${formatCount(game.playing ?? game.playerCount)}</strong><small>${onlineUpdated ? t('game.onlineUpdated', { time: onlineUpdated }) : t('game.onlineHint')}</small></div>
+    <div class="detail-stat detail-like-stat"><div class="detail-stat-head"><span>${t('game.likeRatio')}</span><span class="detail-like-total">${t('game.votesTotal')} · ${formatCount(likesTotal)}</span></div><strong>${likePercent === null ? '—' : `${likePercent}%`}</strong>${voteBar}</div>
+    <div class="detail-stat"><div class="detail-stat-head"><span>${icon('eye', 13)} ${t('game.visits')}</span></div><strong>${formatCount(game.visits)}</strong><small>${t('game.visitsHint')}</small></div>
+    <div class="detail-stat"><div class="detail-stat-head"><span>${icon('heart', 13)} ${t('game.favorites')}</span></div><strong>${formatCount(game.favorites)}</strong><small>${t('game.favoritesHint')}</small></div>
+  </section>`;
   return `<button class="detail-back icon-button" data-action="detail-back" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)}</button>
     <article class="game-detail">
-      <header class="detail-hero"><div class="detail-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(game.title)}" />` : ''}</div><div class="detail-hero-copy"><div class="eyebrow">${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p class="detail-creator-line">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge" title="${t('game.verifiedCreator')}" aria-label="${t('game.verifiedCreator')}">${icon('check', 11)}</span>` : ''}</p>${badgeRow}<div class="detail-actions">${canPlay ? `<button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button>` : `<button class="primary-button" disabled>${icon('close', 14)} ${t('game.notAvailable')}</button>`}<button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button></div></div></header>
+      <header class="detail-hero"${heroArt ? ` style="--detail-art:url('${escapeHtml(heroArt)}')"` : ''}>
+        <span class="detail-hero-backdrop" aria-hidden="true"></span>
+        <div class="detail-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(game.title)}" />` : `<span class="detail-avatar-fallback">${escapeHtml((game.title || 'R')[0].toLocaleUpperCase())}</span>`}</div><div class="detail-hero-copy"><div class="eyebrow">${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p class="detail-creator-line">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge" title="${t('game.verifiedCreator')}" aria-label="${t('game.verifiedCreator')}">${icon('check', 11)}</span>` : ''}</p>${badgeRow}<div class="detail-actions">${canPlay ? `<button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button>` : `<button class="primary-button" disabled>${icon('close', 14)} ${t('game.notAvailable')}</button>`}<button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button><span class="detail-playtime">${icon('clock', 13)} ${playtime}</span></div></div>
+      </header>
       ${detailStatus === 'loading' ? `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('game.loadingDetails')}</strong></div>` : ''}
       ${detailStatus === 'error' ? `<p class="catalog-disclaimer">${t('game.detailsUnavailable')}</p>` : ''}
-      <section class="detail-stats"><div><strong>${formatCount(game.playing ?? game.playerCount)}</strong><span>${t('game.online')}</span></div><div class="detail-like-stat"><strong>${likePercent === null ? '—' : `${likePercent}%`}</strong><span class="detail-like-total">${t('game.votesTotal')} · ${formatCount(likesTotal)}</span>${voteBar}</div><div><strong>${formatCount(game.visits)}</strong><span>${t('game.visits')}</span></div><div><strong>${formatCount(game.favorites)}</strong><span>${t('game.favorites')}</span></div></section>
-      <section class="detail-section"><h2>${t('game.description')}</h2><p class="detail-description ${detailDescriptionExpanded ? 'expanded' : 'collapsed'}">${escapeHtml(description)}</p>${description.length > 420 ? `<button class="ghost-button detail-description-toggle" data-action="toggle-detail-description">${t(detailDescriptionExpanded ? 'card.readLess' : 'card.readMore')}</button>` : ''}</section>
-      <section class="detail-section detail-meta"><div><span>${t('game.author')}</span><strong class="meta-creator">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge small" title="${t('game.verifiedCreator')}">${icon('check', 10)}</span>` : ''}</strong></div><div><span>${t('game.genre')}</span><strong>${escapeHtml(game.genre || t('genre.other'))}</strong></div><div><span>${t('game.access')}</span><strong>${isUnavailable ? t('game.notAvailable') : Number(game.price) > 0 ? t('game.paid', { price: priceLabel }) : t('game.free')}</strong></div><div><span>${t('game.updated')}</span><strong>${game.updated ? escapeHtml(new Date(game.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU')) : '—'}</strong></div></section>
+      ${stats}
+      <div class="detail-columns">
+        <section class="detail-section detail-about"><h2>${t('game.description')}</h2><p class="detail-description ${detailDescriptionExpanded ? 'expanded' : 'collapsed'}">${escapeHtml(description)}</p>${description.length > 420 ? `<button class="ghost-button detail-description-toggle" data-action="toggle-detail-description">${t(detailDescriptionExpanded ? 'card.readLess' : 'card.readMore')}</button>` : ''}</section>
+        <section class="detail-section detail-meta"><div><span>${t('game.author')}</span><strong class="meta-creator">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge small" title="${t('game.verifiedCreator')}">${icon('check', 10)}</span>` : ''}</strong></div><div><span>${t('game.genre')}</span><strong>${escapeHtml(game.genre || t('genre.other'))}</strong></div><div><span>${t('game.access')}</span><strong>${isUnavailable ? t('game.notAvailable') : Number(game.price) > 0 ? t('game.paid', { price: priceLabel }) : t('game.free')}</strong></div><div><span>${t('game.updated')}</span><strong>${game.updated ? escapeHtml(new Date(game.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU')) : '—'}</strong></div></section>
+      </div>
       ${gallery}${badges}${social}${releaseHistory}${similar}
     </article>`;
 }
@@ -1019,6 +1437,7 @@ function renderHome() {
       const art = safeThumbnail(featured.thumbnail);
       const artVar = art ? ` style="--hero-art:url('${escapeHtml(art)}')"` : '';
       return `<section class="hero-card home-widget" data-home-widget="hero"${artVar}>
+      ${art ? `<span class="hero-media" aria-hidden="true"><img src="${escapeHtml(art)}" alt="" /></span>` : `<span class="hero-media is-fallback" aria-hidden="true">${icon('sparkle', 46)}</span>`}
       <span class="hero-scrim" aria-hidden="true"></span>
       <span class="hero-avatar" aria-hidden="true">${art ? `<img src="${escapeHtml(art)}" alt="" />` : `<span class="hero-avatar-fallback">${escapeHtml((featured.title || 'R')[0].toLocaleUpperCase())}</span>`}</span>
       <div class="hero-copy"><span class="hero-kicker">${t('hero.kicker')}</span><h2>${escapeHtml(featured.title)}</h2><p>${escapeHtml(featured.description || t('hero.body'))}</p>
@@ -1199,6 +1618,9 @@ async function fetchGenreGames(append = false) {
 
 function filterGames() {
   const query = searchQuery.trim().toLocaleLowerCase(preferences.language);
+  if (!query && activeDiscoverySort === RECOMMENDED_SORT.id && activeAccess !== 'paid') {
+    return recommendationState.items.filter((game) => activeCategory === 'all' || game.genreKey === activeCategory);
+  }
   if (isGenreSearchActive()) {
     // Results were fetched from Roblox using the selected genre query.
     // Do not re-filter by our local genre classifier; that used to hide most
@@ -1333,8 +1755,9 @@ function submitSearchPage(value) {
 function renderCatalog() {
   // Entering the paid view kicks off the first scan (guarded by status).
   if (activeAccess === 'paid' && paidStatus === 'idle') window.setTimeout(() => loadPaidGames(), 0);
+  if (activeAccess !== 'paid' && activeDiscoverySort === RECOMMENDED_SORT.id && recommendationState.status === 'idle') window.setTimeout(() => loadRecommendations(), 0);
   const list = filterGames();
-  const availableSorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
+  const availableSorts = catalogSorts();
   const selectedSort = availableSorts.find((sort) => sort.id === activeDiscoverySort) || availableSorts[0];
   const queryLabel = searchQuery ? t('search.queryLabel', { query: escapeHtml(searchQuery) }) : t('page.catalog.description');
   const isLiveSearch = searchQuery.length >= 2;
@@ -1370,6 +1793,18 @@ function renderCatalog() {
           : `<button class="ghost-button load-more-button" data-action="paid-more">${t('catalog.loadMore')} ${icon('arrow', 13)}</button>`;
       resultsBody = `<p class="result-note">${t('catalog.shown', { shown: String(visible.length), total: String(paidGames.length) })}</p>${renderGrid(visible, t('empty.noResults'), t('empty.filterHint'))}${loadMore}`;
     }
+  } else if (!searchQuery && activeDiscoverySort === RECOMMENDED_SORT.id) {
+    if (recommendationState.status === 'loading' || recommendationState.status === 'idle') {
+      resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.recommendedLoading')}</strong><small>${t('catalog.recommendedLoadingNote')}</small></div>`;
+    } else if (recommendationState.status === 'empty') {
+      resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('sparkle', 20)}</div><h2>${t('catalog.recommendedEmptyTitle')}</h2><p>${t('catalog.recommendedEmptyBody')}</p><button class="ghost-button" data-nav="catalog">${t('catalog.recommendedOpenCatalog')}</button></div>`;
+    } else if (recommendationState.status === 'error') {
+      resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('refreshCw', 20)}</div><h2>${t('catalog.recommendedEmptyTitle')}</h2><p>${t('catalog.recommendedEmptyBody')}</p><button class="ghost-button" data-action="refresh-recommendations">${icon('refreshCw', 13)} ${t('catalog.recommendedRefresh')}</button></div>`;
+    } else {
+      const note = `<p class="result-note">${t('catalog.recommendedNote', { count: String(list.length), seeds: String(recommendationState.seeds) })}</p>`;
+      const refresh = `<button class="ghost-button recommendation-refresh" data-action="refresh-recommendations">${icon('refreshCw', 13)} ${t('catalog.recommendedRefresh')}</button>`;
+      resultsBody = `<div class="recommendation-head">${note}${refresh}</div>${renderGrid(list, t('catalog.recommendedEmptyTitle'), t('catalog.recommendedEmptyBody'))}`;
+    }
   } else if (isGenreSearchActive()) {
     if (genreStatus === 'loading') {
       resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.loading')}</strong><small>${t('catalog.loadingNote')}</small></div>`;
@@ -1382,7 +1817,7 @@ function renderCatalog() {
     }
   } else if (!searchQuery && (discoveryStatus === 'loading' || discoveryStatus === 'loading-more')) {
     if (discoveryStatus === 'loading-more' && list.length) {
-      const sortsForMore = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
+      const sortsForMore = catalogSorts();
       const hasNextSort = sortsForMore.length > 1;
       const loadMore = hasNextSort ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : '';
       resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list.slice(0, catalogVisibleCount), t('empty.noResults'), t('empty.filterHint'))}${loadMore}`;
@@ -1392,7 +1827,7 @@ function renderCatalog() {
   } else {
     const cachedItems = discoveryCatalog[activeDiscoverySort]?.items || [];
     const offlineNote = discoveryStatus === 'error' ? `<p class="catalog-disclaimer"><strong>${t('catalog.errorTitle')}</strong> ${t('catalog.errorBody')}</p>` : '';
-    const sortsForMore = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
+    const sortsForMore = catalogSorts();
     const hasNextSort = sortsForMore.length > 1;
     const loadMore = `<button class="ghost-button load-more-button" data-action="load-more">${t('catalog.loadMore')} ${icon('arrow', 13)}</button>`;
     const note = cachedItems.length ? `<p class="result-note">${formatResultCount(list.length)} · ${escapeHtml(discoverySortLabel(selectedSort))}</p>` : '';
@@ -1494,6 +1929,7 @@ async function autoDetectRobloxAccountOnce() {
   try {
     const result = await window.vortexDesktop?.detectRobloxAccount();
     if (result && result.ok && result.account && result.account.name) {
+      rememberRobloxAccount(result.account);
       preferences.robloxUsername = result.account.name;
       friendsCache = { at: 0, data: null };
       savePreferences();
@@ -1508,15 +1944,17 @@ async function autoDetectRobloxAccountOnce() {
 // hover (avatar, game, join) in a floating preview panel.
 function renderFriends() {
   const username = String(preferences.robloxUsername || '').trim();
+  const refreshAction = `<button class="ghost-button icon-only-button friends-refresh" data-action="refresh-friends" ${friendsLoading ? 'disabled' : ''} aria-label="${t('friends.refresh')}" title="${t('friends.refresh')}">${icon('refreshCw', 15)}</button>`;
+  const heading = pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'), refreshAction);
   if (!username) {
     autoDetectRobloxAccountOnce();
-    return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
+    return `${heading}
       <section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${t('friends.setup.title')}</h2><p>${t('friends.setup.body')}</p><button class="primary-button" data-detect-username-home>${icon('users')} ${t('friends.detect')}</button> <button class="ghost-button" data-nav="settings">${icon('sliders')} ${t('friends.setup.action')}</button></div></section>`;
   }
   if (!friendsCache.data || Date.now() - friendsCache.at > FRIENDS_TTL) {
     loadFriends(username);
     if (!friendsCache.data) {
-      return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
+      return `${heading}
         <section class="section-block"><div class="friends-loading">${icon('users', 18)}<p>${t('friends.loading')}</p></div></section>`;
     }
   }
@@ -1525,7 +1963,7 @@ function renderFriends() {
     const isNetworkError = ['network', 'auth-required'].includes(data.error);
     const errorTitle = isNetworkError ? t('friends.networkTitle') : t('friends.notFound.title');
     const errorBody = isNetworkError ? t('friends.networkBody') : t('friends.notFound.body');
-    return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
+    return `${heading}
       <section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${errorTitle}</h2><p>${errorBody}</p><button class="ghost-button" data-action="refresh-friends-drawer">${icon('refreshCw', 13)} ${t('friends.refresh')}</button></div></section>`;
   }
   const friends = data.friends || [];
@@ -1544,7 +1982,7 @@ function renderFriends() {
   };
   const section = (titleKey, list) => !list.length ? '' : `<p class="friends-group-title">${t(titleKey)} · ${list.length}</p>
     <div class="friends-grid">${list.map(card).join('')}</div>`;
-  return `${pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'))}
+  return `${heading}
     <section class="section-block">
       ${presenceNote}
       ${section('friends.groupPlaying', playing)}
@@ -2233,7 +2671,6 @@ function renderAccentSettings() {
        <div class="setting-line"><div class="setting-label"><strong>${t('settings.theme.schedule')}</strong><small>${t('settings.theme.scheduleHint')}</small></div><div class="segmented">${[['manual',t('settings.theme.scheduleManual')],['system',t('settings.theme.scheduleSystem')],['clock',t('settings.theme.scheduleClock')]].map(([v,l])=>`<button class="segment ${preferences.themeSchedule===v?'active':''}" data-pref="themeSchedule" data-value="${v}">${l}</button>`).join('')}</div></div>
        <div class="theme-io"><button class="ghost-button" data-action="export-theme">${t('settings.themeExport')}</button><button class="ghost-button" data-action="import-theme">${t('settings.themeImport')}</button><input type="file" accept=".json,application/json" data-theme-file hidden /></div>
       <button class="text-button theme-reset" data-action="reset-theme-colors">${t('settings.themeReset')}</button>
-      <div class="settings-preview" style="margin-top:17px"><div class="preview-thumb"></div><div class="preview-copy"><strong>${t('settings.preview.title')}</strong><small>${t('settings.preview.body')}</small></div></div>
     </section>` + renderWallpaperCard();
 }
 
@@ -2294,7 +2731,6 @@ function refreshCardPreview() {
   const cover = card.querySelector('.game-cover');
   if (cover) {
     const radius = preferences.customCardRadius ? preferences.cardRadius : 12;
-    cover.style.height = `${Math.round(110 * preferences.cardSize)}px`;
     cover.style.borderRadius = `calc(${radius}px - 3px) calc(${radius}px - 3px) 0 0`;
   }
   card.querySelector('.game-live-stats')?.toggleAttribute('hidden', !preferences.cardShowLikes);
@@ -2523,22 +2959,25 @@ document.addEventListener('scroll', hideHoverPreview, true);
 window.addEventListener('resize', () => activePreviewTarget?.isConnected ? showHoverPreview(activePreviewTarget) : hideHoverPreview());
 
 function renderEffectSettings() {
+  const motionOff = !preferences.motion;
+  const motionAttrs = motionOff ? ' is-disabled" inert aria-disabled="true"' : '"';
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.effects.title')}</h2><p>${t('settings.effects.body')}</p></div>${icon('wand', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.glow.title')}</strong><small>${t('settings.glow.body')}</small></div><label class="range-control"><input type="range" min="0" max="100" value="${preferences.glow}" data-setting="glow" data-preview="glow:${preferences.glow}" data-preview-label="${escapeHtml(t('settings.glow.title'))}" /><span class="range-value" id="glow-value">${preferences.glow}%</span></label></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.ambient.title')}</strong><small>${t('settings.ambient.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.ambient}" data-toggle="ambient" data-preview="uiPart:ambient:${preferences.ambient ? 'off' : 'on'}" data-preview-label="${escapeHtml(t('settings.ambient.title'))}" aria-label="${t('settings.ambient.title')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.motion.title')}</strong><small>${t('settings.motion.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.motion}" data-toggle="motion" data-preview="motion:${preferences.motion ? 'off' : 'on'}" data-preview-label="${escapeHtml(t('settings.motion.title'))}" aria-label="${t('settings.motion.title')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.transitionStyle')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('pageTransition', 'fade', t('settings.transition.fade'), preferences.pageTransition === 'fade')}${renderAnimationOption('pageTransition', 'slide', t('settings.transition.slide'), preferences.pageTransition === 'slide')}${renderAnimationOption('pageTransition', 'zoom', t('settings.transition.zoom'), preferences.pageTransition === 'zoom')}${renderAnimationOption('pageTransition', 'none', t('settings.transition.none'), preferences.pageTransition === 'none')}</div></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardAnimation')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('cardAnimation', 'rise', t('settings.cards.rise'), preferences.cardAnimation === 'rise')}${renderAnimationOption('cardAnimation', 'fade', t('settings.cards.fade'), preferences.cardAnimation === 'fade')}${renderAnimationOption('cardAnimation', 'pop', t('settings.cards.pop'), preferences.cardAnimation === 'pop')}${renderAnimationOption('cardAnimation', 'none', t('settings.cards.none'), preferences.cardAnimation === 'none')}</div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.motion.title')}</strong><small>${t('settings.motion.body')}${motionOff ? ` · ${t('settings.motion.disabledHint')}` : ''}</small></div><button class="toggle" role="switch" aria-checked="${preferences.motion}" data-toggle="motion" data-preview="motion:${preferences.motion ? 'off' : 'on'}" data-preview-label="${escapeHtml(t('settings.motion.title'))}" aria-label="${t('settings.motion.title')}"></button></div>
+      <div class="setting-line${motionAttrs}><div class="setting-label"><strong>${t('settings.transitionStyle')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('pageTransition', 'fade', t('settings.transition.fade'), preferences.pageTransition === 'fade')}${renderAnimationOption('pageTransition', 'slide', t('settings.transition.slide'), preferences.pageTransition === 'slide')}${renderAnimationOption('pageTransition', 'zoom', t('settings.transition.zoom'), preferences.pageTransition === 'zoom')}${renderAnimationOption('pageTransition', 'none', t('settings.transition.none'), preferences.pageTransition === 'none')}</div></div>
+      <div class="setting-line${motionAttrs}><div class="setting-label"><strong>${t('settings.cardAnimation')}</strong></div><div class="segmented animation-segmented">${renderAnimationOption('cardAnimation', 'rise', t('settings.cards.rise'), preferences.cardAnimation === 'rise')}${renderAnimationOption('cardAnimation', 'fade', t('settings.cards.fade'), preferences.cardAnimation === 'fade')}${renderAnimationOption('cardAnimation', 'pop', t('settings.cards.pop'), preferences.cardAnimation === 'pop')}${renderAnimationOption('cardAnimation', 'none', t('settings.cards.none'), preferences.cardAnimation === 'none')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.contrast.title')}</strong><small>${t('settings.contrast.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.contrast}" data-toggle="contrast" data-preview="contrast:${preferences.contrast ? 'off' : 'on'}" data-preview-label="${escapeHtml(t('settings.contrast.title'))}" aria-label="${t('settings.contrast.title')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.animationSpeed.title')}</strong><small>${t('settings.animationSpeed.body')}</small></div><div class="segmented">${[['slow', t('settings.animationSpeed.slow')], ['normal', t('settings.animationSpeed.normal')], ['fast', t('settings.animationSpeed.fast')]].map(([value, label]) => `<button class="segment ${preferences.animationSpeed === value ? 'active' : ''}" data-pref="animationSpeed" data-value="${value}" data-preview="animationSpeed:${value}" data-preview-label="${escapeHtml(label)}">${label}</button>`).join('')}</div></div>
-       <div class="setting-line"><div class="setting-label"><strong>${t('settings.effects.easing')}</strong><small>${t('settings.effects.easingHint')}</small></div><div class="segmented">${[['smooth', t('settings.effects.easingSmooth')], ['spring', t('settings.effects.easingSpring')], ['linear', t('settings.effects.easingLinear')]].map(([value, label]) => `<button class="segment ${preferences.animationEasing === value ? 'active' : ''}" data-pref="animationEasing" data-value="${value}" data-preview="animationEasing:${value}" data-preview-label="${escapeHtml(label)}">${label}</button>`).join('')}</div></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.effects.pageSpeed')}</strong><small>${t('settings.effects.pageSpeedHint')}</small></div><label class="range-control"><input type="range" min="50" max="200" step="10" value="${Math.round((preferences.animationDuration || 1) * 100)}" data-animation-duration data-preview="animationDuration:${Math.round((preferences.animationDuration || 1) * 100)}" data-preview-label="${escapeHtml(t('settings.effects.pageSpeed'))}" /><span class="range-value" data-animation-duration-value>${Math.round((preferences.animationDuration || 1) * 100)}%</span></label></div>
+      <div class="setting-line${motionAttrs}><div class="setting-label"><strong>${t('settings.animationSpeed.title')}</strong><small>${t('settings.animationSpeed.body')}</small></div><div class="segmented">${[['slow', t('settings.animationSpeed.slow')], ['normal', t('settings.animationSpeed.normal')], ['fast', t('settings.animationSpeed.fast')]].map(([value, label]) => `<button class="segment ${preferences.animationSpeed === value ? 'active' : ''}" data-pref="animationSpeed" data-value="${value}" data-preview="animationSpeed:${value}" data-preview-label="${escapeHtml(label)}">${label}</button>`).join('')}</div></div>
+       <div class="setting-line${motionAttrs}><div class="setting-label"><strong>${t('settings.effects.easing')}</strong><small>${t('settings.effects.easingHint')}</small></div><div class="segmented">${[['smooth', t('settings.effects.easingSmooth')], ['spring', t('settings.effects.easingSpring')], ['linear', t('settings.effects.easingLinear')]].map(([value, label]) => `<button class="segment ${preferences.animationEasing === value ? 'active' : ''}" data-pref="animationEasing" data-value="${value}" data-preview="animationEasing:${value}" data-preview-label="${escapeHtml(label)}">${label}</button>`).join('')}</div></div>
+      <div class="setting-line${motionAttrs}><div class="setting-label"><strong>${t('settings.effects.pageSpeed')}</strong><small>${t('settings.effects.pageSpeedHint')}</small></div><label class="range-control"><input type="range" min="50" max="200" step="10" value="${Math.round((preferences.animationDuration || 1) * 100)}" data-animation-duration data-preview="animationDuration:${Math.round((preferences.animationDuration || 1) * 100)}" data-preview-label="${escapeHtml(t('settings.effects.pageSpeed'))}" /><span class="range-value" data-animation-duration-value>${Math.round((preferences.animationDuration || 1) * 100)}%</span></label></div>
     </section><p class="catalog-disclaimer">${t('settings.savedLocally')}</p>`;
 }
 
 function renderInterfaceSettings() {
   const navGroup = (group, titleKey) => {
     const order = navOrder(group);
+    const horizontal = group === 'topbar';
     const rows = order.map((key, index) => {
       const item = NAV_ITEMS.find((entry) => entry.key === key);
       if (!item) return '';
@@ -2546,14 +2985,17 @@ function renderInterfaceSettings() {
         <span class="ui-row-grip" aria-hidden="true">${icon('grip', 14)}</span>
         <span class="ui-row-icon" data-icon="${item.icon}"></span>
         <span class="ui-row-copy"><strong>${t(`nav.${item.key}`)}</strong><small>${t(titleKey)}</small></span>
-        <button class="ui-row-handle" data-ui-move="${key}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="${t('settings.ui.moveUp')}">${icon('navUp', 12)}</button>
-        <button class="ui-row-handle" data-ui-move="${key}" data-direction="1" ${index === order.length - 1 ? 'disabled' : ''} aria-label="${t('settings.ui.moveDown')}">${icon('navDown', 12)}</button>
+        <button class="ui-row-handle" data-ui-move="${key}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="${t(horizontal ? 'settings.ui.moveLeft' : 'settings.ui.moveUp')}">${icon(horizontal ? 'arrowLeft' : 'navUp', 12)}</button>
+        <button class="ui-row-handle" data-ui-move="${key}" data-direction="1" ${index === order.length - 1 ? 'disabled' : ''} aria-label="${t(horizontal ? 'settings.ui.moveRight' : 'settings.ui.moveDown')}">${icon(horizontal ? 'arrow' : 'navDown', 12)}</button>
       </div>`;
     }).join('');
-    return `<p class="ui-section-title">${t(titleKey)}</p><div class="ui-list" data-ui-order data-nav-order-group="${group}">${rows}</div>`;
+    return `<p class="ui-section-title">${t(titleKey)}</p><div class="ui-list ${horizontal ? 'ui-list-horizontal' : ''}" data-ui-order data-nav-order-group="${group}">${rows}</div>`;
   };
   const partToggle = (pref, titleKey, bodyKey) => `<div class="setting-line"><div class="setting-label"><strong>${t(titleKey)}</strong><small>${t(bodyKey)}</small></div><button class="toggle" role="switch" aria-checked="${preferences[pref]}" data-toggle="${pref}" data-preview="uiPart:${pref}:${preferences[pref] ? 'off' : 'on'}" data-preview-label="${escapeHtml(t(titleKey))}" aria-label="${t(titleKey)}"></button></div>`;
-  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.ui.navTitle')}</h2><p>${t('settings.ui.navBody')}</p></div>${icon('layout', 18)}</div>
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.language.title')}</h2><p>${t('settings.language.body')}</p></div>${icon('message', 18)}</div>
+      <div class="segmented language-segmented"><button class="segment ${preferences.language === 'ru' ? 'active' : ''}" data-pref="language" data-value="ru">${t('settings.language.ru')}</button><button class="segment ${preferences.language === 'en' ? 'active' : ''}" data-pref="language" data-value="en">${t('settings.language.en')}</button></div>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.ui.navTitle')}</h2><p>${t('settings.ui.navBody')}</p></div>${icon('layout', 18)}</div>
       ${navGroup('topbar', 'settings.ui.group.topbar')}
       ${navGroup('menu', 'settings.ui.group.menu')}
       <p class="catalog-disclaimer">${t('settings.ui.bottomFixed')}</p>
@@ -2570,6 +3012,25 @@ function renderInterfaceSettings() {
       <p class="ui-section-title">${t('settings.ui.other')}</p>
       ${partToggle('uiUpdateBanner', 'settings.ui.updateBanner', 'settings.ui.updateBannerBody')}
       <button class="text-button theme-reset" data-action="reset-interface">${t('settings.ui.reset')}</button>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.limitsTitle')}</h2><p>${t('settings.tray.limitsBody')}</p></div>${icon('tray', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.favoriteLimit')}</strong><small>${t('settings.tray.limitHint')}</small></div>
+        <div class="tray-limit-control">
+          <label class="range-control"><input type="range" min="1" max="20" step="1" value="${preferences.trayFavoritesLimit}" data-tray-limit="trayFavoritesLimit" ${preferences.trayFavoritesUnlimited ? 'disabled' : ''} /><span class="range-value" data-tray-limit-value="trayFavoritesLimit">${preferences.trayFavoritesUnlimited ? '∞' : preferences.trayFavoritesLimit}</span></label>
+          <span class="tray-limit-toggle"><small>${t('settings.tray.noLimit')}</small><button class="toggle" role="switch" aria-checked="${preferences.trayFavoritesUnlimited}" data-pref-toggle="trayFavoritesUnlimited" aria-label="${t('settings.tray.noLimit')}"></button></span>
+        </div>
+      </div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.quickLimit')}</strong><small>${t('settings.tray.limitHint')}</small></div>
+        <div class="tray-limit-control">
+          <label class="range-control"><input type="range" min="1" max="20" step="1" value="${preferences.trayQuickLimit}" data-tray-limit="trayQuickLimit" ${preferences.trayQuickUnlimited ? 'disabled' : ''} /><span class="range-value" data-tray-limit-value="trayQuickLimit">${preferences.trayQuickUnlimited ? '∞' : preferences.trayQuickLimit}</span></label>
+          <span class="tray-limit-toggle"><small>${t('settings.tray.noLimit')}</small><button class="toggle" role="switch" aria-checked="${preferences.trayQuickUnlimited}" data-pref-toggle="trayQuickUnlimited" aria-label="${t('settings.tray.noLimit')}"></button></span>
+        </div>
+      </div>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.hotkeys.title')}</h2><p>${t('settings.hotkeys.body')}</p></div>${icon('keyboard', 18)}</div>
+      <div class="hotkey-list">${HOTKEY_ACTIONS.map((action) => `<div class="hotkey-row"><span>${t(action.label)}</span><button class="hotkey-recorder" data-record-hotkey="${action.id}" aria-label="${t('settings.hotkeys.record')}">${formatHotkey(hotkeyCombo(action.id))}</button></div>`).join('')}</div>
+      <div class="data-actions"><button class="ghost-button" data-action="reset-hotkeys">${icon('refreshCw', 13)} ${t('settings.hotkeys.reset')}</button></div>
+      <p class="catalog-disclaimer">${t('settings.hotkeys.hint')}</p>
     </section>`;
 }
 
@@ -2621,6 +3082,7 @@ function startUiDrag(event, row) {
   uiDrag = {
     row,
     list,
+    horizontal: list.classList.contains('ui-list-horizontal'),
     started: false,
     pointerId: event.pointerId,
     pointerX: event.clientX,
@@ -2645,7 +3107,10 @@ document.addEventListener('pointermove', (event) => {
   let anchor = null;
   for (const item of rows) {
     const rect = item.getBoundingClientRect();
-    if (event.clientY < rect.top + rect.height / 2) { anchor = item; break; }
+    const before = uiDrag.horizontal
+      ? event.clientX < rect.left + rect.width / 2
+      : event.clientY < rect.top + rect.height / 2;
+    if (before) { anchor = item; break; }
   }
   if (anchor) {
     if (uiDrag.row.nextElementSibling !== anchor) uiDrag.list.insertBefore(uiDrag.row, anchor);
@@ -2760,13 +3225,19 @@ function renderUpdateSettings() {
   const progress = Math.max(0, Math.min(100, Number(state.progress) || 0));
   const visualProgress = status === 'applying' || status === 'downloaded' ? 100 : progress;
   const checking = status === 'checking';
+  const downloading = status === 'downloading';
+  const installReady = status === 'downloaded';
+  const downloadingButton = downloading ? `<button class="ghost-button update-download-button" disabled>${icon('download', 13)} ${t('updates.downloading', { percent: progress })}</button>` : '';
+  const primaryUpdateAction = status === 'available' ? `<button class="primary-button" data-action="download-update">${icon('download', 13)} ${t('updates.downloadNow')}</button>`
+    : installReady ? `<button class="primary-button" data-action="install-update">${icon('check', 13)} ${t('updates.installNow')}</button>`
+      : downloadingButton;
   return `<section class="settings-card update-settings-card" id="update-settings-card" data-update-status="${escapeHtml(status)}"><div class="settings-card-head"><div><h2>${t('updates.settingsTitle')}</h2><p>${t('updates.settingsBody')}</p></div>${icon('download', 18)}</div>
     <div class="update-settings-preview"><div class="update-preview-art" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="update-preview-copy"><strong>${escapeHtml(version ? `Vortex ${version}` : t('updates.settingsTitle'))}</strong><small>${statusMessage}</small><span class="update-settings-progress"><i style="--progress:${visualProgress}%"></i></span></div></div>
     <div class="update-settings-meta">
       <span><small>${t('updates.currentVersionLabel')}</small><strong>${escapeHtml(state.currentVersion || '—')}</strong></span>
       <span><small>${t('updates.lastCheckLabel')}</small><strong>${lastUpdateCheckAt ? escapeHtml(new Date(lastUpdateCheckAt).toLocaleString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })) : '—'}</strong></span>
     </div>
-    <div class="update-settings-actions"><button class="ghost-button update-retry-button" data-action="retry-update" ${checking ? 'disabled' : ''}>${icon('rotate', 13)} ${checking ? t('updates.checkingShort') : t('updates.checkNow')}</button>${status === 'available' && state.releaseUrl ? `<button class="subtle-button" data-action="open-update-release">${t('updates.openRelease')}</button>` : ''}</div>
+    <div class="update-settings-actions">${primaryUpdateAction}<button class="ghost-button update-retry-button" data-action="retry-update" ${checking || downloading || status === 'applying' ? 'disabled' : ''}>${icon('rotate', 13)} ${checking ? t('updates.checkingShort') : t('updates.checkNow')}</button>${status === 'available' && state.releaseUrl ? `<button class="subtle-button" data-action="open-update-release">${t('updates.openRelease')}</button>` : ''}</div>
   </section>`;
 }
 
@@ -2787,6 +3258,7 @@ function renderAnnouncementSettings() {
 }
 
 let discordStatusCache = null;
+let discordHelpOpen = false;
 function discordStatusText() {
   const status = discordStatusCache;
   if (!status) return preferences.discordPresence ? t('discord.status.connecting') : t('discord.status.off');
@@ -2868,10 +3340,7 @@ async function checkApiStatus() {
 }
 
 function renderGeneralSettings() {
-  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.language.title')}</h2><p>${t('settings.language.body')}</p></div>${icon('message', 18)}</div>
-      <div class="segmented language-segmented"><button class="segment ${preferences.language === 'ru' ? 'active' : ''}" data-pref="language" data-value="ru">${t('settings.language.ru')}</button><button class="segment ${preferences.language === 'en' ? 'active' : ''}" data-pref="language" data-value="en">${t('settings.language.en')}</button></div>
-    </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.friends.title')}</h2><p>${t('settings.friends.body')}</p></div>${icon('users', 18)}</div>
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.friends.title')}</h2><p>${t('settings.friends.body')}</p></div>${icon('users', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.friends.username')}</strong><small>${t('settings.friends.usernameHint')}</small></div>
         <span class="roblox-username-field"><input type="text" maxlength="20" autocomplete="off" placeholder="Roblox" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username /><button class="ghost-button" data-detect-username>${t('friends.detect')}</button><button class="primary-button" data-save-username>${t('common.save')}</button></span></div>
     </section>
@@ -2915,9 +3384,21 @@ function renderSettings() {
     <div class="settings-layout">${settingsTabs()}<div class="settings-panel">${panel}</div></div>`;
 }
 
-// Integrations tab: Discord presence, friend alerts and keyboard shortcuts.
+// Integrations tab: Discord presence, friend alerts and the tray.
 function renderIntegrationSettings() {
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.integrations.title')}</h2><p>${t('settings.integrations.body')}</p></div>${icon('sparkles', 18)}</div>
+      <div class="setting-line discord-id-line"><div class="setting-label"><strong>${t('settings.integrations.discordClientId')}</strong><small>${t('settings.integrations.discordClientIdHint')}</small></div>
+        <span class="discord-id-field"><input type="text" inputmode="numeric" autocomplete="off" maxlength="22" placeholder="1536230039870505020" value="${escapeHtml(preferences.discordClientId || '')}" data-discord-client-id /><button class="ghost-button" data-action="save-discord-client">${icon('check', 13)} ${t('settings.integrations.discordSaveId')}</button></span></div>
+      <button class="discord-help-toggle" type="button" data-action="toggle-discord-help" aria-expanded="${discordHelpOpen}" aria-controls="discord-help-panel">${icon('chevronDown', 13)}<span>${t('settings.integrations.discordWhere')}</span></button>
+      <div class="discord-help-panel ${discordHelpOpen ? 'is-open' : ''}" id="discord-help-panel">
+        <div class="discord-help-inner">
+          <ol class="discord-steps">
+            <li>${t('settings.integrations.discordStep1')}</li>
+            <li>${t('settings.integrations.discordStep2')}</li>
+            <li>${t('settings.integrations.discordStep3')}</li>
+          </ol>
+        </div>
+      </div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.discord')}</strong><small>${t('settings.integrations.discordBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.discordPresence}" data-toggle="discordPresence" aria-label="${t('settings.integrations.discord')}"></button></div>
       <p class="catalog-disclaimer discord-status" data-discord-status>${discordStatusText()}</p>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.friendAlerts')}</strong><small>${t('settings.integrations.friendAlertsBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.friendFavoriteAlerts}" data-toggle="friendFavoriteAlerts" aria-label="${t('settings.integrations.friendAlerts')}"></button></div>
@@ -2934,11 +3415,6 @@ function renderIntegrationSettings() {
         </span>
         <p class="presence-warning">${t('settings.presence.hint')}</p>
       </div>
-    </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.hotkeys.title')}</h2><p>${t('settings.hotkeys.body')}</p></div>${icon('keyboard', 18)}</div>
-      <div class="hotkey-list">${HOTKEY_ACTIONS.map((action) => `<div class="hotkey-row"><span>${t(action.label)}</span><button class="hotkey-recorder" data-record-hotkey="${action.id}" aria-label="${t('settings.hotkeys.record')}">${formatHotkey(hotkeyCombo(action.id))}</button></div>`).join('')}</div>
-      <div class="data-actions"><button class="ghost-button" data-action="reset-hotkeys">${icon('refreshCw', 13)} ${t('settings.hotkeys.reset')}</button></div>
-      <p class="catalog-disclaimer">${t('settings.hotkeys.hint')}</p>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.title')}</h2><p>${t('settings.tray.body')}</p></div>${icon('tray', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.scale')}</strong><small>${t('settings.tray.scaleBody')}</small></div><div class="segmented tray-scale-segmented">${[['compact', t('settings.tray.compact')], ['normal', t('settings.tray.normal')], ['large', t('settings.tray.large')]].map(([value, label]) => `<button class="segment ${preferences.trayScale === value ? 'active' : ''}" data-pref="trayScale" data-value="${value}">${label}</button>`).join('')}</div></div>
@@ -3168,7 +3644,12 @@ function renderUpdateBanner(state) {
         : `${stageText ? `${stageText} · ` : ''}${t('updates.downloading', { percent: progress })}`;
   banner.dataset.status = status;
   banner.hidden = false;
-  banner.innerHTML = `<span class="update-banner-icon">${icon(status === 'error' ? 'close' : status === 'downloaded' ? 'check' : 'sparkle', 18)}</span><span class="update-banner-copy"><strong>${title}</strong><small>${message}</small></span>${status === 'error' ? `<button class="ghost-button" data-action="retry-update">${t('updates.retry')}</button>` : `<span class="update-banner-progress" aria-label="${progress}%"><i style="--progress:${status === 'applying' || status === 'downloaded' ? 100 : progress}%"></i></span>`}`;
+  const bannerAction = status === 'downloaded'
+    ? `<button class="primary-button update-banner-install" data-action="install-update">${t('updates.installNow')}</button>`
+    : status === 'error'
+      ? `<button class="ghost-button" data-action="retry-update">${t('updates.retry')}</button>`
+      : `<span class="update-banner-progress" aria-label="${progress}%"><i style="--progress:${status === 'applying' ? 100 : progress}%"></i></span>`;
+  banner.innerHTML = `<span class="update-banner-icon">${icon(status === 'error' ? 'close' : status === 'downloaded' ? 'check' : 'sparkle', 18)}</span><span class="update-banner-copy"><strong>${title}</strong><small>${message}</small></span>${bannerAction}`;
   if (updateSettingsCard && onVersionTab) updateSettingsCard.outerHTML = renderUpdateSettings();
 }
 
@@ -3488,6 +3969,8 @@ function trayStylePayload() {
     corners: preferences.corners,
     theme: preferences.theme,
     lightTheme: document.body.classList.contains('light-theme'),
+    trayFavoriteLimit: preferences.trayFavoritesUnlimited ? 0 : Number(preferences.trayFavoritesLimit) || 5,
+    trayQuickLimit: preferences.trayQuickUnlimited ? 0 : Number(preferences.trayQuickLimit) || 3,
     css
   };
 }
@@ -3495,10 +3978,16 @@ function trayStylePayload() {
 function reportRecentGamesToTray() {
   if (!window.vortexDesktop?.reportRecentGames) return;
   const lastPlayedFor = (id) => Number(playStats[String(id)]?.lastPlayed) || 0;
+  const favoriteLimit = preferences.trayFavoritesUnlimited
+    ? Number.MAX_SAFE_INTEGER
+    : Math.max(1, Number(preferences.trayFavoritesLimit) || 5);
+  const quickLimit = preferences.trayQuickUnlimited
+    ? Number.MAX_SAFE_INTEGER
+    : Math.max(1, Number(preferences.trayQuickLimit) || 3);
   const favoriteGames = Array.from(favorites, String)
     .map((id) => getGame(id) || { id, title: t('quick.untitled') + ' ' + id, thumbnail: '' })
     .sort((first, second) => lastPlayedFor(second.id) - lastPlayedFor(first.id))
-    .slice(0, 5)
+    .slice(0, favoriteLimit)
     .map((game) => ({
       id: String(game.id),
       title: String(game.title || (t('quick.untitled') + ' ' + game.id)),
@@ -3518,7 +4007,7 @@ function reportRecentGamesToTray() {
       shareType: String(item.shareType || 'Server')
     }))
     .sort((first, second) => second.lastPlayed - first.lastPlayed)
-    .slice(0, 3);
+    .slice(0, quickLimit);
   const sessionActive = Boolean(preferences.trayMiniPlayer && playSessionStart && playSessionGameId && nowPlayingSnapshot);
   const nowPlaying = sessionActive && Date.now() - Number(playSessionStart) < PLAYTIME_SESSION_CAP_SECONDS * 1000
     ? {
@@ -3555,6 +4044,7 @@ function bankPlaySession(resetSession = true) {
   if (resetSession) {
     playSessionStart = null;
     playSessionGameId = null;
+    playSessionSource = '';
     // The mini-player only exists while a Vortex-launched session is active.
     nowPlayingSnapshot = null;
     localStorage.removeItem(PLAYTIME_SESSION_KEY);
@@ -3586,6 +4076,7 @@ function openGame(id, gameId = '', accessCode = '') {
   }
   playSessionStart = Date.now();
   playSessionGameId = String(game.id);
+  playSessionSource = 'launcher';
   nowPlayingSnapshot = {
     id: String(game.id),
     title: String(game.title || ''),
@@ -3608,6 +4099,81 @@ function openGame(id, gameId = '', accessCode = '') {
   } else {
     window.open(`https://www.roblox.com/games/start?placeId=${encodeURIComponent(game.id)}`, '_blank', 'noopener,noreferrer');
     showToast(t('toast.opening', { game: game.title }));
+  }
+}
+
+// Roblox itself is the source of truth for "am I in a game right now". The
+// backend reads the newest Roblox log, so joins from the Roblox website or a
+// friend invite also start/stop a play session instead of being invisible.
+async function startDetectedSession(placeId, startedAt) {
+  const id = String(placeId || '');
+  if (!id) return;
+  if (playSessionGameId && playSessionGameId !== id) closePlaySession();
+  if (playSessionGameId === id) return;
+  const known = getGame(id);
+  const start = Number(startedAt) > 0 && Number(startedAt) < Date.now() + 60_000 ? Number(startedAt) : Date.now();
+  playSessionStart = start;
+  playSessionGameId = id;
+  playSessionSource = 'detected';
+  nowPlayingSnapshot = {
+    id,
+    title: known?.title || t('activity.unknownGame'),
+    thumbnail: safeThumbnail(known?.thumbnail) || '',
+    startedAt: start
+  };
+  if (preferences.saveHistory) {
+    recentGames = [id, ...recentGames.filter((recentId) => recentId !== id)].slice(0, 12);
+    localStorage.setItem('vortex.recent', JSON.stringify(recentGames));
+  }
+  const entry = playStats[id] || { seconds: 0, launches: 0, lastPlayed: 0 };
+  entry.launches += 1;
+  entry.lastPlayed = start;
+  playStats[id] = entry;
+  savePlayStats();
+  reportRecentGamesToTray();
+  if (!known && runtimeResolvingPlace !== id) {
+    runtimeResolvingPlace = id;
+    try {
+      // Resolve the exact place instead of searching for its numeric id: a
+      // search can return an unrelated first result, which used to put the wrong
+      // game in the tray mini-player.
+      const response = await window.vortexDesktop?.getGameDetails?.({ placeId: id });
+      const item = response?.ok ? response.game : null;
+      if (item?.title) {
+        const normalized = normalizeDiscoveredGame(item, id);
+        normalized.id = id;
+        dynamicGames = [normalized, ...dynamicGames.filter((game) => String(game.id) !== id)].slice(-1200);
+        localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames));
+        if (nowPlayingSnapshot?.id === id) {
+          nowPlayingSnapshot.title = normalized.title;
+          nowPlayingSnapshot.thumbnail = safeThumbnail(normalized.thumbnail) || '';
+        }
+        reportRecentGamesToTray();
+        if (['home', 'favorites', 'recent', 'activity', 'game-detail', 'friends'].includes(currentView)) renderPage();
+      }
+    } catch { /* keep the generic title; the next poll retries */ }
+    finally { runtimeResolvingPlace = ''; }
+  }
+}
+
+async function pollRobloxRuntime() {
+  if (!window.vortexDesktop?.getRobloxRuntime) return;
+  let data = null;
+  try { data = await window.vortexDesktop.getRobloxRuntime(); } catch { return; }
+  if (!data || data.available === false) return;
+  if (data.running && data.placeId) {
+    const placeId = String(data.placeId);
+    if (placeId !== playSessionGameId) await startDetectedSession(placeId, data.startedAt);
+    return;
+  }
+  if (!playSessionGameId) return;
+  const aliveFor = Date.now() - Number(playSessionStart || 0);
+  // A launch from Vortex needs a grace period: Roblox takes a moment to write
+  // the first log and the window can still be loading. Detected sessions stop
+  // as soon as the log goes quiet, which is the accurate end of playtime.
+  if (playSessionSource === 'detected' || aliveFor > 150_000) {
+    closePlaySession();
+    if (['home', 'favorites', 'recent', 'activity', 'game-detail', 'friends'].includes(currentView)) renderPage();
   }
 }
 
@@ -3951,7 +4517,10 @@ function openQuickFolderModal(id) {
   quickFolderDialogReturnFocus = document.activeElement;
   editingQuickFolderId = folder.id;
   form.elements.namedItem('title').value = folder.title || t('quick.folderDefault');
-  form.elements.namedItem('color').value = /^#[0-9a-f]{6}$/i.test(folder.color || '') ? folder.color : '#9b7cff';
+  const color = /^#[0-9a-f]{6}$/i.test(folder.color || '') ? folder.color : '#9b7cff';
+  form.elements.namedItem('color').value = color;
+  if (colorPopoverState.name === 'folderColor') closeColorPopover();
+  syncFolderColorTrigger();
   modal.hidden = false;
   requestAnimationFrame(() => form.elements.namedItem('title')?.focus());
 }
@@ -3961,6 +4530,7 @@ function closeQuickFolderModal() {
   if (!modal || modal.hidden) return;
   modal.hidden = true;
   editingQuickFolderId = '';
+  if (colorPopoverState.name === 'folderColor') closeColorPopover();
   const returnFocus = quickFolderDialogReturnFocus;
   quickFolderDialogReturnFocus = null;
   if (returnFocus instanceof HTMLElement) returnFocus.focus();
@@ -4360,6 +4930,11 @@ function setView(view, { track = true } = {}) {
 document.addEventListener('click', async (event) => {
   const target = event.target instanceof Element ? event.target : event.target?.parentElement;
   if (!target) return;
+  const colorOpen = target.closest('[data-color-open]');
+  if (colorOpen) {
+    openColorPopover(colorOpen.dataset.colorOpen, colorOpen);
+    return;
+  }
   // Any click that is not inside the panel or on the bell dismisses it.
   if (announcementPanel && !target.closest('.announcements-panel') && !target.closest('[data-action="notifications"]')) {
     closeAnnouncementsPanel();
@@ -4465,6 +5040,25 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'history-back') { navigateHistory(-1); return; }
     if (action.dataset.action === 'history-forward') { navigateHistory(1); return; }
     if (action.dataset.action === 'open-update-release') { window.vortexDesktop?.openExternalUrl?.(latestUpdateState?.releaseUrl); return; }
+    if (action.dataset.action === 'download-update') {
+      if (retryUpdateBusy) return;
+      retryUpdateBusy = true;
+      renderUpdateBanner({ ...(latestUpdateState || {}), status: 'downloading', progress: 0, errorMessage: null });
+      Promise.resolve(window.vortexDesktop?.downloadUpdate?.()).catch((error) => {
+        renderUpdateBanner({ ...(latestUpdateState || {}), status: 'error', progress: 0, errorMessage: String(error?.message || error || 'Download failed') });
+      }).finally(() => { retryUpdateBusy = false; });
+      return;
+    }
+    if (action.dataset.action === 'install-update') {
+      if (retryUpdateBusy) return;
+      retryUpdateBusy = true;
+      renderUpdateBanner({ ...(latestUpdateState || {}), status: 'applying', progress: 100 });
+      Promise.resolve(window.vortexDesktop?.installUpdate?.()).catch((error) => {
+        retryUpdateBusy = false;
+        renderUpdateBanner({ ...(latestUpdateState || {}), status: 'error', progress: 0, errorMessage: String(error?.message || error || 'Install failed') });
+      });
+      return;
+    }
     if (action.dataset.action === 'open-quick-game-modal') { openQuickGameModal(); return; }
     if (action.dataset.action === 'close-quick-game-modal') { closeQuickGameModal(); return; }
     if (action.dataset.action === 'close-quick-folder-modal') { closeQuickFolderModal(); return; }
@@ -4483,6 +5077,12 @@ document.addEventListener('click', async (event) => {
     }
     if (action.dataset.action === 'close-friends-drawer') { closeFriendsDrawer(); return; }
     if (action.dataset.action === 'friends-drawer-view-all') { closeFriendsDrawer(); setView('friends'); return; }
+    if (action.dataset.action === 'refresh-friends') {
+      const username = String(preferences.robloxUsername || '').trim();
+      if (username) { friendsCache = { at: 0, data: null }; void loadFriends(username, true); showToast(t('friends.refreshing')); }
+      else autoDetectRobloxAccountOnce();
+      return;
+    }
     if (action.dataset.action === 'refresh-friends-drawer') {
       const username = String(preferences.robloxUsername || '').trim();
       if (username) void loadFriends(username, true);
@@ -4507,6 +5107,7 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'favorites-more') { favoritesVisibleCount += 24; renderPage(); return; }
     if (action.dataset.action === 'paid-more') { showMorePaidGames(); return; }
     if (action.dataset.action === 'paid-rescan') { void loadPaidGames(true); return; }
+    if (action.dataset.action === 'refresh-recommendations') { void loadRecommendations(true); return; }
     if (action.dataset.action === 'reset-hotkeys') { preferences.hotkeys = {}; savePreferences(); showToast(t('settings.hotkeys.resetDone')); renderPage(); return; }
     if (action.dataset.action === 'check-api-status') { void checkApiStatus(); return; }
     if (action.dataset.action === 'clear-api-cache') { responseCacheLocal.clear(); localStorage.removeItem('vortex.detailCache'); showToast(t('settings.cache.apiCleared')); renderPage(); return; }
@@ -4553,6 +5154,7 @@ document.addEventListener('click', async (event) => {
     }
     if (action.dataset.action === 'favorite') { toggleFavorite(action.dataset.id); if (currentView === 'game-detail' && detailGame) renderPage(); }
     if (action.dataset.action === 'play') openGame(action.dataset.id);
+    if (action.dataset.action === 'refresh-online') { void refreshGameOnline(); return; }
     if (action.dataset.action === 'show-more-badges') { detailBadgeCount += 3; renderPage(); return; }
     if (action.dataset.action === 'toggle-badges') { detailBadgesExpanded = !detailBadgesExpanded; renderPage(); return; }
     if (action.dataset.action === 'gallery-prev') { detailGalleryIndex = Math.max(0, detailGalleryIndex - 1); renderPage(); return; }
@@ -4694,7 +5296,26 @@ document.addEventListener('click', async (event) => {
       applyPreferences();
       renderPage();
     }
-    return;
+    if (action.dataset.action === 'toggle-discord-help') {
+      discordHelpOpen = !discordHelpOpen;
+      action.setAttribute('aria-expanded', String(discordHelpOpen));
+      pageContent.querySelector('.discord-help-panel')?.classList.toggle('is-open', discordHelpOpen);
+      return;
+    }
+    if (action.dataset.action === 'save-discord-client') {
+      const input = pageContent.querySelector('[data-discord-client-id]');
+      const value = String(input?.value || '').replace(/\D/g, '').slice(0, 22);
+      if (value && (value.length < 15 || value.length > 22)) { showToast(t('settings.integrations.discordIdInvalid')); return; }
+      preferences.discordClientId = value;
+      savePreferences();
+      try {
+        discordStatusCache = await window.vortexDesktop?.setDiscordClientId?.(value);
+      } catch { discordStatusCache = null; }
+      renderPage();
+      refreshDiscordStatus();
+      showToast(t('settings.integrations.discordIdSaved'));
+      return;
+    }
   }
 
   // Home widget collapse/expand (the chevron in the widget heading).
@@ -4742,6 +5363,7 @@ document.addEventListener('click', async (event) => {
     paidVisibleCount = PAID_PAGE_SIZE;
     paidExhausted = false;
     if (activeAccess === 'paid') { void loadPaidGames(); renderPage(); return; }
+    if (activeDiscoverySort === RECOMMENDED_SORT.id && activeAccess !== 'paid') { renderPage(); return; }
     if (isGenreSearchActive()) fetchGenreGames(false);
     else renderPage();
     return;
@@ -4767,18 +5389,27 @@ document.addEventListener('click', async (event) => {
   if (catalogCustomize) { currentView = 'settings'; preferences.settingsTab = 'cards'; savePreferences(); renderPage(); return; }
 
   const discoverySort = target.closest('[data-discovery-sort]');
-  if (discoverySort) { loadDiscoveryCatalog(discoverySort.dataset.discoverySort); return; }
+  if (discoverySort) {
+    const sortId = discoverySort.dataset.discoverySort;
+    if (sortId === RECOMMENDED_SORT.id) {
+      activeDiscoverySort = sortId;
+      localStorage.setItem('vortex.activeDiscoverySort', sortId);
+      catalogVisibleCount = CATALOG_PAGE_SIZE;
+      renderPage();
+      void loadRecommendations();
+      return;
+    }
+    loadDiscoveryCatalog(sortId);
+    return;
+  }
 
   const tab = target.closest('[data-settings-tab]');
   if (tab) { preferences.settingsTab = tab.dataset.settingsTab; savePreferences(); renderPage(); return; }
 
   const accent = target.closest('[data-accent]');
   if (accent) {
-    // A preset is a complete look: applying it also drops any custom theme
-    // colors, otherwise they override the theme and the preset looks inert.
+    // Accent is only an accent: theme colors stay exactly as the user set them.
     preferences.accent = accent.dataset.accent;
-    preferences.themeBackground = '';
-    preferences.themeSurface = '';
     savePreferences();
     renderPage();
     return;
@@ -4846,6 +5477,7 @@ document.addEventListener('click', async (event) => {
       if (result && result.ok && result.account && result.account.name) {
         if (input) { input.value = result.account.name; input.placeholder = 'Roblox'; }
         showToast(t('friends.detected', { user: result.account.name }));
+        rememberRobloxAccount(result.account);
         if (!preferences.robloxUsername) {
           preferences.robloxUsername = result.account.name;
           friendsCache = { at: 0, data: null };
@@ -4890,6 +5522,7 @@ document.addEventListener('click', async (event) => {
       const result = await window.vortexDesktop?.setPresenceCookie(cookie);
       if (result && result.ok) {
         friendsCache = { at: 0, data: null };
+        void refreshRobloxAccount();
         renderPage();
         showToast(t('settings.presence.saved'));
       } else {
@@ -4913,6 +5546,7 @@ document.addEventListener('click', async (event) => {
     try {
       const result = await window.vortexDesktop?.detectRobloxAccount();
       if (result && result.ok && result.account && result.account.name) {
+        rememberRobloxAccount(result.account);
         preferences.robloxUsername = result.account.name;
         friendsCache = { at: 0, data: null };
         savePreferences();
@@ -4990,6 +5624,16 @@ document.addEventListener('click', async (event) => {
   const segment = target.closest('[data-pref]');
   if (segment) {
     preferences[segment.dataset.pref] = segment.dataset.value;
+    // Choosing Dark / Light / OLED is a complete theme choice. Custom theme
+    // colors left behind by the color picker would otherwise keep overriding it,
+    // making the theme buttons look dead.
+    if (segment.dataset.pref === 'theme') {
+      preferences.themeBackground = '';
+      preferences.themeSurface = '';
+      preferences.themeText = '';
+      preferences.themeMuted = '';
+      preferences.themeLine = '';
+    }
     savePreferences();
     // Language change re-renders the sidebar too: its labels come from t() at
     // renderSidebar() time, so switching needs a fresh pass, not just renderPage.
@@ -5131,6 +5775,14 @@ document.addEventListener('input', (event) => {
     preferences.glassStrength = Math.max(0, Math.min(100, Number(event.target.value) || 0));
     pageContent.querySelector('[data-glass-strength-value]')?.replaceChildren(preferences.glassStrength + '%');
     savePreferences(); applyPreferences();
+    return;
+  }
+  if (event.target.matches('[data-tray-limit]')) {
+    const key = event.target.dataset.trayLimit;
+    const value = Math.max(1, Math.min(20, Number(event.target.value) || 1));
+    preferences[key] = value;
+    pageContent.querySelector(`[data-tray-limit-value="${key}"]`)?.replaceChildren(String(value));
+    savePreferences();
     return;
   }
   if (event.target.matches('[data-animation-duration]')) {
@@ -5281,21 +5933,13 @@ document.addEventListener('input', (event) => {
 });
 
 function syncColorTuner(name, color, axesToSkip = []) {
-  const tuner = pageContent.querySelector(`[data-color-tuner="${name}"]`);
-  if (!tuner) return;
-  const hsl = rgbToHsl(color);
-  const hex = tuner.querySelector(`[data-color-hex="${name}"]`);
-  if (hex) { hex.value = color.toUpperCase(); hex.setAttribute('aria-invalid', 'false'); }
-  tuner.querySelector('.color-preview')?.style.setProperty('--sample-color', color);
-  for (const [axis, suffix] of [['hue', '°'], ['saturation', '%'], ['lightness', '%']]) {
-    const input = tuner.querySelector(`[data-color-axis="${axis}"]`);
-    const output = tuner.querySelector(`[data-color-value="${axis}"]`);
-    // The sliders ARE the source of truth while the user drags one of them.
-    // Rewriting them from the hex roundtrip loses hue at lightness/saturation
-    // extremes (grey has no hue), which reset the untouched sliders to 0.
-    if (input && !axesToSkip.includes(axis)) input.value = hsl[axis];
-    if (output) output.value = `${hsl[axis]}${suffix}`;
-  }
+  const field = pageContent.querySelector(`[data-color-field="${name}"]`);
+  if (!field) return;
+  const trigger = field.querySelector(`[data-color-open="${name}"]`);
+  if (trigger) trigger.dataset.colorCurrent = color;
+  field.querySelector('.color-swatch')?.style.setProperty('--sample-color', color);
+  const code = field.querySelector(`[data-color-code="${name}"]`);
+  if (code) code.textContent = color.toUpperCase();
 }
 
 document.addEventListener('dblclick', (event) => {
@@ -5376,6 +6020,11 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     if (paletteOpen()) closeCommandPalette();
     setView('friends');
+    return;
+  }
+  if (matchesHotkey(event, hotkeyCombo('sidebar')) && !isTyping) {
+    event.preventDefault();
+    toggleSidebarVisibility();
     return;
   }
   const quickShortcut = quickLaunchGames().find((item) => item.hotkey && matchesHotkey(event, item.hotkey));
@@ -5624,8 +6273,19 @@ mountIcons();
 renderSidebar();
 applyPreferences();
 renderPage();
+// Hovering the thin left strip peeks the rail; leaving the rail hides it again.
+document.querySelector('.sidebar-hover-zone')?.addEventListener('mouseenter', () => {
+  document.body.classList.add('sidebar-peek');
+});
+document.getElementById('app-sidebar')?.addEventListener('mouseleave', () => {
+  document.body.classList.remove('sidebar-peek');
+});
+void refreshRobloxAccount();
 void refreshQuickLaunchMetadata();
 reportRecentGamesToTray();
+runtimePollTimer = window.setInterval(pollRobloxRuntime, 15 * 1000);
+window.setTimeout(pollRobloxRuntime, 4000);
+window.addEventListener('focus', pollRobloxRuntime);
 window.addEventListener('beforeunload', closePlaySession);
 // The desktop close action may hide the window into the tray, so unload is not
 // guaranteed. Periodic checkpoints keep playtime accurate without ending the

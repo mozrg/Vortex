@@ -30,11 +30,14 @@
     // Updates
     getUpdateState: () => invoke('updates_get_state'),
     retryUpdateCheck: () => invoke('updates_retry'),
+    downloadUpdate: () => invoke('updates_download'),
+    installUpdate: () => invoke('updates_install'),
     onUpdateState: (callback) => handleEvent('updates:state', callback),
 
     // Game search and details
     searchGames: (request) => invoke('games_search', request),
     getGameDetails: (request) => invoke('games_details', request),
+    getGameOnline: (request) => invoke('games_online', request),
     getSimilarGames: (request) => invoke('games_similar', request),
     getFeaturedGames: (placeIds) => invoke('games_featured', { placeIds }),
     getPaidGames: (request) => invoke('games_paid', request),
@@ -60,6 +63,8 @@
     // Friends
     listFriends: (username) => invoke('friends_list', { username }),
     detectRobloxAccount: () => invoke('friends_detect_account'),
+    getRobloxAccount: () => invoke('roblox_account'),
+    getRobloxRuntime: () => invoke('roblox_runtime_status'),
     setPresenceCookie: (cookie) => invoke('friends_presence_cookie', { cookie }),
     removePresenceCookie: () => invoke('friends_presence_cookie', { remove: true }),
     getPresenceStatus: () => invoke('friends_presence_status'),
@@ -72,6 +77,7 @@
 
     // Discord
     setDiscordEnabled: (enabled) => invoke('discord_set_enabled', { enabled }),
+    setDiscordClientId: (clientId) => invoke('discord_set_client_id', { clientId }),
     getDiscordStatus: () => invoke('discord_status'),
     setDiscordActivity: (activity) => invoke('discord_set_activity', { activity }),
 

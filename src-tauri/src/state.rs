@@ -14,10 +14,21 @@ pub struct AppState {
     pub roblox_cookie: Mutex<String>,
     /// Discord Rich Presence state.
     pub discord: Mutex<DiscordState>,
+    /// Optional custom Discord application (client) id from Settings.
+    pub discord_client_id: Mutex<String>,
     /// Tray state pushed by the renderer.
     pub tray: Mutex<TrayData>,
+    /// Physical rect of the tray icon used to anchor the popup after resizes.
+    pub tray_anchor: Mutex<Option<(f64, f64, f64, f64)>>,
+    /// Collapsed tray sections, mirrored from the tray renderer so the popup can
+    /// be sized correctly before it is shown.
+    pub tray_collapsed: Mutex<(bool, bool)>,
     /// Update check state broadcast to the renderer.
     pub update_state: Mutex<UpdateState>,
+    /// Metadata for the release asset selected by the last update check.
+    pub update_pending: Mutex<Option<PendingUpdate>>,
+    /// Guards against starting two installer downloads at once.
+    pub update_downloading: Mutex<bool>,
     /// Whether an update check is currently running.
     pub update_check_running: Mutex<bool>,
     /// Cached announcement feed.
@@ -137,6 +148,10 @@ pub struct TrayStyle {
     pub language: String,
     #[serde(default)]
     pub accent_text: String,
+    #[serde(default = "default_tray_favorite_limit")]
+    pub tray_favorite_limit: usize,
+    #[serde(default = "default_tray_quick_limit")]
+    pub tray_quick_limit: usize,
     #[serde(default)]
     pub css: HashMap<String, String>,
 }
@@ -155,6 +170,8 @@ impl Default for TrayStyle {
             tray_scale: default_tray_scale(),
             language: default_language(),
             accent_text: String::new(),
+            tray_favorite_limit: default_tray_favorite_limit(),
+            tray_quick_limit: default_tray_quick_limit(),
             css: HashMap::new(),
         }
     }
@@ -196,8 +213,19 @@ impl UpdateState {
             "latestVersion": self.latest_version,
             "releaseUrl": self.release_url,
             "errorMessage": self.error_message,
+            "downloadReady": self.status == "downloaded",
         })
     }
+}
+
+#[derive(Clone, Default)]
+pub struct PendingUpdate {
+    pub version: String,
+    pub asset_name: String,
+    pub asset_url: String,
+    pub sha256: String,
+    pub sha_url: String,
+    pub path: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -235,6 +263,12 @@ fn default_corners() -> String {
 fn default_tray_scale() -> String {
     "normal".to_string()
 }
+fn default_tray_favorite_limit() -> usize {
+    5
+}
+fn default_tray_quick_limit() -> usize {
+    3
+}
 fn default_language() -> String {
     "ru".to_string()
 }
@@ -246,8 +280,13 @@ impl AppState {
             disk_cache_enabled: Mutex::new(true),
             roblox_cookie: Mutex::new(String::new()),
             discord: Mutex::new(DiscordState::default()),
+            discord_client_id: Mutex::new(String::new()),
             tray: Mutex::new(TrayData::default()),
+            tray_anchor: Mutex::new(None),
+            tray_collapsed: Mutex::new((false, false)),
             update_state: Mutex::new(UpdateState::default()),
+            update_pending: Mutex::new(None),
+            update_downloading: Mutex::new(false),
             update_check_running: Mutex::new(false),
             announcement_cache: Mutex::new(None),
             plans_cache: Mutex::new(None),

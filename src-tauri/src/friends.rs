@@ -160,6 +160,67 @@ pub async fn fetch_roblox_user_thumbnails(
     result
 }
 
+/// Fetch the avatar headshot for a single user id.
+pub async fn fetch_avatar_for_user(state: &AppState, user_id: &str) -> String {
+    if user_id.is_empty() || user_id.len() > 20 || !user_id.chars().all(|c| c.is_ascii_digit()) {
+        return String::new();
+    }
+    let url = format!(
+        "https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={}&size=150x150&format=Png&isCircular=false",
+        user_id
+    );
+    match roblox::fetch_cached_json(state, &url).await {
+        Ok(payload) => payload
+            .get("data")
+            .and_then(Value::as_array)
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("imageUrl"))
+            .and_then(Value::as_str)
+            .map(crate::cache::clean_thumbnail)
+            .unwrap_or_default(),
+        Err(_) => String::new(),
+    }
+}
+
+/// Identify the account the stored cookie belongs to. This is the reliable
+/// source for the topbar avatar once the user pastes `.ROBLOSECURITY`.
+pub async fn detect_authenticated_account(state: &AppState, cookie: &str) -> Option<Value> {
+    if cookie.is_empty() {
+        return None;
+    }
+    let payload = roblox::fetch_json(
+        "https://users.roblox.com/v1/users/authenticated",
+        Some(cookie),
+    )
+    .await
+    .ok()?;
+    let id = payload
+        .get("id")
+        .map(|value| value.to_string())
+        .unwrap_or_default();
+    if id.is_empty() || id.len() > 20 || !id.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let name = payload
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let display_name = payload
+        .get("displayName")
+        .and_then(Value::as_str)
+        .unwrap_or(&name)
+        .to_string();
+    let avatar = fetch_avatar_for_user(state, &id).await;
+    Some(json!({
+        "id": id,
+        "name": name,
+        "displayName": display_name,
+        "avatar": avatar,
+        "source": "cookie"
+    }))
+}
+
 /// Detect the local Roblox account by scanning %LOCALAPPDATA%\Roblox for numeric
 /// folder names, then resolving the most recently active one via the public API.
 pub async fn detect_local_roblox_account(state: &AppState) -> Option<Value> {
@@ -223,7 +284,9 @@ pub async fn detect_local_roblox_account(state: &AppState) -> Option<Value> {
                     "id": id.to_string(),
                     "name": name,
                     "displayName": payload.get("displayName").and_then(|d| d.as_str()).unwrap_or(name),
-                    "lastActive": last_active
+                    "avatar": fetch_avatar_for_user(state, &id.to_string()).await,
+                    "lastActive": last_active,
+                    "source": "local"
                 }));
             }
         }

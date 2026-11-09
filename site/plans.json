@@ -2,19 +2,6 @@
   "version": 1,
   "items": [
     {
-      "id": "recommendations",
-      "icon": "trophy",
-      "title": {
-        "ru": "Рекомендации игр",
-        "en": "Game recommendations"
-      },
-      "body": {
-        "ru": "Подборки игр с учётом ваших интересов и истории запусков.",
-        "en": "Game picks based on your interests and launch history."
-      },
-      "stage": "design"
-    },
-    {
       "id": "plan-mw743604",
       "icon": "flag",
       "stage": "idea",

@@ -5,11 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://*.rbxcdn.com data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'" />
   <title>Vortex</title>
+  <link rel="stylesheet" href="assets/fonts/fonts.css" />
   <link rel="stylesheet" href="./tray.css" />
   <script src="./js/tray.js" defer></script>
+  <link rel="stylesheet" href="./motion.css" />
+  <script src="./js/motion.js" defer></script>
 </head>
 <body>
   <main class="tray-shell">
+    <header class="tray-brand"><img src="./assets/vortex-logo.svg" alt="" />Vortex</header>
     <div class="tray-now-playing" id="tray-now-playing" hidden>
       <span class="tray-now-art" id="tray-now-art"></span><span class="tray-now-copy"><strong id="tray-now-title"></strong><small id="tray-now-time"></small></span><span class="tray-now-live" aria-hidden="true"></span>
     </div>

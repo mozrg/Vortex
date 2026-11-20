@@ -14,7 +14,7 @@ mod state;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use state::{AppState, PendingUpdate};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::{
@@ -1100,7 +1100,7 @@ async fn games_details(
 #[tauri::command]
 async fn games_similar(
     state: tauri::State<'_, Arc<AppState>>,
-    _universe_id: String,
+    universe_id: String,
     genre: Option<String>,
     title: Option<String>,
 ) -> Result<Vec<serde_json::Value>, String> {
@@ -1119,7 +1119,7 @@ async fn games_similar(
     let ids: Vec<String> = rows
         .iter()
         .map(|row| value_string(row.get("universeId").or_else(|| row.get("id"))))
-        .filter(|id| valid_numeric_id(id))
+        .filter(|id| valid_numeric_id(id) && id != &universe_id)
         .collect();
     Ok(roblox::get_game_details_by_universe(&*state, &ids).await)
 }
@@ -1180,7 +1180,9 @@ async fn games_online(
 
 #[tauri::command]
 async fn roblox_runtime_status() -> Result<serde_json::Value, String> {
-    Ok(runtime::status())
+    tokio::task::spawn_blocking(runtime::status)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1477,16 +1479,17 @@ async fn open_game(
     }
 }
 
-#[tauri::command]
-async fn launch_quick_game(
-    method: String,
+fn quick_game_links(
+    method: &str,
     place_id: Option<String>,
     link_code: Option<String>,
     share_code: Option<String>,
     share_type: Option<String>,
-) -> Result<String, String> {
+    server_id: Option<String>,
+    access_code: Option<String>,
+) -> Result<(String, String), String> {
     let place = place_id.unwrap_or_default();
-    let (deep_link, browser_url) = match method.as_str() {
+    let links = match method {
         // Roblox deep links use `placeId` and `linkCode` parameters.
         "private" => {
             let code = link_code.unwrap_or_default();
@@ -1542,15 +1545,100 @@ async fn launch_quick_game(
                 format!("https://www.roblox.com/games/{}", place),
             )
         }
+        "instance" | "access" => {
+            let (parameter, value, limit) = if method == "instance" {
+                ("gameInstanceId", server_id.unwrap_or_default(), 64)
+            } else {
+                ("accessCode", access_code.unwrap_or_default(), 100)
+            };
+            if !valid_numeric_id(&place) || !valid_quick_code(&value, limit) {
+                return Err("invalid server launch target".to_string());
+            }
+            let params = format!("placeId={}&{}={}", place, parameter, encode_query(&value));
+            (format!("roblox://{}", params), format!("https://www.roblox.com/games/start?{}", params))
+        }
         _ => return Err("unsupported quick launch method".to_string()),
     };
+    Ok(links)
+}
 
+#[tauri::command]
+async fn launch_quick_game(
+    method: String,
+    place_id: Option<String>,
+    link_code: Option<String>,
+    share_code: Option<String>,
+    share_type: Option<String>,
+    server_id: Option<String>,
+    access_code: Option<String>,
+) -> Result<String, String> {
+    let (deep_link, browser_url) = quick_game_links(&method, place_id, link_code, share_code, share_type, server_id, access_code)?;
     match open_url(&deep_link) {
         Ok(()) => Ok("roblox".to_string()),
         Err(_) => {
             open_url(&browser_url).map_err(|e| format!("failed to launch Roblox: {}", e))?;
             Ok("browser".to_string())
         }
+    }
+}
+
+#[tauri::command]
+async fn create_desktop_shortcut(
+    title: String,
+    method: String,
+    place_id: Option<String>,
+    link_code: Option<String>,
+    share_code: Option<String>,
+    share_type: Option<String>,
+    server_id: Option<String>,
+    access_code: Option<String>,
+) -> Result<(), String> {
+    let (url, _) = quick_game_links(&method, place_id, link_code, share_code, share_type, server_id, access_code)?;
+    let desktop = dirs::desktop_dir().ok_or("Desktop folder not found")?;
+    let name: String = title.chars().filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_')).take(64).collect();
+    let name = if name.trim().is_empty() { "Roblox" } else { name.trim() };
+    let filename = (1..=100).map(|index| {
+        let suffix = if index == 1 { String::new() } else { format!(" ({index})") };
+        desktop.join(format!("Vortex - {name}{suffix}.lnk"))
+    }).find(|path| !path.exists()).ok_or("No available shortcut name")?;
+    write_windows_shortcut(&filename, &url)
+}
+
+fn write_windows_shortcut(filename: &Path, url: &str) -> Result<(), String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let path = filename.to_str().ok_or("Invalid Desktop folder")?.replace('\'', "''");
+    // Both launch routes and query parameters originate from quick_game_links.
+    let script = format!(
+        "$ErrorActionPreference='Stop'; $shell=New-Object -ComObject WScript.Shell; \
+         $link=$shell.CreateShortcut('{path}'); \
+         $link.TargetPath=(Join-Path $env:SystemRoot 'System32\\rundll32.exe'); \
+         $link.Arguments='url.dll,FileProtocolHandler \"{url}\"'; $link.Save()"
+    );
+    let encoded = STANDARD.encode(script.encode_utf16().flat_map(u16::to_le_bytes).collect::<Vec<_>>());
+    let status = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
+        .creation_flags(0x08000000)
+        .status()
+        .map_err(|_| "Windows could not create the shortcut")?;
+    if status.success() && filename.is_file() { Ok(()) } else { Err("Windows could not save the shortcut".to_string()) }
+}
+
+#[cfg(test)]
+mod shortcut_tests {
+    use super::*;
+
+    #[test]
+    fn shortcut_uses_the_same_native_target_as_server_launch() {
+        let (url, _) = quick_game_links(
+            "private", Some("812001".into()), Some("example_link".into()), None, None, None, None
+        ).unwrap();
+        let path = std::env::temp_dir().join(format!("vortex-shortcut-{}.lnk", Uuid::new_v4()));
+        write_windows_shortcut(&path, &url).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(path);
+        let expected: Vec<_> = url.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        assert!(bytes.windows(expected.len()).any(|part| part == expected));
+        assert!(bytes.starts_with(&[0x4c, 0, 0, 0]));
     }
 }
 
@@ -1658,7 +1746,9 @@ fn tray_window_dimensions(
         let row = (39.0 * factor).max(30.0 * factor + 8.0);
         count as f64 * row + count.saturating_sub(1) as f64 * 4.0
     };
-    let mut height = 143.0 + if now_playing { 41.0 } else { 0.0 };
+    // Fixed chrome: outer padding and border (14), brand (44), content
+    // padding and gap (44), two section headings (50), and footer (57).
+    let mut height = 209.0 + if now_playing { 41.0 } else { 0.0 };
     height += list_height(favorites, 8, favorites_collapsed);
     height += list_height(quick_launch, 6, quick_collapsed);
     // Sub-pixel row rounding in WebView2 can add a pixel or two at compact
@@ -1920,13 +2010,16 @@ async fn import_legacy_local_storage() -> Result<legacy_storage::LegacyStorageIm
 #[tauri::command]
 async fn roblox_account(
     state: tauri::State<'_, Arc<AppState>>,
+    profile_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let cookie = state.roblox_cookie.lock().unwrap().clone();
+    let cookie = profile_cookie(&state, profile_id.as_deref());
     if let Some(account) = friends::detect_authenticated_account(&*state, &cookie).await {
         return Ok(json!({"ok": true, "account": account}));
     }
-    if let Some(account) = friends::detect_local_roblox_account(&*state).await {
+    if is_main_profile(profile_id.as_deref()) {
+        if let Some(account) = friends::detect_local_roblox_account(&*state).await {
         return Ok(json!({"ok": true, "account": account}));
+        }
     }
     Ok(json!({"ok": false, "account": null}))
 }
@@ -1946,6 +2039,7 @@ async fn friends_detect_account(
 async fn friends_list(
     state: tauri::State<'_, Arc<AppState>>,
     username: String,
+    profile_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let account = match friends::resolve_roblox_user_id(&username).await {
         Ok(Some(account)) => account,
@@ -1958,7 +2052,7 @@ async fn friends_list(
     if !valid_numeric_id(&user_id) {
         return Ok(json!({"ok": false, "error": "not-found", "friends": []}));
     }
-    let cookie = state.roblox_cookie.lock().unwrap().clone();
+    let cookie = profile_cookie(&state, profile_id.as_deref());
     let mut list = match friends::fetch_roblox_friends(&*state, &user_id, &cookie).await {
         Ok(list) => list,
         Err(error) => {
@@ -2120,11 +2214,24 @@ async fn friends_list(
     Ok(json!({"ok": true, "friends": list, "livePresence": !presence_by_id.is_empty()}))
 }
 
+fn is_main_profile(id: Option<&str>) -> bool {
+    matches!(id, None | Some("default"))
+}
+
+fn profile_cookie(state: &AppState, id: Option<&str>) -> String {
+    if is_main_profile(id) {
+        state.roblox_cookie.lock().unwrap().clone()
+    } else {
+        cookie::load_cookie(id)
+    }
+}
+
 #[tauri::command]
 async fn friends_presence_status(
     state: tauri::State<'_, Arc<AppState>>,
+    profile_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let cookie = state.roblox_cookie.lock().unwrap();
+    let cookie = profile_cookie(&state, profile_id.as_deref());
     Ok(json!({"enabled": !cookie.is_empty()}))
 }
 
@@ -2133,18 +2240,36 @@ async fn friends_presence_cookie(
     state: tauri::State<'_, Arc<AppState>>,
     cookie: Option<String>,
     remove: Option<bool>,
+    profile_id: Option<String>,
+    username: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let profile = profile_id.as_deref();
     if remove.unwrap_or(false) {
-        cookie::save_cookie("");
-        *state.roblox_cookie.lock().unwrap() = String::new();
+        if !cookie::save_cookie("", profile) {
+            return Ok(json!({"ok": false, "error": "rejected"}));
+        }
+        if is_main_profile(profile) {
+            *state.roblox_cookie.lock().unwrap() = String::new();
+        }
         Ok(json!({"ok": true, "enabled": false}))
     } else if let Some(c) = cookie {
-        if c.len() < 100 || c.len() > 2200 || c.contains(' ') || c.contains('"') || c.contains('\'')
+        if c.len() < 100 || c.len() > 2200 || c.chars().any(|ch| ch.is_whitespace() || ch.is_control() || matches!(ch, '"' | '\''))
         {
             return Ok(json!({"ok": false, "error": "invalid"}));
         }
-        if cookie::save_cookie(&c) {
-            *state.roblox_cookie.lock().unwrap() = c;
+        if !is_main_profile(profile) {
+            let matched = friends::detect_authenticated_account(&state, &c).await
+                .and_then(|account| account.get("name").and_then(Value::as_str).map(str::to_owned))
+                .zip(username)
+                .is_some_and(|(actual, expected)| actual.eq_ignore_ascii_case(&expected));
+            if !matched {
+                return Ok(json!({"ok": false, "error": "profile-mismatch"}));
+            }
+        }
+        if cookie::save_cookie(&c, profile) {
+            if is_main_profile(profile) {
+                *state.roblox_cookie.lock().unwrap() = c;
+            }
             Ok(json!({"ok": true, "enabled": true}))
         } else {
             Ok(json!({"ok": false, "error": "rejected"}))
@@ -2185,8 +2310,15 @@ async fn announcements_open(url: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn notifications_friend_playing(_friend: String, _game: String) -> Result<bool, String> {
-    Ok(false)
+async fn notifications_friend_playing(
+    app: AppHandle,
+    friend: String,
+    game: String,
+) -> Result<bool, String> {
+    use tauri_plugin_notification::NotificationExt;
+    let friend: String = friend.chars().filter(|ch| !ch.is_control()).take(64).collect();
+    let game: String = game.chars().filter(|ch| !ch.is_control()).take(120).collect();
+    Ok(app.notification().builder().title("Vortex").body(format!("{friend} · {game}")).show().is_ok())
 }
 
 #[tauri::command]
@@ -2327,7 +2459,7 @@ fn main() {
     let app_state = Arc::new(AppState::new());
 
     // Load the stored cookie on startup.
-    *app_state.roblox_cookie.lock().unwrap() = cookie::load_cookie();
+    *app_state.roblox_cookie.lock().unwrap() = cookie::load_cookie(None);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -2425,6 +2557,7 @@ fn main() {
             cache_clear_disk,
             clear_search_cache,
             open_game,
+            create_desktop_shortcut,
             launch_quick_game,
             report_recent_games,
             tray_get_state,

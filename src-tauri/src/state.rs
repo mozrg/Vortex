@@ -144,6 +144,10 @@ pub struct TrayStyle {
     pub corners: String,
     #[serde(default = "default_tray_scale")]
     pub tray_scale: String,
+    #[serde(default)]
+    pub motion: Option<bool>,
+    #[serde(default)]
+    pub animation_speed: Option<String>,
     #[serde(default = "default_language")]
     pub language: String,
     #[serde(default)]
@@ -168,6 +172,8 @@ impl Default for TrayStyle {
             theme_surface: String::new(),
             corners: default_corners(),
             tray_scale: default_tray_scale(),
+            motion: None,
+            animation_speed: None,
             language: default_language(),
             accent_text: String::new(),
             tray_favorite_limit: default_tray_favorite_limit(),

@@ -35,6 +35,8 @@
     }
     const scale = { compact: .82, normal: .9, large: 1 }[style.trayScale] || .9;
     root.style.setProperty('--tray-scale', String(scale));
+    document.body.classList.toggle('no-motion', style.motion === false);
+    root.style.setProperty('--speed', String(({ slow: 1.6, fast: .55 })[style.animationSpeed] || 1));
     root.style.colorScheme = style.theme === 'light' || style.lightTheme ? 'light' : 'dark';
     document.body.classList.toggle('tray-sharp', style.corners === 'sharp');
     document.documentElement.lang = state.language;
@@ -85,7 +87,7 @@
     fitContent();
   }
 
-  function applyCollapsed() {
+  function applyCollapsed(changedKey) {
     document.querySelectorAll('[data-tray-collapse]').forEach((button) => {
       const key = button.dataset.trayCollapse;
       const collapsed = state.collapsed[key] === true;
@@ -94,7 +96,16 @@
       button.classList.toggle('is-collapsed', collapsed);
       const section = button.closest('.tray-section');
       const list = section?.querySelector('.tray-list');
-      if (list) list.hidden = collapsed;
+      if (!list) return;
+      if (key === changedKey) {
+        const effect = window.vortexMotion.disclose(list, !collapsed);
+        if (effect && collapsed) {
+          effect.finished.then(() => { if (state.collapsed[key]) syncCollapsed(); }, () => {});
+        } else syncCollapsed();
+      } else if (!list.getAnimations().length) {
+        list.hidden = collapsed;
+        list.inert = collapsed;
+      }
     });
   }
 
@@ -167,8 +178,7 @@
       const key = collapse.dataset.trayCollapse;
       state.collapsed[key] = state.collapsed[key] !== true;
       try { localStorage.setItem('vortex.trayCollapsed', JSON.stringify(state.collapsed)); } catch { /* ignore */ }
-      applyCollapsed();
-      syncCollapsed();
+      applyCollapsed(key);
       return;
     }
     const launchButton = target.closest('[data-tray-launch]');

@@ -13,8 +13,15 @@ use windows::Win32::Security::Cryptography::{
 use crate::state::AppState;
 
 /// The path where the encrypted .ROBLOSECURITY cookie is stored.
-pub fn cookie_file_path() -> PathBuf {
-    AppState::user_data_dir().join("rbx-presence.bin")
+fn cookie_file_path(profile: Option<&str>) -> Option<PathBuf> {
+    let root = AppState::user_data_dir();
+    match profile {
+        None | Some("default") => Some(root.join("rbx-presence.bin")),
+        Some(id) if id.len() == 32 && id.bytes().all(|c| c.is_ascii_hexdigit()) => {
+            Some(root.join("accounts").join(id.to_ascii_lowercase()).join("rbx-presence.bin"))
+        }
+        _ => None,
+    }
 }
 
 /// Encrypt a string using Windows DPAPI for local credential storage.
@@ -147,8 +154,8 @@ fn copy_and_free_blob(blob: CRYPT_INTEGER_BLOB) -> Result<Vec<u8>, String> {
 }
 
 /// Load the stored cookie from disk and decrypt it.
-pub fn load_cookie() -> String {
-    let path = cookie_file_path();
+pub fn load_cookie(profile: Option<&str>) -> String {
+    let Some(path) = cookie_file_path(profile) else { return String::new() };
     match std::fs::read(&path) {
         Ok(cipher) => {
             if cipher.is_empty() {
@@ -164,11 +171,13 @@ pub fn load_cookie() -> String {
 }
 
 /// Encrypt and persist the cookie to disk.
-pub fn save_cookie(cookie: &str) -> bool {
-    let path = cookie_file_path();
+pub fn save_cookie(cookie: &str, profile: Option<&str>) -> bool {
+    let Some(path) = cookie_file_path(profile) else { return false };
     if cookie.is_empty() {
-        let _ = std::fs::remove_file(&path);
-        return true;
+        return match std::fs::remove_file(path) {
+            Ok(()) => true,
+            Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+        };
     }
     match encrypt_string(cookie) {
         Ok(cipher) => {

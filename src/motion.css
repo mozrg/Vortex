@@ -1,0 +1,48 @@
+@keyframes surface-appear {
+  from { opacity: .2; translate: 0 5px; }
+  to { opacity: 1; translate: 0 0; }
+}
+.quick-folder-children { animation: none; }
+body[data-card-animation] .game-grid > .game-card.motion-retained { animation: none; }
+@media (prefers-reduced-motion: no-preference) {
+  body:not(.no-motion) {
+    --feedback-time: calc(150ms * var(--speed, 1) * var(--animation-duration, 1));
+    --reveal-time: calc(210ms * var(--speed, 1) * var(--animation-duration, 1));
+  }
+  body:not(.no-motion) :where(button, input, select, textarea, summary, a[href], [role="option"], [role="switch"], [role="button"], [tabindex="0"]) {
+    transition: background-color var(--feedback-time), border-color var(--feedback-time), color var(--feedback-time),
+      box-shadow var(--feedback-time), opacity var(--feedback-time), scale var(--feedback-time);
+  }
+  body:not(.no-motion) :where(button:not(:disabled),a[href],summary,[role="button"]):active { scale: .975; }
+  body:not(.no-motion) :is(.nav-item,.settings-tab,.segment,.catalog-chip,.plans-filter) svg {
+    transition: translate var(--feedback-time), color var(--feedback-time);
+  }
+  body:not(.no-motion) :is(.nav-item,.settings-tab):is(:hover,:focus-visible) svg { translate: 1px 0; }
+  body:not(.no-motion) :is(button,input,textarea,a[href],select,[tabindex="0"]):focus-visible { outline-color: var(--accent); }
+  body:not(.no-motion) .toggle::after { transition-duration: var(--feedback-time); }
+  body:not(.no-motion) :is(.quick-game-modal,#command-palette,.custom-select-menu,.color-popover,.hover-preview-layer,.game-search-results) {
+    transition: display var(--feedback-time) allow-discrete, opacity var(--feedback-time), translate var(--feedback-time);
+    animation: none;
+  }
+  body:not(.no-motion) :is(.quick-game-modal,#command-palette,.custom-select-menu,.color-popover,.hover-preview-layer,.game-search-results)[hidden] {
+    opacity: 0; pointer-events: none;
+  }
+  body:not(.no-motion) :is(.quick-game-dialog,.palette-panel,.announcements-panel,.friends-warn,.friend-preview,.quick-game-fields,.tray-now-playing:not([hidden])) {
+    animation: surface-appear var(--reveal-time) var(--animation-easing, ease-out);
+  }
+  @starting-style {
+    body:not(.no-motion) :is(.quick-game-modal,#command-palette,.custom-select-menu,.color-popover,.hover-preview-layer,.game-search-results):not([hidden]) { opacity: 0; }
+    body:not(.no-motion) :is(.custom-select-menu,.color-popover,.hover-preview-layer,.game-search-results):not([hidden]) { translate: 0 -4px; }
+  }
+  body:not(.no-motion) .quick-folder-chevron { transition: transform var(--reveal-time); }
+  body:not(.no-motion) .page-entering[data-transition]:not([data-transition="none"]) :is(.settings-tabs,.collection-tabs,.catalog-controls,.detail-actions) {
+    animation: surface-appear var(--reveal-time) var(--animation-easing, ease-out);
+  }
+  body:not(.no-motion)[data-card-animation="rise"] .game-grid > .game-card.motion-added { animation: card-rise var(--reveal-time) both; }
+  body:not(.no-motion)[data-card-animation="fade"] .game-grid > .game-card.motion-added { animation: card-fade var(--reveal-time) both; }
+  body:not(.no-motion)[data-card-animation="pop"] .game-grid > .game-card.motion-added { animation: card-pop var(--reveal-time) both; }
+}
+body.no-motion *, body.no-motion *::before, body.no-motion *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

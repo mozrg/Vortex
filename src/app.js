@@ -19,7 +19,7 @@ const LEGACY_STARTER_GAMES_DISABLED = [
 // Accent presets follow the public site palette: a violet family with a few
 // restrained supporting tones instead of the old rainbow set.
 const palettes = [
-  { key: 'violet', color: '#9b7cff' },
+  { key: 'violet', color: '#a68bff' },
   { key: 'lavender', color: '#b9a4ff' },
   { key: 'orchid', color: '#c274ec' },
   { key: 'iris', color: '#7b6cff' },
@@ -28,11 +28,11 @@ const palettes = [
   { key: 'mint', color: '#75c9a8' },
   { key: 'amber', color: '#e0b06a' },
   { key: 'crimson', color: '#e37680' },
-  { key: 'slate', color: '#8d909e' }
+  { key: 'slate', color: '#9a97ae' }
 ];
 
 // Navigation order is user-configurable in Settings → Interface. Primary
-// destinations live in the top bar; collection links stay in the sidebar.
+// destinations and library links retain separate saved ordering in the sidebar.
 const NAV_ITEMS = [
   { key: 'home', icon: 'home', group: 'topbar' },
   { key: 'catalog', icon: 'compass', group: 'topbar' },
@@ -54,11 +54,7 @@ function navOrder(group = 'menu') {
   return [...new Set([...keys, ...validKeys])];
 }
 
-function navItemMarkup(item, location = 'menu') {
-  if (location === 'topbar') {
-    const label = t(`nav.${item.key}`);
-    return `<button class="topbar-nav-item" type="button" data-nav="${item.key}" aria-label="${label}" title="${label}"><span class="topbar-nav-icon" data-icon="${item.icon}"></span><span class="topbar-nav-label">${label}</span></button>`;
-  }
+function navItemMarkup(item) {
   const label = t(`nav.${item.key}`);
   return `<button class="nav-item" type="button" data-nav="${item.key}" aria-label="${label}" title="${label}"><span class="nav-icon" data-icon="${item.icon}"></span><span>${label}</span></button>`;
 }
@@ -69,7 +65,7 @@ function renderSidebarNav() {
   const bottomItems = navOrder('bottom').map((key) => NAV_ITEMS.find((item) => item.key === key)).filter(Boolean);
   const group = (name) => menuItems.filter((item) => item.group === name).map(navItemMarkup).join('');
   return {
-    topbar: topbarItems.map((item) => navItemMarkup(item, 'topbar')).join(''),
+    topbar: topbarItems.map(navItemMarkup).join(''),
     menu: group('menu'),
     space: group('space'),
     bottom: bottomItems.map(navItemMarkup).join('')
@@ -77,7 +73,7 @@ function renderSidebarNav() {
 }
 
 const preferenceDefaults = {
-  accent: '#9b7cff', accentMode: 'solid', accentSecondary: '#c274ec', gradientAngle: 135,
+  accent: '#a68bff', accentMode: 'solid', accentSecondary: '#5b3fd6', gradientAngle: 135,
   theme: 'dark', themeBackground: '', themeSurface: '',
   density: 'comfortable', corners: 'soft', showDescriptions: true, showStats: true,
   homeGreeting: '', customGames: [], homeFeaturedGame: '', homePicks: [], homeGameCount: 4, quickLaunchItems: [],
@@ -92,8 +88,8 @@ const preferenceDefaults = {
   themeWallpaper: '', themeWallpaperBlur: 14, themeWallpaperDim: 45, themeGrain: false, themeGrainStrength: 0.05, themeVignette: false, themeVignetteStrength: 1,
   cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true,
   homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal',
-  homeSectionTitles: {}, homeSectionScale: 1, catalogView: 'grid', catalogGenre: 'all', catalogAccess: 'all', cardAspect: 'square', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern',
-  discordPresence: false, friendFavoriteAlerts: false, discordClientId: '',
+  homeSectionTitles: {}, homeSectionScale: 1, catalogView: 'grid', catalogGenre: 'all', catalogAccess: 'all', cardAspect: 'wide', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern',
+  discordPresence: false, friendFavoriteAlerts: false, discordClientId: '', streamMode: false, gamingMode: true, textScale: 100,
   diskCache: true, lazyImages: true, onlineHistoryLimit: 'week', trayMiniPlayer: true,
   trayFavoritesLimit: 5, trayQuickLimit: 3, trayFavoritesUnlimited: false, trayQuickUnlimited: false,
   catalogGroupByGenre: false,
@@ -292,37 +288,43 @@ async function copyText(value) {
 }
 
 const readStored = (key, fallback) => {
-  try { const value = localStorage.getItem(key); return value ? JSON.parse(value) : fallback; } catch { return fallback; }
+  try { const value = accountStorage.getItem(key); return value ? JSON.parse(value) : fallback; } catch { return fallback; }
 };
 const preferences = { ...preferenceDefaults, ...readStored('vortex.preferences', {}) };
-// Square covers are the new default. Migrate the old implicit "auto" once,
+// Preserve the original migration of legacy implicit "auto" covers,
 // while keeping "auto" available if the user picks it again later.
-if (localStorage.getItem('vortex.cardAspectDefault') !== 'square') {
+if (accountStorage.getItem('vortex.cardAspectDefault') !== 'square') {
   if (preferences.cardAspect === 'auto') preferences.cardAspect = 'square';
-  localStorage.setItem('vortex.cardAspectDefault', 'square');
-  localStorage.setItem('vortex.preferences', JSON.stringify(preferences));
+  accountStorage.setItem('vortex.cardAspectDefault', 'square');
+  accountStorage.setItem('vortex.preferences', JSON.stringify(preferences));
 }
+preferences.streamMode = readStored(streamModeKey, preferences.streamMode);
 window.preferences = preferences;
 let favorites = new Set(readStored('vortex.favorites', []));
 let recentGames = readStored('vortex.recent', []);
-// Playtime per game: { [id]: { seconds, launches, lastPlayed } }. 'seconds' is
-// a conservative estimate: the time between a launch and the next launch or
-// app close, capped at a session ceiling so an abandoned window does not
-// inflate the number.
+if (!Array.isArray(recentGames)) recentGames = [];
+// Per-game totals follow the confirmed daily ledger; launch counts and the
+// last-played timestamp are stored here alongside them.
 let playStats = readStored('vortex.playStats', {});
-let activityData = readStored('vortex.activity', { days: {}, streak: { current: 0, best: 0, lastCompletedDate: '', recoveryUsed: false }, achievements: {} });
-if (!activityData || typeof activityData !== 'object') activityData = { days: {}, streak: { current: 0, best: 0, lastCompletedDate: '', recoveryUsed: false }, achievements: {} };
-activityData.days ||= {};
-activityData.streak = { current: 0, best: 0, lastCompletedDate: '', recoveryUsed: false, ...(activityData.streak || {}) };
-activityData.achievements ||= {};
+let activityData = normalizeActivityData(readStored('vortex.activity', null));
+if (!activityClockIsValid(activityData)) {
+  activityData.days = {};
+  playStats = synchronizePlayStats(playStats, activityData.days);
+}
+let activityClockReady;
 const ACTIVITY_GAME_MINUTES = 10;
 const ACTIVITY_DAILY_GAMES = 2;
-const PLAYTIME_SESSION_CAP_SECONDS = 3 * 60 * 60;
 const PLAYTIME_SESSION_KEY = 'vortex.playSession';
 let playSessionStart = null;
 let playSessionGameId = null;
-let playSessionSource = '';
+let runtimeSessionKey = '';
+let runtimeSample = null;
+let runtimeConfirmedAt = 0;
+let runtimePollBusy = false;
 let runtimePollTimer = null;
+let runtimeOwner = false;
+let pendingLaunch = null;
+let lastResolvedAttempt = 0;
 let runtimeResolvingPlace = '';
 // Snapshot of the game launched from Vortex: drives the tray mini-player, so it
 // works even when the title came from a friend's server rather than the catalog.
@@ -394,95 +396,199 @@ function catalogSorts() {
   return list;
 }
 
-function recommendationSeeds() {
-  const weights = new Map();
-  const add = (id, weight) => {
-    const key = String(id || '');
-    if (!key || !getGame(key)) return;
-    weights.set(key, Math.max(Number(weights.get(key)) || 0, weight));
-  };
-  for (const id of favorites) add(id, 1000);
-  const played = Object.entries(playStats || {})
-    .sort((first, second) => Number(second[1]?.seconds || 0) - Number(first[1]?.seconds || 0))
-    .slice(0, 8);
-  played.forEach(([id, entry], index) => add(id, 500 - index * 20 + Math.min(400, Number(entry?.seconds || 0) / 60)));
-  recentGames.slice(0, 8).forEach((id, index) => add(id, 200 - index * 10));
-  return [...weights.entries()]
-    .sort((first, second) => second[1] - first[1])
-    .map(([id, weight]) => ({ game: getGame(id), weight }))
-    .filter((entry) => entry.game)
-    .slice(0, 6);
+function recommendationProfile() {
+  const gamesById = new Map(allGames().map(game => [String(game.id), game]));
+  const recent = new Map(uniqueRecentIds(recentGames).map((id, index) => [id, index]));
+  const favoriteIds = new Set([...favorites].map(String));
+  const knownIds = new Set([...favoriteIds, ...Object.keys(playStats), ...recent.keys()]);
+  const experiences = new Map();
+  const feedback = recommendationFeedback();
+  const excluded = new Set(feedback.hidden);
+  for (const id of knownIds) {
+    const game = gamesById.get(id);
+    excluded.add('place:' + id);
+    if (!game) continue;
+    const key = experienceKey(game);
+    excluded.add(key);
+    const seed = experiences.get(key) || { game, favorite: false, seconds: 0, launches: 0, recency: 0 };
+    const stats = playStats[id] || {};
+    seed.favorite ||= favoriteIds.has(id);
+    seed.seconds += Math.max(0, Number(stats.seconds) || 0);
+    seed.launches += Math.max(0, Number(stats.launches) || 0);
+    if (recent.has(id)) seed.recency = Math.max(seed.recency, 12 - recent.get(id));
+    experiences.set(key, seed);
+  }
+  for (const [id, game] of Object.entries(feedback.boosted)) {
+    const key = experienceKey(game);
+    if (feedback.hidden.includes(key) || feedback.hidden.includes('place:' + id)) continue;
+    excluded.add(key);
+    excluded.add('place:' + id);
+    const existing = experiences.get(key);
+    experiences.set(key, { game, favorite: false, seconds: 0, launches: 0, recency: 0, ...existing, feedback: true });
+  }
+  const ranked = [...experiences.values()].map(seed => ({
+    ...seed, weight: (seed.feedback ? 74 : 0) + (seed.favorite ? 45 : 0) + Math.min(50, 9 * Math.log1p(seed.seconds / 3600))
+      + Math.min(24, 5 * Math.log1p(seed.launches)) + seed.recency
+  })).sort((a,b) => b.weight - a.weight);
+  // Reserve representation for both signals even with a large favorites list.
+  const seeds = [...new Set([ranked.find(s => s.favorite), ranked.find(s => s.seconds || s.launches || s.recency), ranked.find(s => s.feedback), ...ranked].filter(Boolean))].slice(0, 6);
+  const signature = JSON.stringify([seeds.map(s => [experienceKey(s.game), s.game.title, Math.round(s.weight)]), [...excluded].sort()]);
+  return { seeds, excluded, signature };
 }
 
-async function loadRecommendations(force = false) {
-  if (recommendationState.status === 'loading' && !force) return;
-  const seeds = recommendationSeeds();
-  const signature = seeds.slice(0, 4).map((entry) => entry.game.id).join(',');
-  if (!force && recommendationState.status === 'success' && recommendationState.signature === signature && Date.now() - recommendationState.fetchedAt < 10 * 60 * 1000) return;
-  if (!seeds.length) {
-    recommendationState = { status: 'empty', items: [], signature: '', fetchedAt: Date.now(), seeds: 0 };
-    if (currentView === 'catalog') renderPage();
-    return;
+function recommendationTitle(game) {
+  return String(game.title || '').replace(/\[[^\]]*\]/g, ' ').replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/\s+/g, ' ').trim() || String(game.title || '');
+}
+
+function rankRecommendations(profile, lists) {
+  const candidates = new Map();
+  function candidate(game) {
+    if (!game?.id || profile.excluded.has('place:' + game.id)) return null;
+    const key = experienceKey(game);
+    if (profile.excluded.has(key)) return null;
+    if (!candidates.has(key)) candidates.set(key, { game, score: 0, contributions: new Map() });
+    return candidates.get(key);
   }
-  recommendationState = { ...recommendationState, status: 'loading', seeds: seeds.length };
-  if (currentView === 'catalog') renderPage();
-  try {
-    if (!window.vortexDesktop?.getSimilarGames) throw new Error('desktop only');
-    const lists = await Promise.all(seeds.slice(0, 4).map(({ game }) => window.vortexDesktop.getSimilarGames({
-      universeId: String(game.universeId || ''),
-      genre: String(game.genre || ''),
-      title: String(game.title || '')
-    }).catch(() => [])));
-    const genreWeight = new Map();
-    seeds.forEach(({ game, weight }) => {
-      const genre = String(game.genreKey || inferGenreKey(game));
-      if (!genre) return;
-      genreWeight.set(genre, (genreWeight.get(genre) || 0) + weight);
+  const credit = (row, index, points) => {
+    row.score += points;
+    row.contributions.set(index, (row.contributions.get(index) || 0) + points);
+  };
+  lists.forEach((list, index) => {
+    const seen = new Set();
+    list.forEach((game, position) => {
+      const row = candidate(game);
+      if (!row || seen.has(row)) return;
+      seen.add(row);
+      credit(row, index, profile.seeds[index].weight / (1 + position / 5));
     });
-    const seen = new Set([...favorites].map(String));
-    seeds.forEach(({ game }) => seen.add(String(game.id)));
-    const found = new Map();
-    for (const list of lists) {
-      for (const game of Array.isArray(list) ? list : []) {
-        const id = String(game?.id || '');
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
-        const genre = String(game.genreKey || inferGenreKey(game));
-        game.recommendationScore = (genreWeight.get(genre) || 0) + Math.log10(Number(game.playerCount) + 10) * 24 + (Number(game.upVotes) || 0) / Math.max(1, Number(game.upVotes) + Number(game.downVotes)) * 30;
-        found.set(id, game);
-      }
-    }
-    let items = [...found.values()].sort((first, second) => second.recommendationScore - first.recommendationScore || Number(second.playerCount || 0) - Number(first.playerCount || 0)).slice(0, 36);
-    if (!items.length) {
-      // Last resort: use the already cached Discover catalog, still excluding
-      // games the user owns or has already seen in their lists.
-      const cached = Object.values(discoveryCatalog || {}).flatMap((entry) => Array.isArray(entry?.items) ? entry.items : []);
-      items = cached.filter((game) => !seen.has(String(game.id))).slice(0, 36);
-    }
-    // Recommendation cards must behave exactly like every other card: online
-    // count, open details, playtime. That needs live-shaped entries that the
-    // rest of the app can look up by id, so merge them into the discovery cache.
-    items = items.map((game) => ({ ...game, live: true, playerCount: Number(game.playerCount) || 0 }));
-    if (items.length) {
-      const index = new Map(dynamicGames.map((game) => [String(game.id), game]));
-      for (const game of items) {
-        index.set(String(game.id), { ...index.get(String(game.id)), ...game, id: String(game.id) });
-      }
-      dynamicGames = [...index.values()].slice(-1200);
-      try { localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames)); } catch { /* keep the in-memory list */ }
-    }
-    recommendationState = {
-      status: items.length ? 'success' : 'empty',
-      items,
-      signature,
-      fetchedAt: Date.now(),
-      seeds: seeds.length
-    };
-  } catch {
-    recommendationState = { status: 'error', items: [], signature, fetchedAt: Date.now(), seeds: seeds.length };
+  });
+  for (const game of allGames()) candidate(game);
+  const interests = profile.seeds.map(({ game, weight }) => ({
+    genre: game.genreKey || inferGenreKey(game), creator: String(game.creator || '').trim().toLowerCase(),
+    words: recommendationTitle(game).toLowerCase().split(' ').filter(word => word.length > 2), weight
+  }));
+  for (const row of candidates.values()) {
+    const game = row.game;
+    const genre = game.genreKey || inferGenreKey(game);
+    const words = new Set(recommendationTitle(game).toLowerCase().split(' '));
+    interests.forEach((interest, index) => {
+      if (genre !== 'other' && genre === interest.genre) credit(row, index, interest.weight * .35);
+      if (interest.creator && String(game.creator || '').trim().toLowerCase() === interest.creator) credit(row, index, interest.weight * .6);
+      if (interest.words.some(word => words.has(word))) credit(row, index, interest.weight * .35);
+    });
   }
+  return [...candidates.values()].filter(row => row.score > 0)
+    .sort((a,b) => b.score - a.score || (Number(b.game.playerCount) || 0) - (Number(a.game.playerCount) || 0))
+    .map(row => {
+      const [index] = [...row.contributions].sort((a,b) => b[1] - a[1])[0];
+      const seed = profile.seeds[index];
+      return { ...row.game, recommendationReason: { title: seed.game.title,
+        signal: seed.feedback ? 'feedback' : seed.favorite ? 'favorite' : 'played' } };
+    });
+}
+
+function recommendationSources(seeds) {
+  const sources = new Map();
+  function add(query, index, primary = false) {
+    query = query.trim().slice(0, 90);
+    const key = query.toLowerCase();
+    if (!key || sources.has(key)) return;
+    sources.set(key, { query, index, primary, sessionId: createSearchSessionId(), token: null, used: new Set() });
+  }
+  seeds.forEach(({game}, i) => add(recommendationTitle(game), i, true));
+  seeds.forEach(({game}, i) => {
+    const title = recommendationTitle(game);
+    const genre = GENRE_SEARCH_BASE[game.genreKey || inferGenreKey(game)] || '';
+    const topic = title.split(' ').find(word => word.length > 2 && !/^(the|new|update|simulator)$/i.test(word));
+    if (topic) add(topic, i);
+    if (genre && topic) add(topic + ' ' + genre, i);
+    if (genre) add(genre, i);
+  });
+  return [...sources.values()];
+}
+
+let recommendationRequestId = 0;
+async function loadRecommendations(force = false, append = false) {
+  const profile = recommendationProfile();
+  const { seeds, signature } = profile;
+  const category = activeCategory;
+  const countMatching = items => category === 'all' ? items.length : items.filter(game => game.genreKey === category).length;
+  const previous = recommendationState;
+  append = append && previous.signature === signature;
+  if (!force && previous.signature === signature) {
+    if (previous.status === 'loading' || previous.loadingMore) return;
+    if (!append && Date.now() - previous.fetchedAt < 600000) return;
+    if (append && countMatching(previous.items) > previous.visible) {
+      previous.visible += CATALOG_PAGE_SIZE;
+      renderPage();
+      return;
+    }
+  }
+  const requestId = ++recommendationRequestId;
+  const state = append ? previous : { status: 'loading', items: [], signature, seeds: seeds.length,
+    sources: recommendationSources(seeds), visible: CATALOG_PAGE_SIZE, fetchedAt: Date.now() };
+  recommendationState = state;
+  state.loadingMore = append;
+  state.failed = false;
+  state.rateLimited = false;
+  if (currentView === 'catalog') renderPage();
+  const lists = seeds.map(() => []);
+  const target = append ? countMatching(previous.items) + CATALOG_PAGE_SIZE : CATALOG_PAGE_SIZE;
+  const previousItems = state.items;
+  const before = new Set(previousItems.map(experienceKey));
+  const blocked = new Set();
+  // Rotate across the user's interests. Limit each click to a few network
+  // requests even when Roblox returns multiple duplicate-only pages.
+  for (let round = 0; round < 3; round++) {
+    const ready = state.sources.filter(source => !blocked.has(source));
+    const primary = ready.filter(source => source.primary);
+    if (!append && state.items.length && !primary.length) break;
+    const batch = (!append && primary.length ? primary : ready).slice(0, 2);
+    if (!batch.length) break;
+    const pages = await Promise.allSettled(batch.map(source => window.vortexDesktop.searchGames({
+      query: source.query, sessionId: source.sessionId, pageToken: source.token
+    })));
+    if (requestId !== recommendationRequestId) return;
+    for (const [i, source] of batch.entries()) {
+      const result = pages[i];
+      state.sources.splice(state.sources.indexOf(source), 1);
+      if (result.status === 'rejected' || !Array.isArray(result.value?.items)) {
+        const reason = String(result.reason || '');
+        if (source.token && /Roblox returned (400|404|410)\b/.test(reason)) continue;
+        if (/\b429\b/.test(reason)) state.rateLimited = true;
+        blocked.add(source);
+        state.sources.push(source);
+        continue;
+      }
+      const page = result.value;
+      lists[source.index].push(...page.items.filter(game => game?.id).map(game => normalizeDiscoveredGame(game, source.query)));
+      const next = page.nextPageToken;
+      if (next && !source.used.has(next)) {
+        source.used.add(next);
+        source.token = next;
+        state.sources.push(source);
+      }
+    }
+    const fresh = rankRecommendations(profile, lists).filter(game => !before.has(experienceKey(game)));
+    state.items = [...previousItems, ...fresh];
+    if (state.rateLimited || countMatching(state.items) >= target) break;
+  }
+  if (requestId !== recommendationRequestId) return;
+  if (!state.items.length && seeds.length) state.items = rankRecommendations(profile, lists);
+  if (state.items.length) {
+    const index = new Map(dynamicGames.map(game => [String(game.id), game]));
+    for (const game of state.items) index.set(String(game.id), { ...index.get(String(game.id)), ...game, id: String(game.id) });
+    dynamicGames = [...index.values()].slice(-1200);
+    try { localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames)); } catch { /* memory cache is still available */ }
+  }
+  state.visible = target;
+  state.failed = blocked.size > 0;
+  state.status = state.items.length || state.sources.length && !state.failed ? 'success' : state.failed ? 'error' : 'empty';
+  state.fetchedAt = Date.now();
+  state.loadingMore = false;
   if (currentView === 'catalog') renderPage();
 }
+
 
 const pageContent = document.getElementById('page-content');
 const searchInput = document.getElementById('global-search');
@@ -541,7 +647,7 @@ function escapeHtml(value) {
 }
 
 function savePreferences() {
-  localStorage.setItem('vortex.preferences', JSON.stringify(preferences));
+  accountStorage.setItem('vortex.preferences', JSON.stringify(preferences));
   // Any preference change may affect the tray's look, so it re-reports its
   // style payload together with the recent games on every save.
   reportRecentGamesToTray();
@@ -576,12 +682,12 @@ function colorValueForTarget(name) {
   const value = name === 'folderColor'
     ? document.querySelector('[data-folder-color-value]')?.value
     : preferences[name];
-  return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value).toLowerCase() : '#9b7cff';
+  return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value).toLowerCase() : '#a68bff';
 }
 
 function syncFolderColorTrigger() {
   const inputValue = document.querySelector('[data-folder-color-value]')?.value;
-  const value = /^#[0-9a-f]{6}$/i.test(String(inputValue || '')) ? String(inputValue).toLowerCase() : '#9b7cff';
+  const value = /^#[0-9a-f]{6}$/i.test(String(inputValue || '')) ? String(inputValue).toLowerCase() : '#a68bff';
   const trigger = document.querySelector('[data-color-open="folderColor"]');
   if (!trigger) return;
   trigger.dataset.colorCurrent = value;
@@ -782,11 +888,11 @@ function cleanQuickLaunchItems(items, depth = 0) {
     if (!id) return null;
     if (item.type === 'folder' && depth === 0) {
       const games = cleanQuickLaunchItems(item.games, depth + 1).filter((entry) => entry?.type === 'game');
-      const color = /^#[0-9a-f]{6}$/i.test(String(item.color || '')) ? String(item.color).toLowerCase() : '#9b7cff';
+      const color = /^#[0-9a-f]{6}$/i.test(String(item.color || '')) ? String(item.color).toLowerCase() : '#a68bff';
       return games.length > 1 ? { type: 'folder', id, title: String(item.title || '').trim().slice(0, 48), color, games } : (games[0] || null);
     }
     if (item.type !== 'game') return null;
-    const method = ['private', 'share', 'public'].includes(item.method) ? item.method : 'public';
+    const method = ['private', 'share', 'public', 'instance', 'access'].includes(item.method) ? item.method : 'public';
     const placeId = String(item.placeId || '').trim();
     const linkCode = String(item.linkCode || '').trim();
     const shareCode = String(item.shareCode || '').trim();
@@ -794,9 +900,14 @@ function cleanQuickLaunchItems(items, depth = 0) {
     if (method === 'share' && placeId && !/^\d{1,20}$/.test(placeId)) return null;
     if (method === 'private' && !/^[a-z\d_-]{1,100}$/i.test(linkCode)) return null;
     if (method === 'share' && !/^[a-z\d_-]{1,128}$/i.test(shareCode)) return null;
+    const serverId = String(item.serverId || '');
+    const accessCode = String(item.accessCode || '');
+    if (method === 'instance' && !/^[a-z0-9-]{5,64}$/i.test(serverId)) return null;
+    if (method === 'access' && !/^[a-z0-9-]{8,100}$/i.test(accessCode)) return null;
     const rawHotkey = item.hotkey && typeof item.hotkey === 'object' ? item.hotkey : null;
     return {
       type: 'game', id, method, placeId,
+      serverId: method === 'instance' ? serverId : '', accessCode: method === 'access' ? accessCode : '',
       linkCode: method === 'private' ? linkCode : '', shareCode: method === 'share' ? shareCode : '',
       shareType: method === 'share' && ['Server', 'ExperienceInvite', 'ExperienceDetails'].includes(item.shareType) ? item.shareType : 'Server',
       title: String(item.title || '').trim().slice(0, 64),
@@ -820,9 +931,9 @@ function quickLaunchId() {
 function renderAccountAvatar() {
   const host = document.querySelector('[data-account-avatar]');
   if (!host) return;
-  const avatar = safeThumbnail(preferences.robloxAvatar);
+  const avatar = preferences.streamMode ? '' : safeThumbnail(preferences.robloxAvatar);
   const name = String(preferences.robloxDisplayName || preferences.robloxUsername || 'V').trim();
-  const initial = (name[0] || 'V').toLocaleUpperCase();
+  const initial = preferences.streamMode ? 'V' : (name[0] || 'V').toLocaleUpperCase();
   host.classList.toggle('has-image', Boolean(avatar));
   host.innerHTML = avatar
     ? `<span class="avatar-photo" style="--avatar-image:url('${escapeHtml(avatar)}')" aria-hidden="true"></span>`
@@ -830,7 +941,8 @@ function renderAccountAvatar() {
 }
 
 function rememberRobloxAccount(account) {
-  if (!account) return false;
+  if (!account || (activeAccountProfile !== 'default' && preferences.robloxUsername && account.name &&
+      preferences.robloxUsername.toLowerCase() !== String(account.name).toLowerCase())) return false;
   preferences.robloxAccountId = /^\d{1,20}$/.test(String(account.id || '')) ? String(account.id) : preferences.robloxAccountId;
   preferences.robloxDisplayName = String(account.displayName || account.name || '').slice(0, 32);
   const avatar = safeThumbnail(account.avatar);
@@ -853,8 +965,9 @@ async function refreshRobloxAccount() {
 }
 
 function applyPreferences() {
+  applyLauncherModes();
   if (!['ru', 'en'].includes(preferences.language)) preferences.language = 'ru';
-  if (!['home', 'accent', 'cards', 'effects', 'interface', 'general', 'integrations', 'data', 'version'].includes(preferences.settingsTab)) preferences.settingsTab = 'home';
+  if (!['home', 'accent', 'cards', 'effects', 'interface', 'general', 'integrations', 'tray', 'data', 'version'].includes(preferences.settingsTab)) preferences.settingsTab = 'home';
   if (!['off', 'week', 'month'].includes(preferences.onlineHistoryLimit)) preferences.onlineHistoryLimit = 'week';
   if (!['all', 'paid'].includes(preferences.catalogAccess)) preferences.catalogAccess = 'all';
   if (!preferences.hotkeys || typeof preferences.hotkeys !== 'object') preferences.hotkeys = {};
@@ -967,7 +1080,7 @@ function applyPreferences() {
     ? `linear-gradient(${preferences.gradientAngle}deg, rgba(${channels}, .19), rgba(${secondaryRgb}, .12))`
     : `rgba(${channels}, .14)`;
   const themeBase = {
-    dark: { background: '#0d1012', surface: '#14181a' },
+    dark: { background: '#0f0e15', surface: '#17161f' },
     light: { background: '#f5f6f7', surface: '#ffffff' },
     oled: { background: '#030305', surface: '#08090c' }
   }[preferences.theme];
@@ -1009,8 +1122,8 @@ function applyPreferences() {
   const raisedTone = isLightCanvas ? '#000000' : '#ffffff';
   root.setProperty('--surface-2', mixHex(surface, raisedTone, isLightCanvas ? 0.045 : 0.08));
   root.setProperty('--surface-3', mixHex(surface, raisedTone, isLightCanvas ? 0.09 : 0.14));
-  root.setProperty('--text', preferences.themeText || (isLightCanvas ? '#211e2a' : '#f4f4f6'));
-  root.setProperty('--muted', preferences.themeMuted || (isLightCanvas ? '#777382' : '#8d909e'));
+  root.setProperty('--text', preferences.themeText || (isLightCanvas ? '#211e2a' : '#eceaf5'));
+  root.setProperty('--muted', preferences.themeMuted || (isLightCanvas ? '#777382' : '#9a97ae'));
   root.setProperty('--subtle', isLightCanvas ? '#9692a1' : '#636776');
   root.setProperty('--line', preferences.themeLine ? hexToRgba(preferences.themeLine, 0.16) : (isLightCanvas ? 'rgba(38,32,56,.1)' : 'rgba(255,255,255,.075)'));
   root.setProperty('--line-strong', preferences.themeLine ? hexToRgba(preferences.themeLine, 0.34) : (isLightCanvas ? 'rgba(38,32,56,.18)' : 'rgba(255,255,255,.13)'));
@@ -1084,7 +1197,34 @@ function allGames() {
   return [...games, ...custom, ...dynamic, ...paid];
 }
 
-function getGame(id) { return allGames().find((game) => game.id === String(id)); }
+function getGame(id) { return allGames().find((game) => String(game.id) === String(id)); }
+
+function experienceKey(game) {
+  return Number(game?.universeId) > 0 ? 'universe:' + game.universeId : 'place:' + game?.id;
+}
+
+// Keep the most recently joined place in each experience. Unresolved places
+// retain their IDs until Roblox supplies their universe metadata.
+function uniqueRecentIds(ids) {
+  const byId = new Map(allGames().map(game => [String(game.id), game]));
+  const seen = new Set();
+  const result = [];
+  for (const value of ids) {
+    const id = String(value ?? '').trim();
+    if (!/^\d+$/.test(id)) continue;
+    const key = experienceKey(byId.get(id) || { id });
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(id);
+    if (result.length === 12) break;
+  }
+  return result;
+}
+
+function saveRecentGames(ids) {
+  recentGames = uniqueRecentIds(ids);
+  accountStorage.setItem('vortex.recent', JSON.stringify(recentGames));
+}
 function localizeGame(game) {
   const rawGenre = game.genre && String(game.genre).toLocaleLowerCase() !== 'roblox' ? String(game.genre).trim() : '';
   const localizedGenre = game.genreKey ? t(`genre.${game.genreKey}`) : rawGenre;
@@ -1121,17 +1261,44 @@ function safeExternalUrl(value) {
   try { const url = new URL(String(value || '')); return url.protocol === 'https:' ? url.href : ''; } catch { return ''; }
 }
 
-// Steam-style playtime label: "45 мин", "12,5 ч.", "3 д. 4 ч.".
+// Use the same hour unit for short and long sessions.
 function formatPlaytime(totalSeconds) {
   const minutes = Math.floor(Number(totalSeconds) / 60);
-  if (!minutes) return null;
+  if (!Number.isFinite(minutes) || minutes < 1) return null;
   if (minutes < 60) return { value: minutes, unit: t('time.minutes') };
   const hours = minutes / 60;
-  if (hours < 24) return { value: Math.round(hours * 10) / 10, unit: t('time.hours') };
-  return { value: Math.round(hours / 24 * 10) / 10, unit: t('time.days') };
+  return { value: Math.round(hours * 10) / 10, unit: t('time.hours') };
 }
+// Keep the stored place IDs for launching. Statistics combine places once their
+// shared Roblox universe is known, including sessions saved by older versions.
+function groupedPlaytime(entries, gamesById) {
+  const groups = new Map();
+  for (const [id, entry] of Object.entries(entries || {})) {
+    const key = experienceKey(gamesById.get(id) || { id });
+    const total = groups.get(key) || { id, seconds: 0, launches: 0, lastPlayed: 0 };
+    total.seconds += Math.max(0, Number(entry?.seconds ?? entry) || 0);
+    total.launches += Math.max(0, Number(entry?.launches) || 0);
+    if (Number(entry?.lastPlayed) > total.lastPlayed) {
+      total.id = id;
+      total.lastPlayed = Number(entry.lastPlayed);
+    }
+    groups.set(key, total);
+  }
+  return groups;
+}
+
+let playtimeSummary = null;
+function playtimeForView() {
+  if (!playtimeSummary) {
+    const gamesById = new Map(allGames().map(game => [String(game.id), game]));
+    playtimeSummary = { gamesById, totals: groupedPlaytime(playStats, gamesById) };
+  }
+  return playtimeSummary;
+}
+
 function renderPlaytimeBadge(gameId) {
-  const entry = playStats && playStats[gameId];
+  const { totals, gamesById } = playtimeForView();
+  const entry = totals.get(experienceKey(gamesById.get(String(gameId)) || { id: gameId }));
   const formatted = entry && entry.seconds ? formatPlaytime(entry.seconds) : null;
   if (!formatted) return '';
   const label = formatted.value.toLocaleString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { maximumFractionDigits: 1 });
@@ -1140,12 +1307,13 @@ function renderPlaytimeBadge(gameId) {
 
 function openGameDetails(id) {
   // Paid results live in their own list, so they must be searched too.
-  const game = getGame(id)
+  const game = getGame(id) || openGameTabs.find(tab => tab.id === String(id))?.game
     || genreResults.find((item) => String(item.id) === String(id))
     || searchResults.find((item) => String(item.id) === String(id))
     || recommendationState.items.find((item) => String(item.id) === String(id))
     || paidGames.find((item) => String(item.id) === String(id));
   if (!game) return;
+  rememberGameTab(game);
   const requestId = ++detailRequestId;
   detailBadgeCount = 3;
   detailBadgesExpanded = true;
@@ -1270,7 +1438,7 @@ function renderGameDetail() {
     ? `<section class="detail-section"><h2>${t('game.releaseHistory')}</h2><div class="release-history">${game.releaseHistory.slice(0, 8).map((entry) => `<div class="release-row"><span class="release-dot"></span><span><strong>${escapeHtml(new Date(entry.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: 'long', year: 'numeric' }))}</strong><small>${t('game.releaseSeen')}</small></span></div>`).join('')}</div><p class="catalog-disclaimer">${t('game.releaseHistoryHint')}</p></section>`
     : '';
   const similar = '';
-  const heroArt = thumbnail || safeThumbnail(screenshots[0]?.url);
+  const heroArt = safeThumbnail(screenshots[0]?.url) || thumbnail;
   const onlineUpdated = detailOnlineUpdatedAt
     ? new Date(detailOnlineUpdatedAt).toLocaleTimeString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { hour: '2-digit', minute: '2-digit' })
     : '';
@@ -1281,18 +1449,17 @@ function renderGameDetail() {
     <div class="detail-stat"><div class="detail-stat-head"><span>${icon('eye', 13)} ${t('game.visits')}</span></div><strong>${formatCount(game.visits)}</strong><small>${t('game.visitsHint')}</small></div>
     <div class="detail-stat"><div class="detail-stat-head"><span>${icon('heart', 13)} ${t('game.favorites')}</span></div><strong>${formatCount(game.favorites)}</strong><small>${t('game.favoritesHint')}</small></div>
   </section>`;
-  return `<button class="detail-back icon-button" data-action="detail-back" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)}</button>
+  return `<button class="detail-back ghost-button" data-action="detail-back" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)} ${t('game.backToCatalog')}</button>
     <article class="game-detail">
       <header class="detail-hero"${heroArt ? ` style="--detail-art:url('${escapeHtml(heroArt)}')"` : ''}>
-        <span class="detail-hero-backdrop" aria-hidden="true"></span>
-        <div class="detail-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(game.title)}" />` : `<span class="detail-avatar-fallback">${escapeHtml((game.title || 'R')[0].toLocaleUpperCase())}</span>`}</div><div class="detail-hero-copy"><div class="eyebrow">${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p class="detail-creator-line">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge" title="${t('game.verifiedCreator')}" aria-label="${t('game.verifiedCreator')}">${icon('check', 11)}</span>` : ''}</p>${badgeRow}<div class="detail-actions">${canPlay ? `<button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button>` : `<button class="primary-button" disabled>${icon('close', 14)} ${t('game.notAvailable')}</button>`}<button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button><span class="detail-playtime">${icon('clock', 13)} ${playtime}</span></div></div>
+        <div class="detail-hero-copy"><div class="eyebrow">${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p class="detail-creator-line">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge" title="${t('game.verifiedCreator')}" aria-label="${t('game.verifiedCreator')}">${icon('verified', 17)}</span>` : ''}</p>${badgeRow}<div class="detail-actions">${canPlay ? `<button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button>` : `<button class="primary-button" disabled>${icon('close', 14)} ${t('game.notAvailable')}</button>`}<button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button>${gameIdPattern.test(String(game.id)) ? `<button class="ghost-button" data-launcher-action="shortcut" data-id="${escapeHtml(game.id)}">${icon('windowMaximize', 13)} ${t('tools.shortcut')}</button>` : ''}<span class="detail-playtime">${playtime}</span></div></div>
       </header>
       ${detailStatus === 'loading' ? `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('game.loadingDetails')}</strong></div>` : ''}
       ${detailStatus === 'error' ? `<p class="catalog-disclaimer">${t('game.detailsUnavailable')}</p>` : ''}
       ${stats}
       <div class="detail-columns">
         <section class="detail-section detail-about"><h2>${t('game.description')}</h2><p class="detail-description ${detailDescriptionExpanded ? 'expanded' : 'collapsed'}">${escapeHtml(description)}</p>${description.length > 420 ? `<button class="ghost-button detail-description-toggle" data-action="toggle-detail-description">${t(detailDescriptionExpanded ? 'card.readLess' : 'card.readMore')}</button>` : ''}</section>
-        <section class="detail-section detail-meta"><div><span>${t('game.author')}</span><strong class="meta-creator">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge small" title="${t('game.verifiedCreator')}">${icon('check', 10)}</span>` : ''}</strong></div><div><span>${t('game.genre')}</span><strong>${escapeHtml(game.genre || t('genre.other'))}</strong></div><div><span>${t('game.access')}</span><strong>${isUnavailable ? t('game.notAvailable') : Number(game.price) > 0 ? t('game.paid', { price: priceLabel }) : t('game.free')}</strong></div><div><span>${t('game.updated')}</span><strong>${game.updated ? escapeHtml(new Date(game.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU')) : '—'}</strong></div></section>
+        <section class="detail-section detail-meta"><div><span>${t('game.author')}</span><strong class="meta-creator">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge small" title="${t('game.verifiedCreator')}">${icon('verified', 17)}</span>` : ''}</strong></div><div><span>${t('game.genre')}</span><strong>${escapeHtml(game.genre || t('genre.other'))}</strong></div><div><span>${t('game.access')}</span><strong>${isUnavailable ? t('game.notAvailable') : Number(game.price) > 0 ? t('game.paid', { price: priceLabel }) : t('game.free')}</strong></div><div><span>${t('game.updated')}</span><strong>${game.updated ? escapeHtml(new Date(game.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU')) : '—'}</strong></div></section>
       </div>
       ${gallery}${badges}${social}${releaseHistory}${similar}
     </article>`;
@@ -1307,7 +1474,7 @@ function renderGameCard(game) {
   const likes = Number(game.upVotes) + Number(game.downVotes) > 0 ? Math.round((Number(game.upVotes) / (Number(game.upVotes) + Number(game.downVotes))) * 100) : null;
   const liveStats = game.live ? `<div class="game-live-stats"><span>${icon('users', 12)} ${t('search.players', { count: formatCount(game.playerCount) })}</span>${likes === null ? '' : `<span>${icon('thumb', 12)} ${t('search.likes', { percent: likes })}</span>`}</div>` : '';
   const creatorLabel = game.creator ? t('game.creator', { creator: escapeHtml(game.creator) }) : '';
-  const cardVerified = game.creatorVerified ? `<span class="verified-badge small" title="${t('game.verifiedCreator')}">${icon('check', 10)}</span>` : '';
+  const cardVerified = game.creatorVerified ? `<span class="verified-badge small" title="${t('game.verifiedCreator')}">${icon('verified', 17)}</span>` : '';
   const cardPrice = Number(game.price) > 0 ? `<span class="card-price-tag">${formatCount(game.price)} R$</span>` : '';
   const cardUnavailable = game.availability === 'unavailable' ? `<span class="card-unavailable-tag">${t('game.notAvailable')}</span>` : '';
   const description = String(game.description || t('game.fallbackDescription')).trim();
@@ -1327,6 +1494,7 @@ function renderGameCard(game) {
       ${preferences.cardShowDescription ? `<p class="game-description ${expandedDescription ? 'expanded' : ''}" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
       ${canExpandDescription ? `<button class="description-more" data-action="toggle-description" data-id="${id}" aria-expanded="${expandedDescription}">${t(expandedDescription ? 'card.readLess' : 'card.readMore')}</button>` : ''}` : ''}
       ${preferences.cardShowLikes ? liveStats : ''}
+      ${showRecommendationReason(game)}
       <div class="game-card-footer">${preferences.cardShowGenre ? category : ''}${cardPrice}${preferences.cardShowPlaytime ? renderPlaytimeBadge(game.id) : ''}<button class="card-play" data-action="play" data-id="${id}">${icon('play', 11)} ${t('card.play')}</button></div>
     </div>
   </article>`;
@@ -1358,9 +1526,10 @@ function pageHeading(eyebrow, title, description, action = '') {
 
 // "Most played" strip for the home page: top games by banked playtime.
 function renderPlayStats(limit = 3) {
-  const entries = Object.entries(playStats || {})
-    .filter(([id, entry]) => getGame(id) && Number(entry && (entry.launches || entry.seconds)) > 0)
-    .sort((a, b) => Number(b[1].seconds) - Number(a[1].seconds))
+  const { totals, gamesById } = playtimeForView();
+  const entries = [...totals.values()]
+    .filter(entry => gamesById.has(entry.id) && (entry.launches || entry.seconds))
+    .sort((a, b) => b.seconds - a.seconds)
     .slice(0, limit);
   if (!entries.length) return '';
   const formatTime = (seconds) => {
@@ -1376,11 +1545,11 @@ function renderPlayStats(limit = 3) {
   };
   return `<section class="play-stats home-widget" data-home-widget="playstats">
     ${renderWidgetHeading('playstats', t('stats.title'), t('stats.body'))}
-    <div class="play-stats-grid">${entries.map(([id, entry]) => { const game = getGame(id); const thumbnail = safeThumbnail(game.thumbnail); return `
+    <div class="play-stats-grid">${entries.map(entry => { const game = gamesById.get(entry.id); const thumbnail = safeThumbnail(game.thumbnail); return `
       <button class="play-stat-card" data-action="play" data-id="${escapeHtml(String(game.id))}">
         <span class="play-stat-art ${thumbnail ? 'has-thumbnail' : ''}">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}</span>
         <span class="play-stat-copy"><strong>${escapeHtml(game.title)}</strong><small>${formatTime(Number(entry.seconds))} · ${formatLaunches(entry.launches || 1)}</small></span>
-        <span class="play-stat-play">${icon('play', 12)}</span>
+        <span class="play-stat-track" aria-hidden="true"><i style="width:${100 * (Number(entry.seconds) || 0) / Math.max(1, entries[0].seconds || 0)}%"></i></span>
       </button>`; }).join('')}</div>
   </section>`;
 }
@@ -1391,10 +1560,10 @@ function renderPlayStats(limit = 3) {
 // the sidebar (data-ui-order + ui-row) is reused for the widget list.
 const HOME_WIDGETS = [
   { key: 'hero', titleKey: 'settings.home.hero', bodyKey: 'settings.home.heroHint', icon: 'sparkle' },
-  { key: 'picks', titleKey: 'settings.home.recommendations', bodyKey: 'settings.home.recommendationsHint', icon: 'grid' },
   { key: 'playstats', titleKey: 'home.widgets.playstats', bodyKey: 'home.widgets.playstatsBody', icon: 'clock' },
   { key: 'favorites', titleKey: 'home.widgets.favorites', bodyKey: 'home.widgets.favoritesBody', icon: 'heart' },
-  { key: 'recent', titleKey: 'home.widgets.recent', bodyKey: 'home.widgets.recentBody', icon: 'clock' }
+  { key: 'recent', titleKey: 'home.widgets.recent', bodyKey: 'home.widgets.recentBody', icon: 'clock' },
+  { key: 'picks', titleKey: 'settings.home.recommendations', bodyKey: 'settings.home.recommendationsHint', icon: 'grid' }
 ];
 
 function homeWidgetOrder() {
@@ -1415,6 +1584,39 @@ function homeWidgetCollapsed(key) {
   return collapsed.includes(key);
 }
 
+function renderWeekActivity() {
+  const today = activityDateKey();
+  const monday = shiftActivityDate(today, -((new Date().getDay() + 6) % 7));
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const key = shiftActivityDate(monday, index);
+    const seconds = Object.values(activityData.days[key]?.games || {}).reduce((sum, value) => sum + (Number(value) || 0), 0);
+    return { key, seconds };
+  });
+  const peak = Math.max(1, ...days.map(day => day.seconds));
+  const total = days.reduce((sum, day) => sum + day.seconds, 0);
+  return `<button type="button" class="week-activity" data-nav="activity">
+    <span>${t('home.thisWeek')}</span><strong>${formatActivityMinutes(total)}</strong>
+    <span class="week-bars" aria-hidden="true">${days.map(({ key, seconds }) =>
+      `<i class="${key === today ? 'today' : ''}" style="height:${Math.max(6, Math.round(100 * seconds / peak))}%"></i>`).join('')}</span>
+  </button>`;
+}
+
+function renderShelfBanner(featured) {
+  const art = safeThumbnail(featured?.thumbnail);
+  const title = featured ? escapeHtml(featured.title) : t('home.empty.title');
+  const description = featured ? escapeHtml(featured.description || featured.creator || '') : t('home.empty.body');
+  return `<section class="hero-card shelf-banner ${featured ? 'home-widget' : 'shelf-empty'}" ${featured ? 'data-home-widget="hero"' : ''} ${art ? `style="--shelf-art:${escapeHtml('url(' + JSON.stringify(art) + ')')}"` : ''}>
+    <div class="hero-copy"><span class="hero-kicker">${t(featured ? 'hero.kicker' : 'page.home.title')}</span>
+      <h2>${title}</h2><p>${description}</p>
+      <div class="hero-actions">${featured
+        ? `<button class="primary-button" data-action="play" data-id="${escapeHtml(featured.id)}">${icon('play')} ${t('card.play')}</button>
+           <button class="ghost-button" data-action="home-settings">${t('home.changeGame')}</button>`
+        : `<button class="primary-button" data-action="home-settings">${icon('plus')} ${t('quick.dialogTitle')}</button>
+           <button class="ghost-button" data-nav="catalog">${t('nav.catalog')}</button>`}</div>
+    </div>${renderWeekActivity()}
+  </section>`;
+}
+
 function renderHome() {
   // The home page shows only the user's own games, chosen in Settings → Home.
   const customGames = [...new Map((preferences.customGames || []).map((game) => [String(game.id), game])).values()]
@@ -1426,25 +1628,12 @@ function renderHome() {
     : customGames.filter((game) => String(game.id) !== String(featured?.id)))
     .slice(0, Number(preferences.homeGameCount) || 4);
   const greeting = preferences.homeGreeting.trim() || t('page.home.title');
-  const emptyHint = customGames.length ? '' : `<section class="section-block home-empty-block"><div class="empty-state home-empty-state"><div class="empty-state-copy"><h2>${t('home.empty.title')}</h2><p>${t('home.empty.body')}</p><button class="primary-button" data-nav="settings">${icon('sliders')} ${t('home.empty.action')}</button></div><svg class="library-map" viewBox="0 0 440 240" fill="none" aria-hidden="true"><path class="map-contour" d="M24 170C76 140 88 57 151 62c49 4 42 73 96 78 54 5 58-42 111-44 25-1 43 10 58 24M29 207c54-34 83-89 119-89 41 0 48 67 103 67 58 0 64-46 112-48 24-1 43 8 63 19M55 32c33 22 48 41 48 63m231 116c8-28 21-45 43-56"/><path class="map-route" pathLength="1" d="M62 190C99 164 111 106 148 105s50 47 91 47 57-49 101-47"/><circle class="map-node" cx="62" cy="190" r="6"/><circle class="map-node" cx="148" cy="105" r="8"/><circle class="map-node map-node-active" cx="239" cy="152" r="10"/><circle class="map-node" cx="340" cy="105" r="6"/><path class="map-crosshair" d="M239 127v-9m0 77v-9m-25-34h-9m77 0h-9"/><path class="map-coordinate" d="M20 24h22M20 24v22m378 170h22m0 0v-22"/></svg></div></section>`;
+  const emptyHint = customGames.length ? '' : renderShelfBanner(null);
 
   // Each widget renders to a <section class="home-widget" data-home-widget="key">
   // with a heading that carries collapse + move controls.
   const widgetBodies = {
-    hero: preferences.homeShowHero && featured ? (() => {
-      // The game's own artwork becomes the hero backdrop; the scrim keeps the
-      // left column readable no matter how bright the thumbnail is.
-      const art = safeThumbnail(featured.thumbnail);
-      const artVar = art ? ` style="--hero-art:url('${escapeHtml(art)}')"` : '';
-      return `<section class="hero-card home-widget" data-home-widget="hero"${artVar}>
-      ${art ? `<span class="hero-media" aria-hidden="true"><img src="${escapeHtml(art)}" alt="" /></span>` : `<span class="hero-media is-fallback" aria-hidden="true">${icon('sparkle', 46)}</span>`}
-      <span class="hero-scrim" aria-hidden="true"></span>
-      <span class="hero-avatar" aria-hidden="true">${art ? `<img src="${escapeHtml(art)}" alt="" />` : `<span class="hero-avatar-fallback">${escapeHtml((featured.title || 'R')[0].toLocaleUpperCase())}</span>`}</span>
-      <div class="hero-copy"><span class="hero-kicker">${t('hero.kicker')}</span><h2>${escapeHtml(featured.title)}</h2><p>${escapeHtml(featured.description || t('hero.body'))}</p>
-        <div class="hero-actions"><button class="primary-button" data-action="play" data-id="${escapeHtml(featured.id)}">${icon('play')} ${t('hero.play', { title: escapeHtml(featured.title) })}</button>${featured.creator ? `<span class="hero-meta">${escapeHtml(featured.creator)}</span>` : ''}</div>
-      </div>
-    </section>`;
-    })() : '',
+    hero: preferences.homeShowHero && featured ? renderShelfBanner(featured) : '',
     picks: customGames.length ? `<section class="section-block home-widget" data-home-widget="picks">${renderWidgetHeading('picks', t('home.section.title'), t('home.section.subtitle'))}
       ${renderGrid(picks, t('home.picks.emptyTitle'), t('home.picks.emptyBody'), 'settings')}</section>` : '',
     playstats: renderPlayStats(),
@@ -1464,7 +1653,7 @@ function renderHome() {
       return widgetBodies[key].replace('data-home-widget="', `data-collapsed="${homeWidgetCollapsed(key)}" data-home-widget="`);
     });
   return `<div class="home-view" data-home-view data-home-layout="${preferences.homeLayout}">
-    ${pageHeading(t('page.home.eyebrow'), `<span class="heading-inline-icon">${icon('handWave', 19)}</span>${escapeHtml(greeting)}`, t('page.home.description'))}
+    ${preferences.homeGreeting.trim() || (customGames.length && !widgetBodies.hero) ? pageHeading('', escapeHtml(greeting), '') : `<h1 class="visually-hidden">${escapeHtml(greeting)}</h1>`}
     ${emptyHint}${widgets.join('')}
   </div>`;
 }
@@ -1477,37 +1666,39 @@ function renderWidgetHeading(key, title, subtitle = '') {
   const custom = preferences.homeSectionTitles && preferences.homeSectionTitles[key];
   const shownTitle = custom || title;
   return `<div class="home-widget-head" data-home-widget-head="${key}" style="--section-scale: ${preferences.homeSectionScale || 1}">
-    <button class="home-widget-collapse" data-widget-collapse="${key}" aria-expanded="${!collapsed}" aria-label="${t('home.widgets.collapse')}">${icon(collapsed ? 'arrow' : 'navDown', 12)}</button>
     <div class="home-widget-copy"><h2>${escapeHtml(shownTitle)}</h2>${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}</div>
+    <button class="home-widget-collapse" data-widget-collapse="${key}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(shownTitle)}">${icon(collapsed ? 'arrow' : 'navDown', 14)}</button>
+    <button class="icon-button widget-hide" data-widget-visible-toggle="${key}" aria-label="${escapeHtml(t('home.hideWidget', { title: shownTitle }))}" title="${escapeHtml(t('home.hideWidget', { title: shownTitle }))}">${icon('eye', 15)}</button>
     <span class="home-widget-grip" data-widget-drag="${key}" aria-hidden="true">${icon('grip', 13)}</span>
   </div>`;
 }
 
 // Compact favorites/recent strips for the home page: one row of mini-cards.
 function renderHomeFavoritesPreview() {
-  const list = allGames().filter((game) => favorites.has(game.id)).slice(0, 6);
-  if (!list.length) return '';
-  return `<section class="section-block home-widget" data-home-widget="favorites">${renderWidgetHeading('favorites', t('home.widgets.favorites'), t('home.widgets.favoritesBody'))}
-    <div class="home-strip">${list.map((game) => renderHomeStripCard(game)).join('')}</div>
+  const list = allGames().filter((game) => favorites.has(game.id)).slice(0, 4);
+  return `<section class="section-block home-widget" data-home-widget="favorites">${renderWidgetHeading('favorites', t('home.widgets.favorites'))}
+    ${list.length ? `<div class="home-strip">${list.map(renderHomeStripCard).join('')}</div>` : renderEmptyShelf('favorites')}
   </section>`;
 }
 
 function renderHomeRecentPreview() {
-  const list = recentGames.map(getGame).filter(Boolean).slice(0, 6);
-  if (!list.length) return '';
-  return `<section class="section-block home-widget" data-home-widget="recent">${renderWidgetHeading('recent', t('home.widgets.recent'), t('home.widgets.recentBody'))}
-    <div class="home-strip">${list.map((game) => renderHomeStripCard(game)).join('')}</div>
+  const list = uniqueRecentIds(recentGames).map(getGame).filter(Boolean).slice(0, 4);
+  return `<section class="section-block home-widget" data-home-widget="recent">${renderWidgetHeading('recent', t('home.widgets.recent'))}
+    ${list.length ? `<div class="home-strip">${list.map(renderHomeStripCard).join('')}</div>` : renderEmptyShelf('recent')}
   </section>`;
+}
+
+function renderEmptyShelf(key) {
+  return `<div class="shelf-placeholder"><span>${icon(key === 'favorites' ? 'heart' : 'clock', 22)}</span><p>${t(`empty.${key}.body`)}</p></div>`;
 }
 
 function renderHomeStripCard(game) {
   const thumbnail = safeThumbnail(game.thumbnail);
-  const local = localizeGame(game);
   // Playtime first; genre or creator as fallback — never an action-style hint.
   const sub = renderPlaytimeBadge(game.id) || `<span class="strip-no-playtime">${t('stats.noData')}</span>`;
   return `<button class="home-strip-card" data-action="play" data-id="${escapeHtml(String(game.id))}" title="${escapeHtml(game.title)}">
     <span class="home-strip-art ${thumbnail ? 'has-thumbnail' : ''}">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}</span>
-    <span class="home-strip-copy"><strong>${escapeHtml(game.title)}</strong><small>${sub}</small></span>
+    <span class="home-strip-copy"><strong>${escapeHtml(game.title)}</strong><small>${sub}</small></span><span class="strip-play" aria-hidden="true">${icon('play', 15)}</span>
   </button>`;
 }
 
@@ -1735,6 +1926,7 @@ function searchPageNavigate() {
 }
 
 function submitSearchPage(value) {
+  if (robloxSearchLink(value)) { scheduleLiveSearch(value); return; }
   searchQuery = String(value || '');
   searchResults = [];
   searchPageToken = null;
@@ -1754,8 +1946,11 @@ function submitSearchPage(value) {
 
 function renderCatalog() {
   // Entering the paid view kicks off the first scan (guarded by status).
+  const link = robloxSearchLink(searchQuery) || (preferences.streamMode && searchQuery === t('tools.streamLink') ? inboundRobloxLink : null);
+  if (link) return pageHeading('', t('page.catalog.title'), '') + renderRobloxSearchLink(link);
+  if (looksLikeRobloxLink(searchQuery)) return pageHeading('', t('page.catalog.title'), '') + `<p class="catalog-disclaimer">${t('tools.badLink')}</p>`;
   if (activeAccess === 'paid' && paidStatus === 'idle') window.setTimeout(() => loadPaidGames(), 0);
-  if (activeAccess !== 'paid' && activeDiscoverySort === RECOMMENDED_SORT.id && recommendationState.status === 'idle') window.setTimeout(() => loadRecommendations(), 0);
+  if (!pauseBackgroundRefresh() && activeAccess !== 'paid' && activeDiscoverySort === RECOMMENDED_SORT.id && (recommendationState.status === 'idle' || recommendationProfile().signature !== recommendationState.signature || (recommendationState.status !== 'loading' && Date.now() - recommendationState.fetchedAt >= 600000))) window.setTimeout(() => loadRecommendations(), 0);
   const list = filterGames();
   const availableSorts = catalogSorts();
   const selectedSort = availableSorts.find((sort) => sort.id === activeDiscoverySort) || availableSorts[0];
@@ -1799,11 +1994,19 @@ function renderCatalog() {
     } else if (recommendationState.status === 'empty') {
       resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('sparkle', 20)}</div><h2>${t('catalog.recommendedEmptyTitle')}</h2><p>${t('catalog.recommendedEmptyBody')}</p><button class="ghost-button" data-nav="catalog">${t('catalog.recommendedOpenCatalog')}</button></div>`;
     } else if (recommendationState.status === 'error') {
-      resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('refreshCw', 20)}</div><h2>${t('catalog.recommendedEmptyTitle')}</h2><p>${t('catalog.recommendedEmptyBody')}</p><button class="ghost-button" data-action="refresh-recommendations">${icon('refreshCw', 13)} ${t('catalog.recommendedRefresh')}</button></div>`;
+      resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('refreshCw', 20)}</div><h2>${t('catalog.recommendedError')}</h2><p>${t(recommendationState.rateLimited ? 'catalog.recommendedBusy' : 'catalog.recommendedErrorBody')}</p><button class="ghost-button" data-action="refresh-recommendations">${icon('refreshCw', 13)} ${t('catalog.recommendedRefresh')}</button></div>`;
     } else {
       const note = `<p class="result-note">${t('catalog.recommendedNote', { count: String(list.length), seeds: String(recommendationState.seeds) })}</p>`;
       const refresh = `<button class="ghost-button recommendation-refresh" data-action="refresh-recommendations">${icon('refreshCw', 13)} ${t('catalog.recommendedRefresh')}</button>`;
-      resultsBody = `<div class="recommendation-head">${note}${refresh}</div>${renderGrid(list, t('catalog.recommendedEmptyTitle'), t('catalog.recommendedEmptyBody'))}`;
+      const visible = list.slice(0, recommendationState.visible);
+      const throttled = recommendationState.rateLimited && list.length <= visible.length
+        ? `<p class="load-more-end" role="status">${t('catalog.recommendedBusy')}</p>` : '';
+      const footer = recommendationState.loadingMore
+        ? `<div role="status" class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>`
+        : list.length > visible.length || recommendationState.sources.length
+          ? `${throttled}<button class="ghost-button load-more-button" data-action="more-recommendations">${t(recommendationState.failed && list.length <= visible.length ? 'catalog.recommendedRetry' : 'catalog.loadMore')} ${icon('arrow', 13)}</button>`
+          : `<p class="load-more-end">${t('catalog.recommendedEnd')}</p>`;
+      resultsBody = `<div class="recommendation-head">${note}${refresh}</div>${renderGrid(visible, t('catalog.recommendedEmptyTitle'), t('catalog.recommendedEmptyBody'))}${footer}`;
     }
   } else if (isGenreSearchActive()) {
     if (genreStatus === 'loading') {
@@ -1833,7 +2036,7 @@ function renderCatalog() {
     const note = cachedItems.length ? `<p class="result-note">${formatResultCount(list.length)} · ${escapeHtml(discoverySortLabel(selectedSort))}</p>` : '';
     resultsBody = `${offlineNote}${note}${renderGrid(list.slice(0, catalogVisibleCount), t('empty.noResults'), t('empty.filterHint'))}${loadMore}`;
   }
-  return `${pageHeading(searchQuery ? t('page.search.eyebrow') : t('page.catalog.eyebrow'), searchQuery ? t('page.search.title') : t('page.catalog.title'), queryLabel, `<button class="ghost-button" data-catalog-customize>${icon('sliders')} ${t('catalog.customize')}</button>`)}
+  return `${pageHeading(searchQuery ? t('page.search.eyebrow') : t('page.catalog.eyebrow'), searchQuery ? t('page.search.title') : t('page.catalog.title'), queryLabel, `<div class="launcher-tool-actions"><button class="ghost-button" data-launcher-action="surprise">${icon('sparkle', 14)} ${t('tools.surpriseTitle')}</button><button class="ghost-button" data-catalog-customize>${icon('sliders')} ${t('catalog.customize')}</button></div>`)}
     <div class="catalog-controls">${controls}</div>${resultsBody}
     ${isLiveSearch ? '' : discoveryStatus === 'loading' ? '' : `<p class="catalog-disclaimer"><strong>${t('catalog.disclaimerTitle')}</strong> ${t('catalog.disclaimer')}</p>`}`;
 }
@@ -1908,6 +2111,11 @@ async function loadPaidGames(force = false) {
   await scanPaidGames(false);
 }
 
+function collectionTabs(active) {
+  return `<nav class="collection-tabs" aria-label="${t('sidebar.menu')}">${['favorites', 'recent'].map(key =>
+    `<button class="filter-chip" data-nav="${key}" ${key === active ? 'aria-current="page"' : ''}>${t(`nav.${key}`)}</button>`).join('')}</nav>`;
+}
+
 function renderFavorites() {
   const list = allGames().filter((game) => favorites.has(game.id));
   const visible = list.slice(0, favoritesVisibleCount);
@@ -1915,6 +2123,8 @@ function renderFavorites() {
     ? `<div class="load-more-row"><button class="ghost-button" data-action="favorites-more">${t('catalog.showMore', { count: String(Math.min(24, list.length - visible.length)) })}</button></div>`
     : '';
   return `${pageHeading(t('page.favorites.eyebrow'), t('page.favorites.title'), t('page.favorites.description'), list.length > 24 ? `<span class="heading-count">${t('catalog.shown', { shown: String(visible.length), total: String(list.length) })}</span>` : '')}
+    ${collectionTabs('favorites')}
+    <div class="launcher-tool-actions collection-toolbar"><button class="ghost-button" data-launcher-action="collection-export">${icon('share', 14)} ${t('tools.collection')}</button><button class="ghost-button" data-launcher-action="collection-import">${icon('fileUp', 14)} ${t('tools.openCollection')}</button></div>
     ${renderGrid(visible, t('empty.favorites.title'), t('empty.favorites.body'), 'catalog')}${more}`;
 }
 
@@ -1923,8 +2133,10 @@ let friendsLoading = false;
 let friendsAutoDetectStarted = false;
 // First visit to the Friends page with no username: detect the local Roblox
 // account automatically, so the user never has to type anything.
-async function autoDetectRobloxAccountOnce() {
-  if (friendsAutoDetectStarted || preferences.robloxUsername) return;
+let detectingFriendAccount = false;
+async function autoDetectRobloxAccountOnce(force = false) {
+  if (detectingFriendAccount || (!force && friendsAutoDetectStarted) || preferences.robloxUsername) return;
+  detectingFriendAccount = true;
   friendsAutoDetectStarted = true;
   try {
     const result = await window.vortexDesktop?.detectRobloxAccount();
@@ -1937,7 +2149,10 @@ async function autoDetectRobloxAccountOnce() {
       renderFriendsDrawer();
       if (!document.getElementById('friends-drawer')?.hidden) void loadFriends(preferences.robloxUsername);
     }
-  } catch { /* stay on the setup screen */ }
+  } catch { /* stay on the setup screen */ } finally {
+    detectingFriendAccount = false;
+    if (force && !preferences.robloxUsername) showToast(t('friends.setup.body'));
+  }
 }
 
 // Friends page as a card grid: one compact card per friend, richer info on
@@ -1964,12 +2179,15 @@ function renderFriends() {
     const errorTitle = isNetworkError ? t('friends.networkTitle') : t('friends.notFound.title');
     const errorBody = isNetworkError ? t('friends.networkBody') : t('friends.notFound.body');
     return `${heading}
-      <section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${errorTitle}</h2><p>${errorBody}</p><button class="ghost-button" data-action="refresh-friends-drawer">${icon('refreshCw', 13)} ${t('friends.refresh')}</button></div></section>`;
+      <section class="section-block"><div class="empty-state"><div class="empty-icon">${icon('users', 20)}</div><h2>${errorTitle}</h2><p>${errorBody}</p><button class="ghost-button" data-action="refresh-friends">${icon('refreshCw', 13)} ${t('friends.refresh')}</button></div></section>`;
   }
-  const friends = data.friends || [];
-  const playing = friends.filter((f) => f.presence === 'playing');
-  const online = friends.filter((f) => f.presence === 'online');
-  const offline = friends.filter((f) => f.presence === 'offline');
+  const friends = (data.friends || []).map(safeFriendForDisplay);
+  const pins = friendPins();
+  const pinned = friends.filter(friend => Object.hasOwn(pins, String(friend.id)));
+  const unpinned = friends.filter(friend => !Object.hasOwn(pins, String(friend.id)));
+  const playing = unpinned.filter((f) => f.presence === 'playing');
+  const online = unpinned.filter((f) => f.presence === 'online');
+  const offline = unpinned.filter((f) => f.presence === 'offline');
   const presenceNote = data.livePresence ? '' : `<div class="friends-presence-note">${icon('bell', 12)} ${t('friends.presenceOff')}</div>`;
   const card = (friend) => {
     const name = friend.displayName || friend.name || t('friends.unknown');
@@ -1977,7 +2195,7 @@ function renderFriends() {
     return `<article class="friend-card ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" data-friend-name="${escapeHtml(name)}" data-friend-avatar="${escapeHtml(friend.avatar || '')}" data-game-name="${escapeHtml(gameName)}" data-game-thumb="${escapeHtml(friend.presence === 'playing' ? friend.gameThumbnail || '' : '')}" tabindex="0">
       <span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="eager" decoding="async" />` : escapeHtml(name[0].toLocaleUpperCase())}</span>
       <span class="friend-copy"><strong>${escapeHtml(name)}</strong><small>${friend.presence === 'playing' ? escapeHtml(gameName) : friend.presence === 'online' ? t('friends.online') : t('friends.offline')}</small></span>
-      ${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}">${icon('play', 12)}</button>` : ''}
+      ${friendPinControls(friend, pins)}${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}">${icon('play', 12)}</button>` : ''}
     </article>`;
   };
   const section = (titleKey, list) => !list.length ? '' : `<p class="friends-group-title">${t(titleKey)} · ${list.length}</p>
@@ -1985,6 +2203,7 @@ function renderFriends() {
   return `${heading}
     <section class="section-block">
       ${presenceNote}
+      ${section('tools.pinnedFriends', pinned)}
       ${section('friends.groupPlaying', playing)}
       ${section('friends.groupOnline', online)}
       ${section('friends.groupOffline', offline)}
@@ -1997,20 +2216,21 @@ async function loadFriends(username, force = false) {
   if (friendsLoading) return;
   if (!force && friendsCache.data && Date.now() - friendsCache.at <= FRIENDS_TTL) return;
   friendsLoading = true;
+  const refresh = pageContent.querySelector('[data-action="refresh-friends"]');
+  if (refresh) { refresh.disabled = true; refresh.setAttribute('aria-busy', 'true'); }
   renderFriendsDrawer();
   try {
     const data = await window.vortexDesktop?.listFriends(username);
-    // Cache successes only: a transient network failure must retry on the
-    // next visit instead of showing a stale error for 30 seconds.
-    if (data && data.ok) friendsCache = { at: Date.now(), data };
-    else friendsCache = { at: Date.now(), data: data || { ok: false, error: 'unavailable' } };
-    if (data && data.ok) notifyFriendsInFavorites(data.friends);
-    if (currentView === 'friends') renderPage();
+    if (username !== String(preferences.robloxUsername || '').trim()) return;
+    friendsCache = { at: Date.now(), data: data || { ok: false, error: 'unavailable' } };
+    if (data?.ok) { notifyFriendsInFavorites(data.friends); notifyPinnedFriends(data.friends || []); }
   } catch {
-    friendsCache = { at: Date.now(), data: { ok: false, error: 'network' } };
-    if (currentView === 'friends') renderPage();
+    if (username === String(preferences.robloxUsername || '').trim()) {
+      friendsCache = { at: Date.now(), data: { ok: false, error: 'network' } };
+    }
   } finally {
     friendsLoading = false;
+    if (currentView === 'friends') renderPage();
     renderFriendsDrawer();
   }
 }
@@ -2037,16 +2257,19 @@ function renderFriendsDrawer() {
     mountIcons(content);
     return;
   }
-  const friends = Array.isArray(data.friends) ? data.friends : [];
+  const friends = (Array.isArray(data.friends) ? data.friends : []).map(safeFriendForDisplay);
+  const pins = friendPins();
+  const unpinned = friends.filter(friend => !Object.hasOwn(pins, String(friend.id)));
   const groups = [
-    ['friends.groupPlaying', friends.filter((friend) => friend.presence === 'playing')],
-    ['friends.groupOnline', friends.filter((friend) => friend.presence === 'online')],
-    ['friends.groupOffline', friends.filter((friend) => friend.presence !== 'playing' && friend.presence !== 'online')]
+    ['tools.pinnedFriends', friends.filter(friend => Object.hasOwn(pins, String(friend.id)))],
+    ['friends.groupPlaying', unpinned.filter((friend) => friend.presence === 'playing')],
+    ['friends.groupOnline', unpinned.filter((friend) => friend.presence === 'online')],
+    ['friends.groupOffline', unpinned.filter((friend) => friend.presence !== 'playing' && friend.presence !== 'online')]
   ];
   const row = (friend) => {
     const name = friend.displayName || friend.name || t('friends.unknown');
     const status = friend.presence === 'playing' ? friend.gameName || t('friends.inGame') : friend.presence === 'online' ? t('friends.online') : t('friends.offline');
-    return `<div class="friends-drawer-row ${friend.presence}"><span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="lazy" decoding="async" />` : escapeHtml(name[0].toLocaleUpperCase())}<i></i></span><span class="friend-copy"><strong>${escapeHtml(name)}</strong><small>${escapeHtml(status)}</small></span>${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}" aria-label="${t('friends.join')}">${icon('play', 12)}</button>` : ''}</div>`;
+    return `<div class="friends-drawer-row ${friend.presence}"><span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="lazy" decoding="async" />` : escapeHtml(name[0].toLocaleUpperCase())}<i></i></span><span class="friend-copy"><strong>${escapeHtml(name)}</strong><small>${escapeHtml(status)}</small></span>${friendPinControls(friend, pins)}${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}" aria-label="${t('friends.join')}">${icon('play', 12)}</button>` : ''}</div>`;
   };
   const groupMarkup = groups.filter(([, list]) => list.length).map(([title, list]) => `<section class="friends-drawer-group"><h3>${t(title)}<span>${list.length}</span></h3>${list.map(row).join('')}</section>`).join('');
   content.innerHTML = `${data.livePresence ? '' : `<p class="friends-presence-note">${icon('bell', 12)} ${t('friends.presenceOff')}</p>`}${friends.length ? groupMarkup : `<div class="friends-drawer-empty compact"><span class="friends-drawer-empty-icon">${icon('users', 18)}</span><strong>${t('friends.empty.title')}</strong><p>${t('friends.empty.body')}</p></div>`}<button class="text-button friends-drawer-all" data-action="friends-drawer-view-all">${t('activity.viewAllFriends')} ${icon('arrow', 12)}</button>`;
@@ -2095,7 +2318,7 @@ function closeFriendsDrawer() {
 const notifiedFriendGames = new Set();
 
 function notifyFriendsInFavorites(friends) {
-  if (!preferences.friendFavoriteAlerts || !Array.isArray(friends) || !favorites.size) return;
+  if (preferences.streamMode || !preferences.friendFavoriteAlerts || !Array.isArray(friends) || !favorites.size) return;
   for (const friend of friends) {
     if (!friend || !friend.isOnline || !friend.playingPlaceId) continue;
     const placeId = String(friend.playingPlaceId);
@@ -2181,8 +2404,9 @@ async function appendGeneralSearch() {
 // Loading is strictly manual: the "Показать ещё" button is the only trigger.
 // No scroll listeners — the page never refreshes on its own.
 function renderRecent() {
-  const list = recentGames.map(getGame).filter(Boolean);
+  const list = uniqueRecentIds(recentGames).map(getGame).filter(Boolean);
   return `${pageHeading(t('page.recent.eyebrow'), t('page.recent.title'), t('page.recent.description'))}
+    ${collectionTabs('recent')}
     ${renderGrid(list, t('empty.recent.title'), t('empty.recent.body'), 'catalog')}`;
 }
 
@@ -2207,32 +2431,29 @@ function activityDayDistance(fromKey, toKey) {
 }
 
 function persistActivityData() {
-  localStorage.setItem('vortex.activity', JSON.stringify(activityData));
+  accountStorage.setItem('vortex.activity', JSON.stringify(activityData));
 }
 
 function recordActivityTime(gameId, startedAt, seconds) {
-  let cursor = Number(startedAt) || Date.now();
-  let remaining = Math.max(0, Number(seconds) || 0);
-  while (remaining > 0) {
-    const dateKey = activityDateKey(cursor);
-    const date = new Date(cursor);
-    const nextDay = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime();
-    const slice = Math.min(remaining, Math.max(1, Math.ceil((nextDay - cursor) / 1000)));
-    const day = activityData.days[dateKey] || (activityData.days[dateKey] = { games: {} });
-    day.games ||= {};
-    day.games[String(gameId)] = (Number(day.games[String(gameId)]) || 0) + slice;
-    cursor += slice * 1000;
-    remaining -= slice;
-  }
-  completeDailyActivity();
-  updateActivityAchievements();
-  persistActivityData();
+  let carryMs = 0;
+  let credited = 0;
+  activitySlices(startedAt, startedAt + seconds * 1000, (date, slice) => {
+    // Round cumulative time so subsecond slices around midnight add up to the
+    // same whole seconds as the session cursor.
+    const whole = Math.floor((carryMs + slice) / 1000);
+    const daySeconds = Object.values(activityData.days[date]?.games || {}).reduce((sum, value) => sum + value, 0);
+    const dayLength = (activityLocalDate(shiftActivityDate(date, 1)) - activityLocalDate(date)) / 1000;
+    const accepted = Math.min(whole, Math.max(0, dayLength - daySeconds));
+    if (accepted > 0) addActivitySeconds(activityData.days, date, String(gameId), accepted);
+    carryMs = (carryMs + slice) % 1000;
+    credited += accepted;
+  });
+  return credited;
 }
 
 function activityQualifiedGames(dateKey = activityDateKey()) {
-  const games = activityData.days[dateKey]?.games || {};
-  const threshold = ACTIVITY_GAME_MINUTES * 60;
-  return Object.entries(games).filter(([, seconds]) => Number(seconds) >= threshold).map(([id]) => id);
+  const totals = groupedPlaytime(activityData.days[dateKey]?.games, playtimeForView().gamesById);
+  return [...totals.values()].filter(entry => entry.seconds >= ACTIVITY_GAME_MINUTES * 60).map(entry => entry.id);
 }
 
 function activityRecoveryAvailable() {
@@ -2255,26 +2476,6 @@ function completeDailyActivity() {
   return true;
 }
 
-const ACTIVITY_ACHIEVEMENTS = [
-  { id: 'first-day', icon: 'sparkle', title: 'activity.achievement.first', body: 'activity.achievement.firstBody', progress: () => Math.min(1, Number(activityData.streak.best > 0)) },
-  { id: 'three-day-streak', icon: 'activity', title: 'activity.achievement.three', body: 'activity.achievement.threeBody', progress: () => Math.min(3, Number(activityData.streak.best || 0)), target: 3 },
-  { id: 'seven-day-streak', icon: 'trophy', title: 'activity.achievement.seven', body: 'activity.achievement.sevenBody', progress: () => Math.min(7, Number(activityData.streak.best || 0)), target: 7 },
-  { id: 'five-games', icon: 'compass', title: 'activity.achievement.explorer', body: 'activity.achievement.explorerBody', progress: () => Math.min(5, Object.values(playStats).filter((entry) => Number(entry?.seconds) > 0).length), target: 5 },
-  { id: 'ten-hours', icon: 'clock', title: 'activity.achievement.hours', body: 'activity.achievement.hoursBody', progress: () => Math.min(600, Math.floor(Object.values(playStats).reduce((sum, entry) => sum + (Number(entry?.seconds) || 0), 0) / 60)), target: 600 }
-];
-
-function updateActivityAchievements() {
-  let changed = false;
-  for (const achievement of ACTIVITY_ACHIEVEMENTS) {
-    const target = achievement.target || 1;
-    if (achievement.progress() >= target && !activityData.achievements[achievement.id]) {
-      activityData.achievements[achievement.id] = new Date().toISOString();
-      changed = true;
-    }
-  }
-  return changed;
-}
-
 function formatActivityMinutes(seconds) {
   const minutes = Math.floor(Math.max(0, Number(seconds) || 0) / 60);
   if (minutes < 60) return `${minutes}${t('time.minutes')}`;
@@ -2285,42 +2486,45 @@ function formatActivityMinutes(seconds) {
 
 function renderActivity() {
   const today = activityDateKey();
-  completeDailyActivity();
-  updateActivityAchievements();
-  persistActivityData();
+  const completedNow = completeDailyActivity();
+  const metrics = activityMetrics();
+  if (updateActivityAchievements(metrics) || completedNow) persistActivityData();
   const day = activityData.days[today] || { games: {} };
   const threshold = ACTIVITY_GAME_MINUTES * 60;
-  const allGames = Object.entries(day.games || {}).sort((a, b) => Number(b[1]) - Number(a[1]));
+  const gamesToday = [...groupedPlaytime(day.games, playtimeForView().gamesById).values()].sort((a, b) => b.seconds - a.seconds);
   const qualified = activityQualifiedGames(today);
   const completed = qualified.length >= ACTIVITY_DAILY_GAMES;
   const streakDistance = activityDayDistance(activityData.streak.lastCompletedDate, today);
   const currentStreak = streakDistance <= 1 || activityRecoveryAvailable() ? activityData.streak.current : 0;
-  const gameRows = allGames.length ? allGames.map(([id, seconds]) => {
+  const gameRows = gamesToday.length ? gamesToday.map(({ id, seconds }) => {
     const game = getGame(id);
     const title = game?.title || t('activity.unknownGame');
     const progress = Math.min(100, Math.round(Number(seconds) / threshold * 100));
     return `<div class="activity-game-row"><span class="activity-game-icon">${game?.thumbnail ? `<img src="${escapeHtml(safeThumbnail(game.thumbnail))}" alt="" />` : icon('gamepad', 16)}</span><span class="activity-game-copy"><strong>${escapeHtml(title)}</strong><small>${formatActivityMinutes(seconds)} / ${ACTIVITY_GAME_MINUTES}${t('time.minutes')}</small></span><span class="activity-game-progress"><i style="--progress:${progress}%"></i></span><span class="activity-game-check ${Number(seconds) >= threshold ? 'is-complete' : ''}">${Number(seconds) >= threshold ? icon('check', 13) : `${progress}%`}</span></div>`;
   }).join('') : `<div class="activity-empty-note">${icon('gamepad', 16)}<span>${t('activity.emptyGames')}</span></div>`;
-  const achievements = ACTIVITY_ACHIEVEMENTS.map((achievement) => {
-    const target = achievement.target || 1;
-    const value = Math.min(target, achievement.progress());
-    const earned = Boolean(activityData.achievements[achievement.id]);
-    return `<article class="achievement-card ${earned ? 'is-earned' : ''}"><span class="achievement-icon">${icon(achievement.icon, 17)}</span><span class="achievement-copy"><strong>${t(achievement.title)}</strong><small>${t(achievement.body)}</small><em>${earned ? t('activity.earned') : `${value} / ${target}`}</em></span></article>`;
-  }).join('');
   return `${pageHeading(t('page.activity.eyebrow'), t('page.activity.title'), t('page.activity.description'))}
-    <section class="activity-hero"><div class="activity-hero-copy"><span class="activity-eyebrow">${icon('sparkle', 13)} ${t('activity.today')}</span><h2>${completed ? t('activity.goalComplete') : t('activity.goalTitle')}</h2><p>${t('activity.goalBody', { games: ACTIVITY_DAILY_GAMES, minutes: ACTIVITY_GAME_MINUTES })}</p><div class="activity-goal-track"><i style="--progress:${Math.min(100, Math.round(qualified.length / ACTIVITY_DAILY_GAMES * 100))}%"></i></div><small>${t('activity.gamesProgress', { done: Math.min(ACTIVITY_DAILY_GAMES, qualified.length), total: ACTIVITY_DAILY_GAMES })}</small></div><div class="activity-streak"><span class="activity-streak-icon">${icon('activity', 23)}</span><strong>${currentStreak}</strong><span>${t('activity.streakDays')}</span><small>${t('activity.bestStreak', { count: activityData.streak.best })}</small></div></section>
+    ${activityData.legacyTime ? `<p class="activity-clock-note">${icon('history', 15)} ${t('activity.clock.repaired')}</p>` : ''}
+    <section class="activity-hero"><div class="activity-hero-copy"><span class="activity-eyebrow">${icon('sparkle', 13)} ${t('activity.today')}</span><h2>${completed ? t('activity.goalComplete') : t('activity.goalTitle')}</h2><p>${t('activity.goalBody', { games: ACTIVITY_DAILY_GAMES, minutes: ACTIVITY_GAME_MINUTES })}</p><div class="activity-goal-track"><i style="--progress:${Math.min(100, Math.round(qualified.length / ACTIVITY_DAILY_GAMES * 100))}%"></i></div><small>${t('activity.gamesProgress', { done: Math.min(ACTIVITY_DAILY_GAMES, qualified.length), total: ACTIVITY_DAILY_GAMES })}</small></div>${renderStreak(currentStreak)}</section>
     ${activityRecoveryAvailable() ? `<section class="activity-recovery"><span>${icon('refreshCw', 16)} ${t('activity.recoveryHint')}</span><button class="ghost-button" data-action="restore-activity-streak">${t('activity.recoveryAction')}</button></section>` : ''}
-    <div class="activity-dashboard-grid"><section class="settings-card activity-daily-card"><div class="settings-card-head"><div><h2>${t('activity.dailyTitle')}</h2><p>${t('activity.dailyBody')}</p></div>${icon('crosshair', 18)}</div><div class="activity-game-list">${gameRows}</div></section><section class="settings-card activity-achievements"><div class="settings-card-head"><div><h2>${t('activity.achievementsTitle')}</h2><p>${t('activity.achievementsBody')}</p></div>${icon('trophy', 18)}</div><div class="achievement-grid">${achievements}</div></section></div>`;
+    <div class="activity-overview">
+      <section class="settings-card" id="activity-calendar">${activityCalendarContent(today)}</section>
+      <section class="settings-card" id="activity-summary">${activitySummaryContent(today)}</section>
+    </div>
+    <div class="activity-dashboard-grid">${renderSessionJournal()}<section class="settings-card activity-daily-card"><div class="settings-card-head"><div><h2>${t('activity.dailyTitle')}</h2><p>${t('activity.dailyBody')}</p></div>${icon('crosshair', 18)}</div><div class="activity-game-list">${gameRows}</div></section></div>
+    ${renderAchievements(metrics)}`;
 }
 
 const PLANS_STAGE_LABELS = { research: 'plans.filter.research', design: 'plans.filter.design', dev: 'plans.filter.dev', idea: 'plans.filter.idea' };
 let roadmapItems = null;
+let roadmapStage = 'all';
 let roadmapLoadGeneration = 0;
 
 function renderPlans() {
   const items = Array.isArray(roadmapItems) ? roadmapItems : [];
   return `${pageHeading(t('page.plans.eyebrow'), t('page.plans.title'), t('page.plans.description'))}
-    <div class="roadmap-grid">${items.map((plan) => {
+    ${items.length ? `<div class="plans-filters">${['all', ...Object.keys(PLANS_STAGE_LABELS)].map(key =>
+      `<button class="plans-filter ${roadmapStage === key ? 'active' : ''}" data-roadmap-stage="${key}" aria-pressed="${roadmapStage === key}">${t(`plans.filter.${key}`)}</button>`).join('')}</div>` : ''}
+    <div class="roadmap-grid">${items.filter(plan => roadmapStage === 'all' || (Object.hasOwn(PLANS_STAGE_LABELS, plan.stage) ? plan.stage : 'idea') === roadmapStage).map((plan) => {
       const localized = (value) => typeof value === 'string' ? value : value?.[preferences.language] || value?.ru || value?.en || '';
       const stage = Object.hasOwn(PLANS_STAGE_LABELS, plan.stage) ? plan.stage : 'idea';
       const iconName = /^[a-zA-Z0-9_-]{1,32}$/.test(String(plan.icon || '')) ? plan.icon : 'flag';
@@ -2334,7 +2538,9 @@ async function loadRoadmap() {
   try {
     const result = await window.vortexDesktop.listPlans();
     if (generation !== roadmapLoadGeneration || currentView !== 'plans') return;
-    roadmapItems = Array.isArray(result?.items) ? result.items : [];
+    const items = Array.isArray(result?.items) ? result.items : [];
+    if (JSON.stringify(roadmapItems) === JSON.stringify(items)) return;
+    roadmapItems = items;
     pageContent.innerHTML = renderPlans();
     mountIcons(pageContent);
   } catch { /* The bundled site/plans.json remains available when offline. */ }
@@ -2344,7 +2550,7 @@ function settingsTabs() {
   const tabs = [
     ['home', 'home'], ['accent', 'palette'], ['cards', 'layout'], ['effects', 'motion'],
     ['interface', 'monitor'], ['general', 'settings'], ['integrations', 'sparkles'],
-    ['data', 'database'], ['version', 'refreshCw']
+    ['tray', 'tray'], ['data', 'database'], ['version', 'refreshCw']
   ];
   return `<nav class="settings-tabs" aria-label="${t('settings.tabNavigation')}">${tabs.map(([key, iconName]) => `<button class="settings-tab ${preferences.settingsTab === key ? 'active' : ''}" data-settings-tab="${key}" ${preferences.settingsTab === key ? 'aria-current="page"' : ''}><span>${icon(iconName)}</span>${t(`settings.tab.${key}`)}</button>`).join('')}</nav>`;
 }
@@ -2651,19 +2857,14 @@ document.addEventListener('keydown', (event) => {
 });
 
 function renderAccentSettings() {
-  const themeDefaults = { dark: { background: '#0d1012', surface: '#14181a' }, light: { background: '#f5f6f7', surface: '#ffffff' }, oled: { background: '#030305', surface: '#08090c' } }[preferences.theme];
+  const themeDefaults = { dark: { background: '#0f0e15', surface: '#17161f' }, light: { background: '#f5f6f7', surface: '#ffffff' }, oled: { background: '#030305', surface: '#08090c' } }[preferences.theme];
   const displayBackground = preferences.themeBackground || themeDefaults.background;
   const displaySurface = preferences.themeSurface || themeDefaults.surface;
   const isLight = relativeLuminance(displayBackground) > 0.42;
-  const displayText = preferences.themeText || (isLight ? '#211e2a' : '#f4f4f6');
-  const displayMuted = preferences.themeMuted || (isLight ? '#777382' : '#8d909e');
+  const displayText = preferences.themeText || (isLight ? '#211e2a' : '#eceaf5');
+  const displayMuted = preferences.themeMuted || (isLight ? '#777382' : '#9a97ae');
   const displayLine = preferences.themeLine || (isLight ? '#37303f' : '#2b2d36');
-  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.accent.title')}</h2><p>${t('settings.accent.body')}</p></div>${icon('palette', 18)}</div>
-      <div class="palette-row">${palettes.map((palette) => `<button class="palette-option ${preferences.accent.toLowerCase() === palette.color ? 'active' : ''}" data-accent="${palette.color}" ${previewAttr('accent', palette.color, t(`palette.${palette.key}`))}><span class="palette-swatch" style="background:${palette.color};color:${palette.color}"></span>${t(`palette.${palette.key}`)}</button>`).join('')}</div>
-      ${renderColorTuner('accent', preferences.accent, t('settings.customColor'))}
-      <div class="setting-line accent-mode-line"><div class="setting-label"><strong>${t('settings.accentMode')}</strong></div><div class="segmented"><button class="segment ${preferences.accentMode === 'solid' ? 'active' : ''}" data-pref="accentMode" data-value="solid">${t('settings.solid')}</button><button class="segment ${preferences.accentMode === 'gradient' ? 'active' : ''}" data-pref="accentMode" data-value="gradient">${t('settings.gradient')}</button></div></div>
-      ${preferences.accentMode === 'gradient' ? `<div class="gradient-options">${renderColorTuner('accentSecondary', preferences.accentSecondary, t('settings.gradientEnd'))}<label class="gradient-angle"><span>${t('settings.gradientAngle')}</span><input type="range" min="0" max="360" value="${preferences.gradientAngle}" data-setting="gradientAngle" /><output id="gradient-angle-value">${preferences.gradientAngle}°</output></label><div class="gradient-preview" aria-hidden="true"></div></div>` : ''}
-    </section>
+  return `<div class="settings-column">
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.theme.title')}</h2><p>${t('settings.theme.body')}</p></div></div><div class="segmented" style="max-width:390px">${[['dark', `${icon('moon', 13)} ${t('settings.dark')}`], ['light', `${icon('sun', 13)} ${t('settings.light')}`], ['oled', `${icon('contrast', 13)} ${t('settings.oled')}`]].map(([value, label]) => `<button class="segment ${preferences.theme === value ? 'active' : ''}" data-pref="theme" data-value="${value}" ${previewAttr('theme', value, t(`settings.${value}`))}>${label}</button>`).join('')}</div>
       <p class="theme-color-hint">${t('settings.themeColorHint')}</p><div class="theme-color-tuners">${renderColorTuner('themeBackground', displayBackground, t('settings.themeBackground'))}${renderColorTuner('themeSurface', displaySurface, t('settings.themeSurface'))}</div>
       <div class="theme-color-tuners">${renderColorTuner('themeText', displayText, t('settings.themeText'))}${renderColorTuner('themeMuted', displayMuted, t('settings.themeMuted'))}${renderColorTuner('themeLine', displayLine, t('settings.themeLine'))}</div>
@@ -2671,7 +2872,15 @@ function renderAccentSettings() {
        <div class="setting-line"><div class="setting-label"><strong>${t('settings.theme.schedule')}</strong><small>${t('settings.theme.scheduleHint')}</small></div><div class="segmented">${[['manual',t('settings.theme.scheduleManual')],['system',t('settings.theme.scheduleSystem')],['clock',t('settings.theme.scheduleClock')]].map(([v,l])=>`<button class="segment ${preferences.themeSchedule===v?'active':''}" data-pref="themeSchedule" data-value="${v}">${l}</button>`).join('')}</div></div>
        <div class="theme-io"><button class="ghost-button" data-action="export-theme">${t('settings.themeExport')}</button><button class="ghost-button" data-action="import-theme">${t('settings.themeImport')}</button><input type="file" accept=".json,application/json" data-theme-file hidden /></div>
       <button class="text-button theme-reset" data-action="reset-theme-colors">${t('settings.themeReset')}</button>
-    </section>` + renderWallpaperCard();
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.accent.title')}</h2><p>${t('settings.accent.body')}</p></div>${icon('palette', 18)}</div>
+      ${renderAccentWindowPreview()}
+      <div class="palette-row">${palettes.map((palette) => `<button class="palette-option ${preferences.accent.toLowerCase() === palette.color ? 'active' : ''}" aria-pressed="${preferences.accent.toLowerCase() === palette.color}" title="${escapeHtml(t(`palette.${palette.key}`))}" aria-label="${escapeHtml(t(`palette.${palette.key}`))}" data-accent="${palette.color}" ${previewAttr('accent', palette.color, t(`palette.${palette.key}`))}><span class="palette-swatch" style="background:${palette.color};color:${palette.color}"></span></button>`).join('')}</div>
+      ${renderColorTuner('accent', preferences.accent, t('settings.customColor'))}
+      <div class="setting-line accent-mode-line"><div class="setting-label"><strong>${t('settings.accentMode')}</strong></div><div class="segmented"><button class="segment ${preferences.accentMode === 'solid' ? 'active' : ''}" data-pref="accentMode" data-value="solid">${t('settings.solid')}</button><button class="segment ${preferences.accentMode === 'gradient' ? 'active' : ''}" data-pref="accentMode" data-value="gradient">${t('settings.gradient')}</button></div></div>
+      ${preferences.accentMode === 'gradient' ? `<div class="gradient-options">${renderColorTuner('accentSecondary', preferences.accentSecondary, t('settings.gradientEnd'))}<label class="gradient-angle"><span>${t('settings.gradientAngle')}</span><input type="range" min="0" max="360" value="${preferences.gradientAngle}" data-setting="gradientAngle" /><output id="gradient-angle-value">${preferences.gradientAngle}°</output></label><div class="gradient-preview" aria-hidden="true"></div></div>` : ''}
+    </section>
+  </div><div class="settings-column">${renderCardPreviewSettings()}${renderWallpaperCard()}</div>`;
 }
 
 function renderWallpaperCard() {
@@ -2695,7 +2904,7 @@ function renderCardSettings() {
   // Native components: setting-line rows, range-control sliders, button.toggle
   // switches — matches every other settings card exactly.
   const cardFlag = (flagKey, titleKey, bodyKey) => `<div class="setting-line"><div class="setting-label"><strong>${t(titleKey)}</strong><small>${t(bodyKey)}</small></div><button class="toggle" role="switch" aria-checked="${preferences[flagKey]}" data-card-flag-toggle="${flagKey}" data-preview="cardFlag:${flagKey}:${preferences[flagKey] ? 'off' : 'on'}" data-preview-label="${escapeHtml(t(titleKey))}" aria-label="${t(titleKey)}"></button></div>`;
-  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cardTuning.title')}</h2><p>${t('settings.cardTuning.body')}</p></div>${icon('grid', 18)}</div>
+  return `<div class="settings-column"><section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cardTuning.title')}</h2><p>${t('settings.cardTuning.body')}</p></div>${icon('grid', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.size')}</strong><small>${t('settings.cardTuning.sizeHint')}</small></div><label class="range-control"><input type="range" min="0.7" max="1.3" step="0.05" value="${preferences.cardSize}" data-card-size data-preview="cardSize:${preferences.cardSize}" data-preview-label="${escapeHtml(t('settings.cardTuning.size'))}" /><span class="range-value" data-card-size-value>${Math.round(preferences.cardSize * 100)}%</span></label></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.radius')}</strong><small>${t('settings.cardTuning.radiusHint')}</small></div><label class="range-control"><input type="range" min="0" max="20" value="${preferences.cardRadius}" data-card-radius data-preview="cardRadius:${preferences.cardRadius}" data-preview-label="${escapeHtml(t('settings.cardTuning.radius'))}" /><span class="range-value" data-card-radius-value>${preferences.cardRadius}px</span></label></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cardTuning.aspect')}</strong><small>${t('settings.cardTuning.aspectHint')}</small></div><div class="segmented">${[['auto',t('settings.cardTuning.aspectAuto')],['square',t('settings.cardTuning.aspectSquare')],['wide',t('settings.cardTuning.aspectWide')],['portrait',t('settings.cardTuning.aspectPortrait')]].map(([value,label])=>`<button class="segment ${preferences.cardAspect === value ? 'active' : ''}" data-pref="cardAspect" data-value="${value}" ${previewAttr('cardAspect',value,label)}>${label}</button>`).join('')}</div></div>
@@ -2708,7 +2917,11 @@ function renderCardSettings() {
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.catalog.groupByGenre')}</strong><small>${t('settings.catalog.groupByGenreBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.catalogGroupByGenre}" data-toggle="catalogGroupByGenre" aria-label="${t('settings.catalog.groupByGenre')}"></button></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.catalog.defaultView')}</strong><small>${t('settings.catalog.defaultViewBody')}</small></div><div class="segmented"><button class="segment ${preferences.catalogView === 'grid' ? 'active' : ''}" data-pref="catalogView" data-value="grid" ${previewAttr('catalogView','grid',t('catalog.gridView'))}>${t('catalog.gridView')}</button><button class="segment ${preferences.catalogView === 'list' ? 'active' : ''}" data-pref="catalogView" data-value="list" ${previewAttr('catalogView','list',t('catalog.listView'))}>${t('catalog.listView')}</button></div></div>
   </section>
-  <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cardPreview.title')}</h2><p>${t('settings.cardPreview.body')}</p></div>${icon('gamepad', 18)}</div>
+  </div><div class="settings-column">${renderCardPreviewSettings()}</div>`;
+}
+
+function renderCardPreviewSettings() {
+  return `<section class="settings-card settings-preview-card"><div class="settings-card-head"><div><h2>${t('settings.cardPreview.title')}</h2><p>${t('settings.cardPreview.body')}</p></div>${icon('gamepad', 18)}</div>
       <div class="card-tuning-preview">
         <article class="game-card preview-card" style="--game-color: var(--accent)">
           <div class="game-cover art-live"><span class="cover-shine"></span></div>
@@ -2818,7 +3031,14 @@ function previewMarkup(type, value, label, detail = '') {
     return `<div class="hover-preview-mock catalog-view-mock ${value === 'list' ? 'is-list' : ''}"><i></i><i></i><i></i><i></i></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
   }
   if (type === 'homeWidget') {
-    return `<div class="hover-preview-mock widget-preview-mock ${detail === 'off' ? 'is-off' : 'is-on'}"><i></i><b></b><span></span><span></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
+    const art = {
+      hero: '<span class="sample-hero"><b></b><i></i></span>',
+      playstats: '<span class="sample-bars"><i></i><i></i><i></i></span>',
+      favorites: '<span class="sample-favorites">' + [0,1,2].map(() => '<i>' + icon('heart', 11) + '</i>').join('') + '</span>',
+      recent: '<span class="sample-recent">' + icon('clock', 15) + '<i></i><i></i></span>',
+      picks: '<span class="sample-picks">' + '<i></i>'.repeat(6) + '</span>'
+    };
+    return `<div class="hover-preview-mock widget-sample ${detail === 'off' ? 'is-off' : ''}" aria-hidden="true">${art[value] || ''}</div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
   }
   if (type === 'motion') {
     return `<div class="hover-preview-mock motion-preview-mock ${value === 'off' ? 'is-off' : ''}"><i></i><b></b><span></span></div><span class="hover-preview-label">${escapeHtml(label)}</span>`;
@@ -3013,20 +3233,7 @@ function renderInterfaceSettings() {
       ${partToggle('uiUpdateBanner', 'settings.ui.updateBanner', 'settings.ui.updateBannerBody')}
       <button class="text-button theme-reset" data-action="reset-interface">${t('settings.ui.reset')}</button>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.limitsTitle')}</h2><p>${t('settings.tray.limitsBody')}</p></div>${icon('tray', 18)}</div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.favoriteLimit')}</strong><small>${t('settings.tray.limitHint')}</small></div>
-        <div class="tray-limit-control">
-          <label class="range-control"><input type="range" min="1" max="20" step="1" value="${preferences.trayFavoritesLimit}" data-tray-limit="trayFavoritesLimit" ${preferences.trayFavoritesUnlimited ? 'disabled' : ''} /><span class="range-value" data-tray-limit-value="trayFavoritesLimit">${preferences.trayFavoritesUnlimited ? '∞' : preferences.trayFavoritesLimit}</span></label>
-          <span class="tray-limit-toggle"><small>${t('settings.tray.noLimit')}</small><button class="toggle" role="switch" aria-checked="${preferences.trayFavoritesUnlimited}" data-pref-toggle="trayFavoritesUnlimited" aria-label="${t('settings.tray.noLimit')}"></button></span>
-        </div>
-      </div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.quickLimit')}</strong><small>${t('settings.tray.limitHint')}</small></div>
-        <div class="tray-limit-control">
-          <label class="range-control"><input type="range" min="1" max="20" step="1" value="${preferences.trayQuickLimit}" data-tray-limit="trayQuickLimit" ${preferences.trayQuickUnlimited ? 'disabled' : ''} /><span class="range-value" data-tray-limit-value="trayQuickLimit">${preferences.trayQuickUnlimited ? '∞' : preferences.trayQuickLimit}</span></label>
-          <span class="tray-limit-toggle"><small>${t('settings.tray.noLimit')}</small><button class="toggle" role="switch" aria-checked="${preferences.trayQuickUnlimited}" data-pref-toggle="trayQuickUnlimited" aria-label="${t('settings.tray.noLimit')}"></button></span>
-        </div>
-      </div>
-    </section>
+
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.hotkeys.title')}</h2><p>${t('settings.hotkeys.body')}</p></div>${icon('keyboard', 18)}</div>
       <div class="hotkey-list">${HOTKEY_ACTIONS.map((action) => `<div class="hotkey-row"><span>${t(action.label)}</span><button class="hotkey-recorder" data-record-hotkey="${action.id}" aria-label="${t('settings.hotkeys.record')}">${formatHotkey(hotkeyCombo(action.id))}</button></div>`).join('')}</div>
       <div class="data-actions"><button class="ghost-button" data-action="reset-hotkeys">${icon('refreshCw', 13)} ${t('settings.hotkeys.reset')}</button></div>
@@ -3342,7 +3549,7 @@ async function checkApiStatus() {
 function renderGeneralSettings() {
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.friends.title')}</h2><p>${t('settings.friends.body')}</p></div>${icon('users', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.friends.username')}</strong><small>${t('settings.friends.usernameHint')}</small></div>
-        <span class="roblox-username-field"><input type="text" maxlength="20" autocomplete="off" placeholder="Roblox" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username /><button class="ghost-button" data-detect-username>${t('friends.detect')}</button><button class="primary-button" data-save-username>${t('common.save')}</button></span></div>
+        <span class="roblox-username-field"><input type="text" maxlength="20" autocomplete="off" placeholder="Roblox" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username ${activeAccountProfile !== 'default' ? 'readonly' : ''} />${activeAccountProfile === 'default' ? `<button class="ghost-button" data-detect-username>${t('friends.detect')}</button><button class="primary-button" data-save-username>${t('common.save')}</button>` : ''}</span></div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.history.title')}</h2><p>${t('settings.history.body')}</p></div>${icon('history', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.history.title')}</strong><small>${t('settings.history.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.saveHistory}" data-toggle="saveHistory" aria-label="${t('settings.history.title')}"></button></div>
@@ -3375,16 +3582,37 @@ function renderSettings() {
       : preferences.settingsTab === 'effects' ? renderEffectSettings()
         : preferences.settingsTab === 'interface' ? renderInterfaceSettings()
           : preferences.settingsTab === 'general' ? renderGeneralSettings()
+            : preferences.settingsTab === 'tray' ? renderTraySettings()
             : preferences.settingsTab === 'integrations' ? renderIntegrationSettings()
               : preferences.settingsTab === 'data' ? renderDataSettings()
                 : preferences.settingsTab === 'version' ? `${renderUpdateSettings()}${renderAnnouncementSettings()}`
                   : renderAccentSettings();
-  const activeTab = t(`settings.tab.${preferences.settingsTab}`);
-  return `<div class="page-heading settings-page-heading"><nav class="settings-breadcrumb" aria-label="${t('settings.breadcrumb')}"><span class="settings-breadcrumb-parent">${t('nav.settings')}</span><span class="settings-breadcrumb-separator" aria-hidden="true">›</span><h1>${activeTab}</h1></nav></div>
-    <div class="settings-layout">${settingsTabs()}<div class="settings-panel">${panel}</div></div>`;
+  return `${pageHeading('', t('page.settings.title'), t('page.settings.description'))}
+    ${renderSettingsSearch()}<div class="settings-layout">${settingsTabs()}<div class="settings-panel" data-panel="${preferences.settingsTab}">${panel}${renderLauncherSettings(preferences.settingsTab)}</div></div>`;
 }
 
 // Integrations tab: Discord presence, friend alerts and the tray.
+function renderTraySettings() {
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.title')}</h2><p>${t('settings.tray.body')}</p></div>${icon('tray', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.scale')}</strong><small>${t('settings.tray.scaleBody')}</small></div><div class="segmented tray-scale-segmented">${[['compact', t('settings.tray.compact')], ['normal', t('settings.tray.normal')], ['large', t('settings.tray.large')]].map(([value, label]) => `<button class="segment ${preferences.trayScale === value ? 'active' : ''}" data-pref="trayScale" data-value="${value}">${label}</button>`).join('')}</div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.miniPlayer')}</strong><small>${t('settings.tray.miniPlayerBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.trayMiniPlayer}" data-toggle="trayMiniPlayer" aria-label="${t('settings.tray.miniPlayer')}"></button></div>
+    </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.limitsTitle')}</h2><p>${t('settings.tray.limitsBody')}</p></div>${icon('tray', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.favoriteLimit')}</strong><small>${t('settings.tray.limitHint')}</small></div>
+        <div class="tray-limit-control">
+          <label class="range-control"><input type="range" min="1" max="20" step="1" value="${preferences.trayFavoritesLimit}" data-tray-limit="trayFavoritesLimit" ${preferences.trayFavoritesUnlimited ? 'disabled' : ''} /><span class="range-value" data-tray-limit-value="trayFavoritesLimit">${preferences.trayFavoritesUnlimited ? '∞' : preferences.trayFavoritesLimit}</span></label>
+          <span class="tray-limit-toggle"><small>${t('settings.tray.noLimit')}</small><button class="toggle" role="switch" aria-checked="${preferences.trayFavoritesUnlimited}" data-pref-toggle="trayFavoritesUnlimited" aria-label="${t('settings.tray.noLimit')}"></button></span>
+        </div>
+      </div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.quickLimit')}</strong><small>${t('settings.tray.limitHint')}</small></div>
+        <div class="tray-limit-control">
+          <label class="range-control"><input type="range" min="1" max="20" step="1" value="${preferences.trayQuickLimit}" data-tray-limit="trayQuickLimit" ${preferences.trayQuickUnlimited ? 'disabled' : ''} /><span class="range-value" data-tray-limit-value="trayQuickLimit">${preferences.trayQuickUnlimited ? '∞' : preferences.trayQuickLimit}</span></label>
+          <span class="tray-limit-toggle"><small>${t('settings.tray.noLimit')}</small><button class="toggle" role="switch" aria-checked="${preferences.trayQuickUnlimited}" data-pref-toggle="trayQuickUnlimited" aria-label="${t('settings.tray.noLimit')}"></button></span>
+        </div>
+      </div>
+    </section>`;
+}
+
 function renderIntegrationSettings() {
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.integrations.title')}</h2><p>${t('settings.integrations.body')}</p></div>${icon('sparkles', 18)}</div>
       <div class="setting-line discord-id-line"><div class="setting-label"><strong>${t('settings.integrations.discordClientId')}</strong><small>${t('settings.integrations.discordClientIdHint')}</small></div>
@@ -3416,10 +3644,7 @@ function renderIntegrationSettings() {
         <p class="presence-warning">${t('settings.presence.hint')}</p>
       </div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.title')}</h2><p>${t('settings.tray.body')}</p></div>${icon('tray', 18)}</div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.scale')}</strong><small>${t('settings.tray.scaleBody')}</small></div><div class="segmented tray-scale-segmented">${[['compact', t('settings.tray.compact')], ['normal', t('settings.tray.normal')], ['large', t('settings.tray.large')]].map(([value, label]) => `<button class="segment ${preferences.trayScale === value ? 'active' : ''}" data-pref="trayScale" data-value="${value}">${label}</button>`).join('')}</div></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.miniPlayer')}</strong><small>${t('settings.tray.miniPlayerBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.trayMiniPlayer}" data-toggle="trayMiniPlayer" aria-label="${t('settings.tray.miniPlayer')}"></button></div>
-    </section>`;
+`;
 }
 
 // Data tab: caches, size limits and the Roblox API health probe.
@@ -3453,17 +3678,20 @@ const viewNames = { home: 'nav.home', catalog: 'nav.catalog', search: 'nav.searc
 
 function quickGameAvatarMarkup(item) {
   const thumbnail = safeThumbnail(item.thumbnail);
-  return `<span class="quick-launch-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" decoding="async" />` : icon('gamepad', 16)}</span>`;
+  return `<span class="quick-launch-avatar">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" decoding="async" />` : icon('gamepad', 16)}<span class="quick-play-overlay" aria-hidden="true">${icon('play', 16)}</span></span>`;
 }
 
 function quickGameRowMarkup(item, nested = false) {
-  const title = item.title || t('quick.untitled');
+  const privateItem = item.method !== 'public';
+  const restricted = preferences.streamMode && privateItem;
+  const title = restricted ? t('tools.privateShortcut') : item.title || t('quick.untitled');
   return `<div class="quick-launch-row" data-quick-id="${escapeHtml(item.id)}" ${nested ? 'data-quick-nested="true"' : `data-quick-drop-game="${escapeHtml(item.id)}"`}>
-      <button class="quick-launch-button" type="button" data-quick-launch="${escapeHtml(item.id)}" title="${escapeHtml(title)}" aria-label="${t('quick.launchNamed', { title: escapeHtml(title) })}">${quickGameAvatarMarkup(item)}<span class="quick-launch-copy"><strong>${escapeHtml(title)}</strong>${item.hotkey ? `<small>${escapeHtml(formatHotkey(item.hotkey))}</small>` : ''}</span></button>
+      <button class="quick-launch-button" type="button" data-quick-launch="${escapeHtml(item.id)}" title="${escapeHtml(title)}" aria-label="${t('quick.launchNamed', { title: escapeHtml(title) })}">${quickGameAvatarMarkup(restricted ? {} : item)}<span class="quick-launch-copy"><strong>${escapeHtml(title)}</strong>${item.hotkey ? `<small>${escapeHtml(formatHotkey(item.hotkey))}</small>` : ''}</span></button>
       <span class="quick-launch-tools">
-        <button class="quick-launch-tool" type="button" data-quick-edit="${escapeHtml(item.id)}" aria-label="${t('quick.edit')}" title="${t('quick.edit')}">${icon('edit', 12)}</button>
+        <button ${restricted || ['access','instance'].includes(item.method) ? 'hidden' : ''} class="quick-launch-tool" type="button" data-quick-edit="${escapeHtml(item.id)}" aria-label="${t('quick.edit')}" title="${t('quick.edit')}">${icon('edit', 12)}</button>
         <button class="quick-launch-tool ${item.hotkey ? 'has-hotkey' : ''}" type="button" data-quick-hotkey="${escapeHtml(item.id)}" aria-label="${item.hotkey ? t('quick.clearHotkey') : t('quick.setHotkey')}" title="${item.hotkey ? t('quick.clearHotkey') : t('quick.setHotkey')}">${icon('keyboard', 12)}</button>
-        <button class="quick-launch-tool" type="button" data-quick-share="${escapeHtml(item.id)}" aria-label="${t('quick.share')}" title="${t('quick.share')}">${icon('share', 12)}</button>
+        <button ${restricted || ['access','instance'].includes(item.method) ? 'hidden' : ''} class="quick-launch-tool" type="button" data-quick-share="${escapeHtml(item.id)}" aria-label="${t('quick.share')}" title="${t('quick.share')}">${icon('share', 12)}</button>
+        <button ${restricted ? 'hidden' : ''} class="quick-launch-tool" type="button" data-launcher-action="shortcut" data-quick="true" data-id="${escapeHtml(item.id)}" aria-label="${t('tools.shortcut')}" title="${t('tools.shortcut')}">${icon('windowMaximize', 12)}</button>
         <button class="quick-launch-tool remove" type="button" data-quick-remove="${escapeHtml(item.id)}" data-i18n-aria="quick.remove" aria-label="${t('quick.remove')}" title="${t('quick.remove')}">${icon('close', 12)}</button>
       </span>
     </div>`;
@@ -3472,14 +3700,14 @@ function quickGameRowMarkup(item, nested = false) {
 function quickFolderMarkup(folder) {
   const open = quickFoldersOpen.has(folder.id);
   const folderTitle = folder.title || t('quick.folderDefault');
-  const color = /^#[0-9a-f]{6}$/i.test(String(folder.color || '')) ? folder.color : '#9b7cff';
+  const color = /^#[0-9a-f]{6}$/i.test(String(folder.color || '')) ? folder.color : '#a68bff';
   const previews = folder.games.slice(0, 4).map((game) => {
     const thumbnail = safeThumbnail(game.thumbnail);
     return `<span class="quick-folder-thumb">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" decoding="async" />` : icon('gamepad', 9)}</span>`;
   }).join('');
   return `<div class="quick-folder" data-quick-folder="${escapeHtml(folder.id)}" aria-expanded="${open}" style="--folder-color:${escapeHtml(color)}">
       <div class="quick-launch-row" data-quick-drop-folder="${escapeHtml(folder.id)}">
-        <button class="quick-launch-button" type="button" data-quick-folder-toggle="${escapeHtml(folder.id)}" title="${escapeHtml(folderTitle)}" aria-label="${escapeHtml(folderTitle)}">
+        <button class="quick-launch-button" type="button" data-quick-folder-toggle="${escapeHtml(folder.id)}" aria-expanded="${open}" title="${escapeHtml(folderTitle)}" aria-label="${escapeHtml(folderTitle)}">
           <span class="quick-folder-chevron">${icon('chevronLeft', 11)}</span><span class="quick-folder-stack">${previews}</span><span class="quick-launch-copy"><strong>${escapeHtml(folderTitle)}</strong></span>
         </button>
         <span class="quick-folder-tools"><button class="quick-folder-tool" type="button" data-quick-folder-edit="${escapeHtml(folder.id)}" aria-label="${t('quick.folderEdit')}" title="${t('quick.folderEdit')}">${icon('edit', 12)}</button><button class="quick-launch-remove" type="button" data-quick-remove="${escapeHtml(folder.id)}" aria-label="${t('quick.remove')}" title="${t('quick.remove')}">${icon('close', 12)}</button></span>
@@ -3585,23 +3813,34 @@ function updateSidebarCollapse() {
 }
 
 function renderPage() {
+  playtimeSummary = null;
   hideHoverPreview();
   applyPreferences();
   reportRecentGamesToTray();
-  document.body.classList.toggle('sidebar-compact', readStored('vortex.sidebarCompact', true));
+  document.body.classList.toggle('sidebar-compact', readStored('vortex.sidebarCompact', window.innerWidth <= 940));
   updateSidebarCollapse();
   updateSidebar();
   updateNavigationHistoryControls();
-  renderQuickLaunchItems();
   renderUpdateBanner();
   const pages = { home: renderHome, catalog: renderCatalog, 'game-detail': renderGameDetail, favorites: renderFavorites, recent: renderRecent, activity: renderActivity, friends: renderFriends, plans: renderPlans, settings: renderSettings };
-  pageContent.innerHTML = (pages[currentView] || renderHome)();
+  const viewKey = currentView === 'settings' ? 'settings/' + preferences.settingsTab
+    : currentView === 'catalog' ? ['catalog', activeDiscoverySort, activeCategory, activeAccess].join('/')
+    : currentView === 'game-detail' ? 'game/' + detailGame?.id
+    : currentView === 'plans' ? 'plans/' + roadmapStage : currentView;
+  const sameView = pageContent.dataset.renderedView === viewKey;
+  const activityControl = sameView && currentView === 'activity' ? document.activeElement?.dataset.activityControl : '';
+  const existing = sameView ? new Set([...pageContent.querySelectorAll('.game-grid [data-game]')].map(el => el.dataset.game)) : null;
+  pageContent.innerHTML = renderGameTabs() + (pages[currentView] || renderHome)();
+  focusActivityControl(activityControl);
+  if (existing) for (const card of pageContent.querySelectorAll('.game-grid [data-game]')) {
+    card.classList.add(existing.has(card.dataset.game) ? 'motion-retained' : 'motion-added');
+  }
   mountIcons(pageContent);
   if (currentView === 'plans') void loadRoadmap();
   if (currentView === 'settings') refreshDiscordStatus();
   if (preferences.discordPresence) applyDiscordPresence();
-  if (pageContent.dataset.renderedView !== currentView) {
-    pageContent.dataset.renderedView = currentView;
+  if (pageContent.dataset.renderedView !== viewKey) {
+    pageContent.dataset.renderedView = viewKey;
     const systemPrefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
     const shouldTransition = preferences.motion && !systemPrefersReducedMotion && preferences.pageTransition !== 'none';
     pageContent.dataset.transition = shouldTransition ? preferences.pageTransition : 'none';
@@ -3660,7 +3899,8 @@ let toastTimer;
 // Settings migration: one JSON file with preferences, custom games,
 // favorites, recent and playtime stats. Version field guards imports.
 const DATA_EXPORT_VERSION = 1;
-function buildDataExport() {
+async function buildDataExport() {
+  await activityClockReady;
   return {
     app: 'vortex',
     version: DATA_EXPORT_VERSION,
@@ -3671,12 +3911,13 @@ function buildDataExport() {
       favorites: [...favorites],
       recentGames,
       playStats,
-      activityData
+      activityData,
+      sessionHistory: await sessionJournal.recent(Infinity)
     }
   };
 }
 
-function applyDataImport(payload) {
+async function applyDataImport(payload) {
   if (!payload || payload.app !== 'vortex' || !payload.data || typeof payload.data !== 'object') {
     showToast(t('settings.data.importError'));
     return false;
@@ -3686,23 +3927,33 @@ function applyDataImport(payload) {
     showToast(t('settings.data.invalid'));
     return false;
   }
+  await activityClockReady;
+  if (data.sessionHistory !== undefined) {
+    await sessionJournal.restore(data.sessionHistory);
+    journalChanged();
+  }
   Object.assign(preferences, preferenceDefaults, data.preferences);
+  if (!preferences.saveHistory) {
+    if (data.sessionHistory === undefined) stopJournalRecording();
+    else recordingSession = null;
+  }
   if (Array.isArray(data.customGames)) preferences.customGames = data.customGames;
   if (Array.isArray(data.favorites)) favorites = new Set(data.favorites);
   if (Array.isArray(data.recentGames)) recentGames = data.recentGames;
-  if (data.playStats && typeof data.playStats === 'object') playStats = data.playStats;
-  if (data.activityData && typeof data.activityData === 'object') {
-    activityData = {
-      days: data.activityData.days && typeof data.activityData.days === 'object' ? data.activityData.days : {},
-      streak: { current: 0, best: 0, lastCompletedDate: '', recoveryUsed: false, ...(data.activityData.streak || {}) },
-      achievements: data.activityData.achievements && typeof data.activityData.achievements === 'object' ? data.activityData.achievements : {}
-    };
+  if (data.playStats || data.activityData || data.sessionHistory !== undefined) {
+    const importedStats = data.playStats && typeof data.playStats === 'object' ? data.playStats : playStats;
+    const importedActivity = data.activityData ? normalizeActivityData(data.activityData) : activityData;
+    activityData = await prepareActivityClock(importedActivity, importedStats);
+    playStats = synchronizePlayStats(importedStats, activityData.days);
+    // Start the next confirmed interval after restoring the clock and journal.
+    runtimeSample = null;
+    runtimeConfirmedAt = 0;
   }
   savePreferences();
-  localStorage.setItem('vortex.favorites', JSON.stringify([...favorites]));
-  localStorage.setItem('vortex.recent', JSON.stringify(recentGames));
-  localStorage.setItem('vortex.playStats', JSON.stringify(playStats));
-  localStorage.setItem('vortex.activity', JSON.stringify(activityData));
+  accountStorage.setItem('vortex.favorites', JSON.stringify([...favorites]));
+  saveRecentGames(recentGames);
+  persistActivityData();
+  savePlayStats();
   renderSidebar();
   renderPage();
   reportRecentGamesToTray();
@@ -3847,7 +4098,7 @@ function renderAnnouncementList(highlightIds) {
 
 function closeAnnouncementsPanel() {
   if (!announcementPanel) return;
-  announcementPanel.remove();
+  window.vortexMotion.dismiss(announcementPanel);
   announcementPanel = null;
 }
 
@@ -3919,7 +4170,7 @@ async function loadAnnouncements(options = {}) {
 
 function startAnnouncementPolling() {
   if (announcementTimer) return;
-  announcementTimer = window.setInterval(() => loadAnnouncements({ force: true }), 5 * 60 * 1000);
+  announcementTimer = window.setInterval(() => { if (!pauseBackgroundRefresh()) loadAnnouncements({ force: true }); }, 5 * 60 * 1000);
 }
 
 function showToast(message, action) {
@@ -3965,6 +4216,8 @@ function trayStylePayload() {
   const css = Object.fromEntries(TRAY_STYLE_TOKENS.map((key) => [key, computed.getPropertyValue(key).trim()]));
   return {
     language: preferences.language,
+    motion: preferences.motion,
+    animationSpeed: preferences.animationSpeed,
     trayScale: preferences.trayScale,
     corners: preferences.corners,
     theme: preferences.theme,
@@ -3975,6 +4228,7 @@ function trayStylePayload() {
   };
 }
 
+let reportedTrayPayload = '';
 function reportRecentGamesToTray() {
   if (!window.vortexDesktop?.reportRecentGames) return;
   const lastPlayedFor = (id) => Number(playStats[String(id)]?.lastPlayed) || 0;
@@ -3997,19 +4251,19 @@ function reportRecentGamesToTray() {
   const quickLaunch = quickLaunchGames()
     .map((item) => ({
       id: String(item.id),
-      title: String(item.title || ''),
-      thumbnail: safeThumbnail(item.thumbnail) || '',
+      title: preferences.streamMode && item.method !== 'public' ? t('tools.privateShortcut') : String(item.title || ''),
+      thumbnail: preferences.streamMode && item.method !== 'public' ? '' : safeThumbnail(item.thumbnail) || '',
       lastPlayed: Number(item.lastPlayed) || lastPlayedFor(item.placeId),
       method: String(item.method || 'public'),
       placeId: String(item.placeId || ''),
-      linkCode: String(item.linkCode || ''),
-      shareCode: String(item.shareCode || ''),
+      linkCode: preferences.streamMode ? '' : String(item.linkCode || ''),
+      shareCode: preferences.streamMode ? '' : String(item.shareCode || ''),
       shareType: String(item.shareType || 'Server')
     }))
     .sort((first, second) => second.lastPlayed - first.lastPlayed)
     .slice(0, quickLimit);
   const sessionActive = Boolean(preferences.trayMiniPlayer && playSessionStart && playSessionGameId && nowPlayingSnapshot);
-  const nowPlaying = sessionActive && Date.now() - Number(playSessionStart) < PLAYTIME_SESSION_CAP_SECONDS * 1000
+  const nowPlaying = sessionActive
     ? {
       id: String(nowPlayingSnapshot.id),
       title: String(nowPlayingSnapshot.title || ''),
@@ -4017,164 +4271,217 @@ function reportRecentGamesToTray() {
       startedAt: Number(nowPlayingSnapshot.startedAt) || playSessionStart
     }
     : null;
-  window.vortexDesktop.reportRecentGames({ favorites: favoriteGames, quickLaunch, nowPlaying, style: trayStylePayload() });
-}
-
-function restorePlaySession() {
-  // A previous process may have crashed before its unload checkpoint. Do not
-  // count the time spent offline as playtime; discard only the stale marker.
-  localStorage.removeItem(PLAYTIME_SESSION_KEY);
+  const payload = { favorites: favoriteGames, quickLaunch, nowPlaying, style: trayStylePayload() };
+  const serialized = JSON.stringify(payload);
+  if (reportedTrayPayload === serialized) return;
+  reportedTrayPayload = serialized;
+  Promise.resolve(window.vortexDesktop.reportRecentGames(payload)).catch(() => {
+    if (reportedTrayPayload === serialized) reportedTrayPayload = '';
+  });
 }
 
 function savePlayStats() {
-  localStorage.setItem('vortex.playStats', JSON.stringify(playStats));
+  playtimeSummary = null;
+  accountStorage.setItem('vortex.playStats', JSON.stringify(playStats));
 }
 
-// Close the current play session: bank the elapsed time (capped) and a launch.
-function bankPlaySession(resetSession = true) {
+// The cursor advances by whole seconds. Fractional seconds carry into the next
+// checkpoint, including when time is split across midnight.
+function bankPlaySession(through = runtimeConfirmedAt) {
   if (!playSessionStart || !playSessionGameId) return;
-  const sessionStart = playSessionStart;
-  const elapsed = Math.max(0, Math.round((Date.now() - sessionStart) / 1000));
-  const banked = Math.min(elapsed, PLAYTIME_SESSION_CAP_SECONDS);
-  const entry = playStats[playSessionGameId] || { seconds: 0, launches: 0, lastPlayed: 0 };
-  entry.seconds += banked;
-  entry.lastPlayed = Date.now();
-  playStats[playSessionGameId] = entry;
-  if (banked > 0) recordActivityTime(playSessionGameId, sessionStart, banked);
-  if (resetSession) {
-    playSessionStart = null;
-    playSessionGameId = null;
-    playSessionSource = '';
-    // The mini-player only exists while a Vortex-launched session is active.
-    nowPlayingSnapshot = null;
-    localStorage.removeItem(PLAYTIME_SESSION_KEY);
-  } else {
-    playSessionStart = Date.now();
-    localStorage.setItem(PLAYTIME_SESSION_KEY, JSON.stringify({ gameId: playSessionGameId, startedAt: playSessionStart }));
+  const from = Math.max(playSessionStart, activityData.confirmedThrough);
+  const seconds = Math.floor((through - from) / 1000);
+  if (!(seconds > 0)) return;
+  const end = from + seconds * 1000;
+  // Advance the cursor before storage, notifications or rendering can throw.
+  playSessionStart = end;
+  activityData.confirmedThrough = end;
+  const credited = recordActivityTime(playSessionGameId, from, seconds);
+  if (!credited) {
+    persistActivityData();
+    return;
   }
-  savePlayStats();
-  reportRecentGamesToTray();
-  updateActivityAchievements();
+  const entry = playStats[playSessionGameId] ||= { seconds: 0, launches: 0 };
+  entry.seconds = (Number(entry.seconds) || 0) + credited;
+  entry.lastPlayed = end;
   persistActivityData();
-  if (!resetSession && currentView === 'activity') renderPage();
+  savePlayStats();
+  writeJournalInterval(from, from + credited * 1000);
+  const completed = completeDailyActivity();
+  if (updateActivityAchievements() || completed) persistActivityData();
+  if (currentView === 'activity') renderPage();
 }
 
-function closePlaySession() { bankPlaySession(true); }
-function checkpointPlaySession() { bankPlaySession(false); }
+function finishDetectedSession(through) {
+  bankPlaySession(through);
+  if (recordingSession) writeJournalInterval(Math.max(playSessionStart, activityData.confirmedThrough), through, true);
+  recordingSession = null;
+  playSessionStart = null;
+  playSessionGameId = null;
+  runtimeSessionKey = '';
+  nowPlayingSnapshot = null;
+  accountStorage.removeItem(PLAYTIME_SESSION_KEY);
+}
 
-function openGame(id, gameId = '', accessCode = '') {
+function recordGameLaunch(game) {
+  pendingLaunch = { ...game, at: Date.now() };
+  if (preferences.saveHistory) saveRecentGames([game.id, ...recentGames]);
+  reportRecentGamesToTray();
+  window.setTimeout(pollRobloxRuntime, 750);
+}
+
+async function openGame(id, gameId = '', accessCode = '') {
   const game = getGame(id) || (String(id).match(/^\d{5,20}$/) ? { id: String(id), title: t('friends.joinGameTitle') } : null);
   if (!game) return;
   // A specific server instance (joining a friend) rides along to the main process.
   const joinGameId = /^(?:\d{5,40}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(String(gameId)) ? String(gameId) : '';
   const safeAccessCode = /^[A-Za-z0-9-]{8,100}$/.test(String(accessCode || '')) ? String(accessCode) : '';
-  // A new launch closes the previous session: it is the natural end marker.
-  closePlaySession();
-  if (preferences.saveHistory) {
-    recentGames = [game.id, ...recentGames.filter((recentId) => recentId !== game.id)].slice(0, 12);
-    localStorage.setItem('vortex.recent', JSON.stringify(recentGames));
+  try {
+    if (window.vortexDesktop?.openGame) {
+      await window.vortexDesktop.openGame(String(game.id), joinGameId, safeAccessCode);
+    } else {
+      window.open(`https://www.roblox.com/games/start?placeId=${encodeURIComponent(game.id)}`, '_blank', 'noopener,noreferrer');
+    }
+  } catch {
+    showToast(t('toast.launchError'));
+    return;
   }
-  playSessionStart = Date.now();
-  playSessionGameId = String(game.id);
-  playSessionSource = 'launcher';
-  nowPlayingSnapshot = {
-    id: String(game.id),
-    title: String(game.title || ''),
-    thumbnail: safeThumbnail(game.thumbnail) || '',
-    startedAt: playSessionStart
-  };
-  // Sent after the snapshot exists, so the tray mini-player appears immediately.
-  reportRecentGamesToTray();
-  localStorage.setItem(PLAYTIME_SESSION_KEY, JSON.stringify({ gameId: playSessionGameId, startedAt: playSessionStart }));
-  // The launch count is persisted immediately; duration is banked on hide,
-  // next launch or app close. This also survives a crash/restart.
-  const currentEntry = playStats[playSessionGameId] || { seconds: 0, launches: 0, lastPlayed: 0 };
-  currentEntry.launches += 1;
-  currentEntry.lastPlayed = playSessionStart;
-  playStats[playSessionGameId] = currentEntry;
-  savePlayStats();
-  reportRecentGamesToTray();
-  if (window.vortexDesktop?.openGame) {
-    window.vortexDesktop.openGame(game.id, joinGameId, safeAccessCode).then(() => showToast(t('toast.opening', { game: game.title }))).catch(() => showToast(t('toast.launchError')));
-  } else {
-    window.open(`https://www.roblox.com/games/start?placeId=${encodeURIComponent(game.id)}`, '_blank', 'noopener,noreferrer');
-    showToast(t('toast.opening', { game: game.title }));
-  }
+  recordGameLaunch(game);
+  showToast(t('toast.opening', { game: game.title }));
 }
 
 // Roblox itself is the source of truth for "am I in a game right now". The
 // backend reads the newest Roblox log, so joins from the Roblox website or a
 // friend invite also start/stop a play session instead of being invisible.
-async function startDetectedSession(placeId, startedAt) {
-  const id = String(placeId || '');
-  if (!id) return;
-  if (playSessionGameId && playSessionGameId !== id) closePlaySession();
-  if (playSessionGameId === id) return;
-  const known = getGame(id);
-  const start = Number(startedAt) > 0 && Number(startedAt) < Date.now() + 60_000 ? Number(startedAt) : Date.now();
+function startDetectedSession(id, key, start, joinedAt) {
+  const known = getGame(id) || (String(pendingLaunch?.id) === id ? pendingLaunch : null);
+  const stored = readStored(PLAYTIME_SESSION_KEY, null);
   playSessionStart = start;
   playSessionGameId = id;
-  playSessionSource = 'detected';
-  nowPlayingSnapshot = {
-    id,
-    title: known?.title || t('activity.unknownGame'),
-    thumbnail: safeThumbnail(known?.thumbnail) || '',
-    startedAt: start
-  };
-  if (preferences.saveHistory) {
-    recentGames = [id, ...recentGames.filter((recentId) => recentId !== id)].slice(0, 12);
-    localStorage.setItem('vortex.recent', JSON.stringify(recentGames));
-  }
-  const entry = playStats[id] || { seconds: 0, launches: 0, lastPlayed: 0 };
-  entry.launches += 1;
+  runtimeSessionKey = key;
+  nowPlayingSnapshot = { id, title: known?.title || t('activity.unknownGame'),
+    thumbnail: safeThumbnail(known?.thumbnail) || '', startedAt: joinedAt || start };
+  if (preferences.saveHistory) saveRecentGames([id, ...recentGames]);
+  const entry = playStats[id] || { seconds: 0, launches: 0 };
+  if (stored?.session !== key) entry.launches = (Number(entry.launches) || 0) + 1;
   entry.lastPlayed = start;
   playStats[id] = entry;
   savePlayStats();
-  reportRecentGamesToTray();
-  if (!known && runtimeResolvingPlace !== id) {
-    runtimeResolvingPlace = id;
-    try {
-      // Resolve the exact place instead of searching for its numeric id: a
-      // search can return an unrelated first result, which used to put the wrong
-      // game in the tray mini-player.
-      const response = await window.vortexDesktop?.getGameDetails?.({ placeId: id });
-      const item = response?.ok ? response.game : null;
-      if (item?.title) {
-        const normalized = normalizeDiscoveredGame(item, id);
-        normalized.id = id;
-        dynamicGames = [normalized, ...dynamicGames.filter((game) => String(game.id) !== id)].slice(-1200);
-        localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames));
-        if (nowPlayingSnapshot?.id === id) {
-          nowPlayingSnapshot.title = normalized.title;
-          nowPlayingSnapshot.thumbnail = safeThumbnail(normalized.thumbnail) || '';
-        }
-        reportRecentGamesToTray();
-        if (['home', 'favorites', 'recent', 'activity', 'game-detail', 'friends'].includes(currentView)) renderPage();
-      }
-    } catch { /* keep the generic title; the next poll retries */ }
-    finally { runtimeResolvingPlace = ''; }
+  accountStorage.setItem(PLAYTIME_SESSION_KEY, JSON.stringify({ session: key }));
+  lastResolvedAttempt = 0;
+  if (preferences.saveHistory) {
+    recordingSession = { key: joinedAt ? key : id + '/' + start, gameId: id, startedAt: Math.min(joinedAt || start, start), title: known?.title || '' };
+    writeJournalInterval(start, start);
   }
 }
 
-async function pollRobloxRuntime() {
-  if (!window.vortexDesktop?.getRobloxRuntime) return;
-  let data = null;
-  try { data = await window.vortexDesktop.getRobloxRuntime(); } catch { return; }
-  if (!data || data.available === false) return;
-  if (data.running && data.placeId) {
-    const placeId = String(data.placeId);
-    if (placeId !== playSessionGameId) await startDetectedSession(placeId, data.startedAt);
+async function resolvePlayingGame(id) {
+  if (getGame(id) || runtimeResolvingPlace === id || Date.now() - lastResolvedAttempt < 30000) return;
+  lastResolvedAttempt = Date.now();
+  runtimeResolvingPlace = id;
+  try {
+    const response = await window.vortexDesktop?.getGameDetails?.({ placeId: id });
+    if (!response?.ok || !response.game?.title) return;
+    const game = normalizeDiscoveredGame(response.game, id);
+    game.id = id;
+    dynamicGames = [...dynamicGames.filter(item => String(item.id) !== id), game].slice(-1200);
+    localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames));
+    saveRecentGames(recentGames);
+    if (nowPlayingSnapshot?.id === id) {
+      nowPlayingSnapshot.title = game.title;
+      nowPlayingSnapshot.thumbnail = safeThumbnail(game.thumbnail) || '';
+      reportRecentGamesToTray();
+    }
+    if (['home','recent','activity'].includes(currentView)) renderPage();
+  } catch { /* Retry a transient lookup while the session is still active. */ }
+  finally { if (runtimeResolvingPlace === id) runtimeResolvingPlace = ''; }
+}
+
+function observeRobloxRuntime(data) {
+  const valid = Boolean(data?.available && Number.isSafeInteger(data.observedAt) && data.observedAt > 0);
+  const at = valid ? data.observedAt : Date.now();
+  const awake = Number.isSafeInteger(data?.awakeMs) && data.awakeMs >= 0 ? data.awakeMs : null;
+  const previous = runtimeSample;
+  const sample = { at, awake, unknown: !valid };
+  const continuous = runtimeIntervalIsContinuous(previous, sample);
+  const floor = continuous ? previous.at : at;
+  if (!continuous) {
+    bankPlaySession(runtimeConfirmedAt);
+    runtimeConfirmedAt = 0;
+    if (playSessionStart) playSessionStart = at;
+  }
+  runtimeSample = sample;
+  if (!valid) {
+    if (currentView === 'activity' && !previous?.unknown) paintJournal();
     return;
   }
-  if (!playSessionGameId) return;
-  const aliveFor = Date.now() - Number(playSessionStart || 0);
-  // A launch from Vortex needs a grace period: Roblox takes a moment to write
-  // the first log and the window can still be loading. Detected sessions stop
-  // as soon as the log goes quiet, which is the accurate end of playtime.
-  if (playSessionSource === 'detected' || aliveFor > 150_000) {
-    closePlaySession();
-    if (['home', 'favorites', 'recent', 'activity', 'game-detail', 'friends'].includes(currentView)) renderPage();
+  const id = data.running && /^\d{1,20}$/.test(String(data.placeId)) ? String(data.placeId) : '';
+  const joined = Number.isSafeInteger(data.startedAt) && data.startedAt > 0 && data.startedAt <= at ? data.startedAt : 0;
+  const key = id ? id + '/' + joined : '';
+  if (runtimeSessionKey !== key) {
+    const ended = Number(data.endedAt) || 0;
+    if (playSessionGameId) {
+      const boundary = ended >= floor && ended <= at ? ended : id && joined >= floor ? Math.min(at, joined) : floor;
+      finishDetectedSession(boundary);
+    }
+    if (id) startDetectedSession(id, key, Math.min(at, Math.max(floor, joined)), joined);
+    applyLauncherModes();
+    reportRecentGamesToTray();
+    if (['activity','recent','home'].includes(currentView)) renderPage();
   }
+  if (id) {
+    runtimeConfirmedAt = at;
+    if (currentView === 'activity') {
+      if (previous?.unknown) paintJournal();
+      else tickJournalClock();
+    }
+    if (at - playSessionStart >= 30000) bankPlaySession(at);
+    void resolvePlayingGame(id);
+  } else {
+    runtimeConfirmedAt = 0;
+    if (!data.running) accountStorage.removeItem(PLAYTIME_SESSION_KEY);
+  }
+  if (pendingLaunch && (String(pendingLaunch.id) === id || at - pendingLaunch.at > 120000)) pendingLaunch = null;
+}
+
+async function pollRobloxRuntime() {
+  if (!runtimeOwner || runtimePollBusy || !window.vortexDesktop?.getRobloxRuntime) return;
+  runtimePollBusy = true;
+  try { const data = await window.vortexDesktop.getRobloxRuntime(); if (runtimeOwner) observeRobloxRuntime(data); }
+  catch { observeRobloxRuntime(null); }
+  finally { runtimePollBusy = false; }
+}
+
+function monitorRobloxRuntime() {
+  async function watch() {
+    activityClockReady = (async () => {
+      const stats = readStored('vortex.playStats', playStats) || {};
+      activityData = await prepareActivityClock(normalizeActivityData(readStored('vortex.activity', activityData)), stats);
+      playStats = synchronizePlayStats(stats, activityData.days);
+      persistActivityData();
+      savePlayStats();
+      if (['home', 'activity', 'game-detail', 'recent', 'favorites'].includes(currentView)) renderPage();
+    })();
+    await activityClockReady;
+    runtimeOwner = true;
+    runtimeSample = null;
+    void pollRobloxRuntime();
+    runtimePollTimer = window.setInterval(pollRobloxRuntime, 5000);
+    window.addEventListener('focus', pollRobloxRuntime);
+    await new Promise(resolve => window.addEventListener('pagehide', resolve, { once: true }));
+    runtimeOwner = false;
+    window.clearInterval(runtimePollTimer);
+    window.removeEventListener('focus', pollRobloxRuntime);
+    bankPlaySession();
+  }
+  // Only one window writes the play clock for this WebView profile.
+  const tracking = navigator.locks ? navigator.locks.request('vortex-playtime', watch) : watch();
+  void tracking.catch(error => console.warn('Could not initialize the play clock.', error));
+}
+
+async function prepareActivityClock(data, stats) {
+  if (activityClockIsValid(data)) return data;
+  return rebuildActivityClock(data, stats, await sessionJournal.recent(Infinity));
 }
 
 const SEARCH_CACHE_PREFIX = 'vortex.searchCache.';
@@ -4259,6 +4566,7 @@ function normalizeDiscoveredGame(game, query = '') {
 }
 
 async function loadDiscoveryCatalog(sortId = activeDiscoverySort, { force = false, append = false } = {}) {
+  if (sortId === RECOMMENDED_SORT.id) return loadRecommendations(force);
   activeDiscoverySort = sortId;
   localStorage.setItem('vortex.activeDiscoverySort', JSON.stringify(activeDiscoverySort));
   const cached = discoveryCatalog[sortId];
@@ -4413,6 +4721,12 @@ async function fetchLiveSearch(append = false) {
 }
 
 function scheduleLiveSearch(value) {
+  const link = robloxSearchLink(value);
+  if (link && preferences.streamMode && link.method !== 'public') {
+    inboundRobloxLink = link;
+    value = t('tools.streamLink');
+    searchInput.value = value;
+  }
   searchQuery = value;
   currentView = 'catalog';
   activeCategory = preferences.catalogGenre || 'all';
@@ -4426,6 +4740,7 @@ function scheduleLiveSearch(value) {
   renderPage();
   searchInput.focus();
   searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+  if (link || looksLikeRobloxLink(value)) return;
   if (value.trim().length >= 2) searchTimer = window.setTimeout(() => fetchLiveSearch(false), 420);
   else if (!value.trim()) {
     if (!discoveryCatalog[activeDiscoverySort]?.items) loadDiscoveryCatalog(activeDiscoverySort);
@@ -4441,7 +4756,7 @@ function toggleFavorite(id) {
     favorites.add(id);
     showToast(t('toast.favoriteAdded'));
   }
-  localStorage.setItem('vortex.favorites', JSON.stringify([...favorites]));
+  accountStorage.setItem('vortex.favorites', JSON.stringify([...favorites]));
   reportRecentGamesToTray();
   renderPage();
 }
@@ -4473,7 +4788,7 @@ function setQuickGameDialogMode(isEditing) {
 
 function openQuickGameModal(editId = '') {
   const modal = document.getElementById('quick-game-modal');
-  if (!modal) return;
+  if (!modal || preferences.streamMode) return;
   quickGameDialogReturnFocus = document.activeElement;
   const item = editId ? findQuickLaunchGame(editId) : null;
   editingQuickGameId = item?.id || '';
@@ -4517,7 +4832,7 @@ function openQuickFolderModal(id) {
   quickFolderDialogReturnFocus = document.activeElement;
   editingQuickFolderId = folder.id;
   form.elements.namedItem('title').value = folder.title || t('quick.folderDefault');
-  const color = /^#[0-9a-f]{6}$/i.test(folder.color || '') ? folder.color : '#9b7cff';
+  const color = /^#[0-9a-f]{6}$/i.test(folder.color || '') ? folder.color : '#a68bff';
   form.elements.namedItem('color').value = color;
   if (colorPopoverState.name === 'folderColor') closeColorPopover();
   syncFolderColorTrigger();
@@ -4543,7 +4858,7 @@ function submitQuickFolderForm(event) {
   if (!folder) { closeQuickFolderModal(); return; }
   folder.title = String(form.elements.namedItem('title').value || '').trim().slice(0, 48) || t('quick.folderDefault');
   const color = String(form.elements.namedItem('color').value || '').toLowerCase();
-  folder.color = /^#[0-9a-f]{6}$/.test(color) ? color : '#9b7cff';
+  folder.color = /^#[0-9a-f]{6}$/.test(color) ? color : '#a68bff';
   persistQuickLaunchItems();
   closeQuickFolderModal();
 }
@@ -4785,7 +5100,7 @@ function organizeQuickLaunchDrop(sourceId, targetGameId = '', targetFolderId = '
   const targetIndex = items.findIndex((item) => item.type === 'game' && item.id === targetGameId);
   if (targetIndex < 0) { items.push(source); return; }
   const [target] = items.splice(targetIndex, 1);
-  const folder = { type: 'folder', id: quickLaunchId(), title: t('quick.folderDefault'), color: '#9b7cff', games: [target, source] };
+  const folder = { type: 'folder', id: quickLaunchId(), title: t('quick.folderDefault'), color: '#a68bff', games: [target, source] };
   items.splice(targetIndex, 0, folder);
   quickFoldersOpen.add(folder.id);
   persistQuickLaunchItems();
@@ -4796,31 +5111,19 @@ async function launchQuickGame(id) {
   if (!item) return;
   try {
     if (!window.vortexDesktop?.launchQuickGame) throw new Error('Desktop launcher unavailable');
+    await window.vortexDesktop.launchQuickGame({
+      method: item.method, placeId: item.placeId, linkCode: item.linkCode, shareCode: item.shareCode, shareType: item.shareType,
+      serverId: item.serverId, accessCode: item.accessCode
+    });
     const launchedAt = Date.now();
     item.lastPlayed = launchedAt;
-    localStorage.setItem('vortex.preferences', JSON.stringify(preferences));
+    accountStorage.setItem('vortex.preferences', JSON.stringify(preferences));
     if (item.placeId) {
-      const game = getGame(item.placeId) || { id: item.placeId, title: item.title, thumbnail: item.thumbnail };
-      closePlaySession();
-      if (preferences.saveHistory) {
-        recentGames = [game.id, ...recentGames.filter((recentId) => recentId !== game.id)].slice(0, 12);
-        localStorage.setItem('vortex.recent', JSON.stringify(recentGames));
-      }
-      playSessionStart = Date.now();
-      playSessionGameId = String(game.id);
-      nowPlayingSnapshot = { id: String(game.id), title: String(item.title || game.title || ''), thumbnail: safeThumbnail(item.thumbnail || game.thumbnail) || '', startedAt: playSessionStart };
+      const game = getGame(item.placeId);
+      recordGameLaunch({ id: item.placeId, title: item.title || game?.title, thumbnail: item.thumbnail || game?.thumbnail });
+    } else {
       reportRecentGamesToTray();
-      localStorage.setItem(PLAYTIME_SESSION_KEY, JSON.stringify({ gameId: playSessionGameId, startedAt: playSessionStart }));
-      const currentEntry = playStats[playSessionGameId] || { seconds: 0, launches: 0, lastPlayed: 0 };
-      currentEntry.launches += 1;
-      currentEntry.lastPlayed = playSessionStart;
-      playStats[playSessionGameId] = currentEntry;
-      savePlayStats();
     }
-    reportRecentGamesToTray();
-    await window.vortexDesktop.launchQuickGame({
-      method: item.method, placeId: item.placeId, linkCode: item.linkCode, shareCode: item.shareCode, shareType: item.shareType
-    });
     showToast(t('quick.launching', { title: item.title }));
   } catch (launchError) {
     showToast(t('quick.launchError', { error: String(launchError?.message || launchError || '') }));
@@ -4849,7 +5152,7 @@ document.addEventListener('pointerdown', (event) => {
     target: null,
     ghost: null
   };
-  try { row.setPointerCapture(event.pointerId); } catch { /* Pointer capture is optional on WebView2. */ }
+
 });
 
 document.addEventListener('pointermove', (event) => {
@@ -4858,6 +5161,7 @@ document.addEventListener('pointermove', (event) => {
   if (!drag.dragging && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 7) return;
   if (!drag.dragging) {
     drag.dragging = true;
+    try { drag.row.setPointerCapture(event.pointerId); } catch { /* Optional on WebView2. */ }
     drag.row.classList.add('is-dragging');
     const game = findQuickLaunchGame(drag.id);
     if (game) {
@@ -4887,12 +5191,13 @@ document.addEventListener('pointerup', (event) => {
   if (!drag || event.pointerId !== drag.pointerId) return;
   if (drag.dragging) {
     event.preventDefault();
+    suppressQuickLaunchClick = true;
+    setTimeout(() => { suppressQuickLaunchClick = false; }, 0);
     if (drag.target) {
       const folderId = drag.target.dataset.quickDropFolder || '';
       const gameId = drag.target.dataset.quickDropGame || '';
       organizeQuickLaunchDrop(drag.id, gameId, folderId);
-      suppressQuickLaunchClick = true;
-      window.setTimeout(() => { suppressQuickLaunchClick = false; }, 500);
+
     }
   }
   clearQuickLaunchDrag();
@@ -4907,6 +5212,7 @@ document.addEventListener('click', (event) => {
 }, true);
 
 function setView(view, { track = true } = {}) {
+  if (view === 'activity' && view !== currentView) journalStatus = 'idle';
   if (track && view !== currentView) pushNavigationHistory(view);
   currentView = view;
   if (view !== 'favorites') favoritesVisibleCount = 24;
@@ -5002,8 +5308,12 @@ document.addEventListener('click', async (event) => {
   const quickFolderToggle = target.closest('[data-quick-folder-toggle]');
   if (quickFolderToggle) {
     const id = quickFolderToggle.dataset.quickFolderToggle;
-    if (quickFoldersOpen.has(id)) quickFoldersOpen.delete(id); else quickFoldersOpen.add(id);
-    renderQuickLaunchItems();
+    const folder = quickFolderToggle.closest('[data-quick-folder]');
+    const open = !quickFoldersOpen.has(id);
+    if (open) quickFoldersOpen.add(id); else quickFoldersOpen.delete(id);
+    folder.setAttribute('aria-expanded', String(open));
+    quickFolderToggle.setAttribute('aria-expanded', String(open));
+    window.vortexMotion.disclose(folder.querySelector('.quick-folder-children'), open);
     return;
   }
   const quickEdit = target.closest('[data-quick-edit]');
@@ -5029,6 +5339,14 @@ document.addEventListener('click', async (event) => {
   const quickRemove = target.closest('[data-quick-remove]');
   if (quickRemove) { removeQuickLaunchItem(quickRemove.dataset.quickRemove); return; }
 
+  const stage = target.closest('[data-roadmap-stage]');
+  if (stage) {
+    roadmapStage = stage.dataset.roadmapStage;
+    renderPage();
+    pageContent.querySelector('.plans-filter.active')?.focus();
+    return;
+  }
+
   const nav = target.closest('[data-nav]');
   if (nav) { setView(nav.dataset.nav); return; }
 
@@ -5037,6 +5355,12 @@ document.addEventListener('click', async (event) => {
 
   const action = target.closest('[data-action]');
   if (action) {
+    if (action.dataset.action === 'home-settings') {
+      preferences.settingsTab = 'home';
+      savePreferences();
+      setView('settings');
+      return;
+    }
     if (action.dataset.action === 'history-back') { navigateHistory(-1); return; }
     if (action.dataset.action === 'history-forward') { navigateHistory(1); return; }
     if (action.dataset.action === 'open-update-release') { window.vortexDesktop?.openExternalUrl?.(latestUpdateState?.releaseUrl); return; }
@@ -5079,14 +5403,20 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'friends-drawer-view-all') { closeFriendsDrawer(); setView('friends'); return; }
     if (action.dataset.action === 'refresh-friends') {
       const username = String(preferences.robloxUsername || '').trim();
-      if (username) { friendsCache = { at: 0, data: null }; void loadFriends(username, true); showToast(t('friends.refreshing')); }
-      else autoDetectRobloxAccountOnce();
+      if (username) { void loadFriends(username, true); showToast(t('friends.refreshing')); }
+      else void autoDetectRobloxAccountOnce(true);
       return;
     }
     if (action.dataset.action === 'refresh-friends-drawer') {
       const username = String(preferences.robloxUsername || '').trim();
       if (username) void loadFriends(username, true);
-      else autoDetectRobloxAccountOnce();
+      else void autoDetectRobloxAccountOnce(true);
+      return;
+    }
+    if (action.dataset.action.startsWith('activity-') && handleActivityOverviewAction(action)) return;
+    if (action.dataset.action === 'journal-more' || action.dataset.action === 'journal-retry') {
+      if (action.dataset.action === 'journal-more') journalLimit += activityJournalPage;
+      await loadJournalRows();
       return;
     }
     if (action.dataset.action === 'restore-activity-streak') {
@@ -5107,6 +5437,7 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'favorites-more') { favoritesVisibleCount += 24; renderPage(); return; }
     if (action.dataset.action === 'paid-more') { showMorePaidGames(); return; }
     if (action.dataset.action === 'paid-rescan') { void loadPaidGames(true); return; }
+    if (action.dataset.action === 'more-recommendations') { void loadRecommendations(false, true); return; }
     if (action.dataset.action === 'refresh-recommendations') { void loadRecommendations(true); return; }
     if (action.dataset.action === 'reset-hotkeys') { preferences.hotkeys = {}; savePreferences(); showToast(t('settings.hotkeys.resetDone')); renderPage(); return; }
     if (action.dataset.action === 'check-api-status') { void checkApiStatus(); return; }
@@ -5117,10 +5448,17 @@ document.addEventListener('click', async (event) => {
       renderPage();
       return;
     }
-    if (action.dataset.action === 'detail-back') { if (navigationHistoryIndex > 0) navigateHistory(-1); else { setView('catalog'); restoreCatalogScroll(); } return; }
+    if (action.dataset.action === 'detail-back') {
+      if (catalogReturn) returnToSavedCatalog();
+      else if (navigationHistoryIndex > 0) navigateHistory(-1);
+      else { setView('catalog'); restoreCatalogScroll(); }
+      return;
+    }
     if (action.dataset.action === 'open-details') { captureCatalogScroll(); openGameDetails(action.dataset.id); return; }
     if (action.dataset.action === 'export-data') {
-      const blob = new Blob([JSON.stringify(buildDataExport(), null, 2)], { type: 'application/json' });
+      let backup;
+      try { backup = await buildDataExport(); } catch { showToast(t('activity.journal.exportError')); return; }
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -5140,10 +5478,10 @@ document.addEventListener('click', async (event) => {
         input.remove();
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = () => {
+        reader.onload = async () => {
           try {
             const payload = JSON.parse(String(reader.result));
-            if (applyDataImport(payload)) showToast(t('settings.data.imported'));
+            previewLauncherImport(payload);
           } catch { showToast(t('settings.data.importError')); }
         };
         reader.readAsText(file);
@@ -5392,8 +5730,9 @@ document.addEventListener('click', async (event) => {
   if (discoverySort) {
     const sortId = discoverySort.dataset.discoverySort;
     if (sortId === RECOMMENDED_SORT.id) {
+      discoveryRequestId++;
       activeDiscoverySort = sortId;
-      localStorage.setItem('vortex.activeDiscoverySort', sortId);
+      localStorage.setItem('vortex.activeDiscoverySort', JSON.stringify(sortId));
       catalogVisibleCount = CATALOG_PAGE_SIZE;
       renderPage();
       void loadRecommendations();
@@ -5519,7 +5858,7 @@ document.addEventListener('click', async (event) => {
     if (error) error.textContent = '';
     if (!cookie) { showToast(t('settings.presence.missing')); return; }
     try {
-      const result = await window.vortexDesktop?.setPresenceCookie(cookie);
+      const result = await window.vortexDesktop?.setPresenceCookie(cookie, preferences.robloxUsername);
       if (result && result.ok) {
         friendsCache = { at: 0, data: null };
         void refreshRobloxAccount();
@@ -5527,7 +5866,8 @@ document.addEventListener('click', async (event) => {
         showToast(t('settings.presence.saved'));
       } else {
         // Inline, specific reason under the field (in addition to the toast).
-        const reason = result && result.error === 'invalid' ? t('settings.presence.tooShort') : t('settings.presence.rejected');
+        const reason = result?.error === 'profile-mismatch' ? t('tools.profileMismatch')
+          : result?.error === 'invalid' ? t('settings.presence.tooShort') : t('settings.presence.rejected');
         if (error) error.textContent = reason;
         showToast(reason);
       }
@@ -5680,11 +6020,13 @@ document.addEventListener('click', async (event) => {
   const toggle = target.closest('[data-toggle]');
   if (toggle) {
     const key = toggle.dataset.toggle;
+    if (key === 'streamMode') { setLauncherStreamMode(!preferences.streamMode); return; }
     preferences[key] = !preferences[key];
     savePreferences();
     if (key === 'discordPresence') { applyDiscordPresence(); showToast(t(preferences.discordPresence ? 'settings.integrations.discordOn' : 'settings.integrations.discordOff')); }
     if (key === 'diskCache') window.vortexDesktop?.setDiskCacheEnabled?.(preferences.diskCache);
     if (key === 'trayMiniPlayer') reportRecentGamesToTray();
+    if (key === 'saveHistory' && !preferences.saveHistory) stopJournalRecording();
     renderPage();
     return;
   }
@@ -5942,10 +6284,6 @@ function syncColorTuner(name, color, axesToSkip = []) {
   if (code) code.textContent = color.toUpperCase();
 }
 
-document.addEventListener('dblclick', (event) => {
-  if (event.target.closest('[data-window-drag]')) window.vortexDesktop?.toggleMaximizeWindow?.();
-});
-
 document.addEventListener('keydown', (event) => {
   const isTyping = event.target instanceof HTMLElement && (event.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName));
   if (event.key === 'Escape' && !document.getElementById('quick-game-modal')?.hidden) {
@@ -6084,7 +6422,7 @@ function paletteCommands() {
   // Settings tabs
   const tabs = [
     ['home', 'settings.home.title', 'home'], ['cards', 'settings.cardTuning.title', 'grid'], ['effects', 'settings.effects.title', 'wand'],
-    ['interface', 'settings.ui.navTitle', 'monitor'], ['general', 'settings.language.title', 'message'], ['integrations', 'settings.integrations.title', 'sparkles'], ['data', 'settings.cache.title', 'database'], ['version', 'updates.settingsTitle', 'refreshCw'], ['accent', 'settings.theme.title', 'palette']
+    ['interface', 'settings.ui.navTitle', 'monitor'], ['general', 'settings.language.title', 'message'], ['integrations', 'settings.integrations.title', 'sparkles'], ['tray', 'settings.tray.title', 'tray'], ['data', 'settings.cache.title', 'database'], ['version', 'updates.settingsTitle', 'refreshCw'], ['accent', 'settings.theme.title', 'palette']
   ];
   tabs.forEach(([tab, key, ic]) => commands.push({
     icon: ic, title: t(key), hint: t('palette.openSettings'), run: () => { preferences.settingsTab = tab; savePreferences(); setView('settings'); }
@@ -6109,7 +6447,7 @@ function paletteCommands() {
   commands.push({ icon: 'grid', title: t('catalog.gridView'), hint: t('palette.view'), run: () => { preferences.catalogView = 'grid'; savePreferences(); setView('catalog'); } });
   commands.push({ icon: 'layout', title: t('catalog.listView'), hint: t('palette.view'), run: () => { preferences.catalogView = 'list'; savePreferences(); setView('catalog'); } });
   // Cache sweep
-  commands.push({ icon: 'rotate', title: t('settings.cacheClear'), hint: t('palette.action'), run: () => { for (const key of Object.keys(localStorage)) if (key.startsWith('vortex.') && !key.startsWith('vortex.preferences') && !key.startsWith('vortex.profiles')) localStorage.removeItem(key); showToast(t('settings.cache.cleared')); renderPage(); } });
+  commands.push({ icon: 'rotate', title: t('settings.cacheClear'), hint: t('palette.action'), run: () => { for (const key of Object.keys(localStorage)) if (key.startsWith(SEARCH_CACHE_PREFIX) || ['vortex.detailCache','vortex.featuredCache','vortex.discoveryCatalog'].includes(key)) localStorage.removeItem(key); showToast(t('settings.cache.cleared')); renderPage(); } });
   // Update check
   commands.push({ icon: 'download', title: t('updates.checkNow'), hint: t('palette.action'), run: () => { preferences.settingsTab = 'version'; savePreferences(); setView('settings'); window.vortexDesktop?.retryUpdateCheck?.(); } });
   return commands;
@@ -6239,7 +6577,7 @@ function showFriendPreview(card) {
   friendPreviewEl.style.top = top + 'px';
 }
 function hideFriendPreview() {
-  friendPreviewEl?.remove();
+  window.vortexMotion.dismiss(friendPreviewEl);
   friendPreviewEl = null;
   friendPreviewCard = null;
 }
@@ -6268,7 +6606,7 @@ document.addEventListener('focusout', (event) => {
 document.addEventListener('scroll', hideFriendPreview, true);
 
 function bootVortex() {
-restorePlaySession();
+saveRecentGames(recentGames);
 mountIcons();
 renderSidebar();
 applyPreferences();
@@ -6283,14 +6621,8 @@ document.getElementById('app-sidebar')?.addEventListener('mouseleave', () => {
 void refreshRobloxAccount();
 void refreshQuickLaunchMetadata();
 reportRecentGamesToTray();
-runtimePollTimer = window.setInterval(pollRobloxRuntime, 15 * 1000);
-window.setTimeout(pollRobloxRuntime, 4000);
-window.addEventListener('focus', pollRobloxRuntime);
-window.addEventListener('beforeunload', closePlaySession);
-// The desktop close action may hide the window into the tray, so unload is not
-// guaranteed. Periodic checkpoints keep playtime accurate without ending the
-// current session when the launcher is merely hidden.
-window.setInterval(checkpointPlaySession, 60 * 1000);
+monitorRobloxRuntime();
+window.addEventListener('focus', () => { if (currentView === 'activity') journalChanged(); });
 window.vortexDesktop?.onWindowState?.(({ isMaximized }) => setWindowMaximized(Boolean(isMaximized)));
 window.vortexDesktop?.onUpdateState?.(renderUpdateBanner);
 window.vortexDesktop?.onTrayLaunch?.(({ kind, id }) => {
@@ -6306,6 +6638,11 @@ loadAnnouncements();
 startAnnouncementPolling();
 // Coming back from the tray is the moment a user expects fresh news.
 window.addEventListener('focus', () => loadAnnouncements());
+window.setInterval(() => {
+  if (pauseBackgroundRefresh()) return;
+  const username = String(preferences.robloxUsername || '').trim();
+  if (username && (Object.values(friendPins()).some(Boolean) || preferences.friendFavoriteAlerts)) void loadFriends(username);
+}, 60000);
 }
 
 bootVortex();

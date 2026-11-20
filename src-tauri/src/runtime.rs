@@ -1,194 +1,272 @@
-//! What the local Roblox player is doing right now.
-//!
-//! Vortex can launch a place, but the user often joins a game from the Roblox
-//! website or accepts a friend invite. Roblox writes a fresh log for every
-//! session under `%LOCALAPPDATA%\Roblox\logs`; the newest log's creation time is
-//! a good session start and its join lines name the place. Reading that log
-//! gives an accurate "playing now" signal and an accurate end marker, instead
-//! of counting time until the next Vortex launch.
-
+//! Match a live Roblox Player process to its session log, then consume new log
+//! lines incrementally. Log modification time alone is not a presence signal.
+use chrono::DateTime;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{Read, Seek, SeekFrom};
-use std::path::PathBuf;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
+use windows::Win32::Foundation::{CloseHandle, FILETIME};
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
+use windows::Win32::System::Threading::{
+    GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 
-const LIVE_LOG_WINDOW: Duration = Duration::from_secs(120);
-const TAIL_BYTES: u64 = 512 * 1024;
-
-fn millis(value: SystemTime) -> u64 {
-    value
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or(0)
+#[link(name = "kernel32")]
+extern "system" {
+    fn QueryUnbiasedInterruptTime(time: *mut u64) -> i32;
 }
 
-fn logs_dir() -> Option<PathBuf> {
-    let local = std::env::var("LOCALAPPDATA").ok()?;
+fn process_starts() -> Option<Vec<u64>> {
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let mut result = Vec::new();
+        let mut readable = Process32FirstW(snapshot, &mut entry).is_ok();
+        let mut complete = readable;
+        while readable {
+            let len = entry
+                .szExeFile
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(entry.szExeFile.len());
+            let name = String::from_utf16_lossy(&entry.szExeFile[..len]);
+            if name.eq_ignore_ascii_case("RobloxPlayerBeta.exe")
+                || name.eq_ignore_ascii_case("Windows10Universal.exe")
+            {
+                if let Ok(process) = OpenProcess(
+                    PROCESS_QUERY_LIMITED_INFORMATION,
+                    false,
+                    entry.th32ProcessID,
+                ) {
+                    let (mut start, mut exit, mut kernel, mut user) = (
+                        FILETIME::default(),
+                        FILETIME::default(),
+                        FILETIME::default(),
+                        FILETIME::default(),
+                    );
+                    if GetProcessTimes(process, &mut start, &mut exit, &mut kernel, &mut user)
+                        .is_ok()
+                    {
+                        let ticks = (u64::from(start.dwHighDateTime) << 32)
+                            | u64::from(start.dwLowDateTime);
+                        result.push((ticks / 10_000).saturating_sub(11_644_473_600_000));
+                    } else {
+                        complete = false;
+                    }
+                    let _ = CloseHandle(process);
+                } else {
+                    complete = false;
+                }
+            }
+            readable = Process32NextW(snapshot, &mut entry).is_ok();
+        }
+        let _ = CloseHandle(snapshot);
+        (complete || !result.is_empty()).then_some(result)
+    }
+}
+
+fn is_player_log(path: &Path) -> bool {
+    let name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    name.ends_with(".log") && name.contains("_player_") && !name.contains("crashhandler")
+}
+
+fn player_logs(starts: &[u64]) -> Vec<PathBuf> {
+    let Some(local) = std::env::var_os("LOCALAPPDATA") else {
+        return vec![];
+    };
     let dir = PathBuf::from(local).join("Roblox").join("logs");
-    dir.is_dir().then_some(dir)
+    let files: Vec<_> = fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            if !is_player_log(&path) {
+                return None;
+            }
+            let created = entry
+                .metadata()
+                .ok()?
+                .created()
+                .ok()?
+                .duration_since(UNIX_EPOCH)
+                .ok()?
+                .as_millis() as u64;
+            Some((path, created))
+        })
+        .collect();
+    starts
+        .iter()
+        .filter_map(|start| {
+            files
+                .iter()
+                .filter(|(_, time)| *time >= start.saturating_sub(1500) && *time <= start + 90_000)
+                .min_by_key(|(_, time)| start.abs_diff(*time))
+                .map(|(path, _)| path.clone())
+        })
+        .collect()
 }
 
-/// Newest session log: (path, modified, created).
-fn newest_log(dir: &PathBuf) -> Option<(PathBuf, SystemTime, SystemTime)> {
-    let mut best: Option<(PathBuf, SystemTime, SystemTime)> = None;
-    let mut visit = |path: PathBuf| {
-        let Ok(meta) = fs::metadata(&path) else {
+#[derive(Default)]
+struct PlayerLog {
+    offset: u64,
+    place: Option<String>,
+    joined: u64,
+    left: u64,
+}
+
+impl PlayerLog {
+    fn event(&mut self, line: &str) {
+        let Some((stamp, message)) = line.split_once(',') else {
             return;
         };
-        if !meta.is_file() || path.extension().and_then(|ext| ext.to_str()) != Some("log") {
+        let lower = message.to_ascii_lowercase();
+        let place = lower
+            .split_once("joining game")
+            .and_then(|(_, rest)| rest.split_once(" place "))
+            .or_else(|| {
+                lower
+                    .split_once("game_join_loadtime")
+                    .and_then(|(_, rest)| rest.split_once("placeid:"))
+            })
+            .map(|(_, rest)| {
+                rest.trim_start()
+                    .split(|c: char| !c.is_ascii_digit())
+                    .next()
+                    .unwrap_or("")
+            })
+            .filter(|id| (1..=20).contains(&id.len()) && *id != "0");
+        let leaving = lower.contains("leaveugcgame")
+            || lower.contains("disconnect replication")
+            || lower.contains("ugcexperiencecontroller: stop");
+        if place.is_none() && !leaving {
             return;
         }
-        // CrashHandler logs live next to the real Player log and are often the
-        // newest file. They do not contain join lines, so including them made
-        // the runtime look like "playing" with no place id.
-        let name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("");
-        if !name.contains("_Player_") {
+        let Ok(time) = DateTime::parse_from_rfc3339(stamp.trim()) else {
             return;
-        }
-        let modified = meta.modified().unwrap_or(UNIX_EPOCH);
-        let created = meta.created().unwrap_or(modified);
-        if best
-            .as_ref()
-            .is_none_or(|(_, current_modified, _)| modified > *current_modified)
-        {
-            best = Some((path, modified, created));
-        }
-    };
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            visit(entry.path());
-        }
-    }
-    let archive = dir.join("archive");
-    if let Ok(entries) = fs::read_dir(archive) {
-        for entry in entries.flatten() {
-            visit(entry.path());
+        };
+        let at = time.timestamp_millis().max(0) as u64;
+        if let Some(id) = place {
+            if self.place.as_deref() != Some(id) {
+                if self.place.is_some() {
+                    self.left = at;
+                }
+                self.place = Some(id.to_owned());
+                self.joined = at;
+            }
+        } else if self.place.take().is_some() {
+            self.left = at;
         }
     }
-    best
-}
 
-fn tail_text(path: &PathBuf) -> String {
-    let Ok(mut file) = File::open(path) else {
-        return String::new();
-    };
-    let length = file.metadata().map(|meta| meta.len()).unwrap_or(0);
-    if length > TAIL_BYTES {
-        let _ = file.seek(SeekFrom::Start(length - TAIL_BYTES));
-    }
-    let mut buffer = Vec::new();
-    let _ = file.read_to_end(&mut buffer);
-    String::from_utf8_lossy(&buffer).into_owned()
-}
-
-fn digits_after(text: &str, index: usize) -> Option<String> {
-    let mut digits = String::new();
-    for character in text[index..].chars() {
-        if character.is_ascii_digit() {
-            digits.push(character);
-            if digits.len() > 20 {
+    fn refresh(&mut self, path: &Path) -> std::io::Result<()> {
+        let mut file = File::open(path)?;
+        let end = file.metadata()?.len();
+        if end < self.offset {
+            *self = Self::default();
+        }
+        if end == self.offset {
+            return Ok(());
+        }
+        file.seek(SeekFrom::Start(self.offset))?;
+        let mut reader = BufReader::new(file);
+        let mut bytes = Vec::new();
+        loop {
+            bytes.clear();
+            let len = reader.read_until(b'\n', &mut bytes)?;
+            if len == 0 || bytes.last() != Some(&b'\n') {
                 break;
             }
-        } else if !digits.is_empty() {
-            break;
-        } else if character.is_whitespace()
-            || character == '='
-            || character == ':'
-            || character == '"'
-            || character == '\''
-        {
-            continue;
-        } else {
-            break;
+            self.event(&String::from_utf8_lossy(&bytes));
+            self.offset += len as u64;
         }
+        Ok(())
     }
-    (digits.len() >= 5).then_some(digits)
 }
 
-/// Find the most recently mentioned place id in a log. Roblox writes several
-/// join variants over the years, so match the common keywords case-insensitively.
-fn extract_place_id(log: &str) -> Option<String> {
-    let lower = log.to_lowercase();
-    // Join lines are the only places that name the place the player is actually
-    // entering. Asset/telemetry lines also mention place ids (serverplaceid,
-    // source place, ad lookups), so prefer the last explicit join line.
-    let mut best_join: Option<(usize, String)> = None;
-    let mut line_start = 0usize;
-    for line in lower.split_inclusive('\n') {
-        if let Some(found) = line.find("game_join_loadtime") {
-            if let Some(relative) = line[found..].find("placeid:") {
-                let index = line_start + found + relative + "placeid:".len();
-                if let Some(id) = digits_after(&lower, index) {
-                    if best_join
-                        .as_ref()
-                        .is_none_or(|(position, _)| index > *position)
-                    {
-                        best_join = Some((index, id));
-                    }
-                }
-            }
-        }
-        if let Some(found) = line.find("joining game") {
-            if let Some(relative) = line[found..].find(" place ") {
-                let index = line_start + found + relative + " place ".len();
-                if let Some(id) = digits_after(&lower, index) {
-                    if best_join
-                        .as_ref()
-                        .is_none_or(|(position, _)| index > *position)
-                    {
-                        best_join = Some((index, id));
-                    }
-                }
-            }
-        }
-        line_start += line.len();
-    }
-    if let Some((_, id)) = best_join {
-        return Some(id);
-    }
-    let mut best: Option<(usize, String)> = None;
-    for keyword in ["placeid", "place_id", "place id", "place "] {
-        let mut from = 0;
-        while let Some(found) = lower[from..].find(keyword) {
-            let keyword_end = from + found + keyword.len();
-            if let Some(id) = digits_after(&lower, keyword_end) {
-                if best
-                    .as_ref()
-                    .is_none_or(|(position, _)| keyword_end > *position)
-                {
-                    best = Some((keyword_end, id));
-                }
-            }
-            from = keyword_end;
-        }
-    }
-    best.map(|(_, id)| id)
-}
-
-/// Status payload consumed by the renderer's playtime tracker.
 pub fn status() -> Value {
-    let Some(dir) = logs_dir() else {
-        return json!({ "available": false, "running": false, "placeId": null, "startedAt": null });
+    static LOGS: OnceLock<Mutex<HashMap<PathBuf, PlayerLog>>> = OnceLock::new();
+    let Some(starts) = process_starts() else {
+        return json!({"available": false});
     };
-    let Some((path, modified, created)) = newest_log(&dir) else {
-        return json!({ "available": true, "running": false, "placeId": null, "startedAt": null });
+    let Ok(mut cache) = LOGS.get_or_init(Default::default).lock() else {
+        return json!({"available": false});
     };
-    let age = modified.elapsed().unwrap_or(Duration::from_secs(u64::MAX));
-    let running = age < LIVE_LOG_WINDOW;
-    if !running {
-        return json!({ "available": true, "running": false, "placeId": null, "startedAt": null });
+    let paths = if starts.is_empty() {
+        Vec::new()
+    } else {
+        player_logs(&starts)
+    };
+    let mut ended = 0;
+    cache.retain(|path, log| {
+        if paths.contains(path) {
+            return true;
+        }
+        let _ = log.refresh(path);
+        if log.place.is_none() {
+            ended = ended.max(log.left);
+        }
+        false
+    });
+    let mut active = None;
+    let mut newest = 0;
+    for path in &paths {
+        let log = cache.entry(path.clone()).or_default();
+        if log.refresh(path).is_err() {
+            return json!({"available": false});
+        }
+        ended = ended.max(log.left);
+        if log.place.is_some() && log.joined >= newest {
+            newest = log.joined;
+            active = log.place.clone();
+        }
     }
-    let place_id = extract_place_id(&tail_text(&path));
-    json!({
-        "available": true,
-        "running": true,
-        "placeId": place_id,
-        "startedAt": millis(created),
-        "logModifiedAt": millis(modified),
-        "log": path.file_name().and_then(|name| name.to_str()).unwrap_or("")
-    })
+    let mut uptime = 0;
+    let awake =
+        unsafe { (QueryUnbiasedInterruptTime(&mut uptime) != 0).then_some(uptime / 10_000) };
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    json!({"available": true, "running": !starts.is_empty(), "placeId": active, "startedAt": newest,
+        "endedAt": ended, "observedAt": now, "awakeMs": awake})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn joins_and_leaves_are_chronological() {
+        let mut log = PlayerLog::default();
+        let mut event = |at, line: &str| {
+            log.event(&format!(
+                "2026-11-20T09:00:{at:02}.000Z,0.0,0000,Info {line}"
+            ))
+        };
+        event(0, "serverPlaceId=99999");
+        event(1, "Joining game 'server' place 11111");
+        event(2, "Game_join_loadtime: placeid:11111");
+        event(4, "disconnect replication");
+        event(7, "Joining game 'server' place 22222");
+        event(8, "asset source place 99999");
+        assert_eq!(log.place.as_deref(), Some("22222"));
+        assert_eq!(log.joined - log.left, 3000);
+        log.event("2026-11-20T09:01:00Z,Info leaveUGCGame");
+        assert!(log.place.is_none());
+        assert!(!is_player_log(Path::new(
+            "123_Player_abc_CrashHandler_last.log"
+        )));
+    }
 }

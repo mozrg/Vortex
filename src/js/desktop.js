@@ -47,6 +47,7 @@
     // Game launching
     openGame: (placeId, gameId, accessCode) => invoke('open_game', { placeId, gameId, accessCode }),
     launchQuickGame: (request) => invoke('launch_quick_game', request),
+    createDesktopShortcut: (request) => invoke('create_desktop_shortcut', request),
 
     // Cache
     setDiskCacheEnabled: (enabled) => invoke('cache_set_disk_enabled', { enabled }),
@@ -61,13 +62,13 @@
     getRobloxApiStatus: () => invoke('roblox_api_status'),
 
     // Friends
-    listFriends: (username) => invoke('friends_list', { username }),
+    listFriends: (username) => invoke('friends_list', { username, profileId: activeAccountProfile }),
     detectRobloxAccount: () => invoke('friends_detect_account'),
-    getRobloxAccount: () => invoke('roblox_account'),
+    getRobloxAccount: () => invoke('roblox_account', { profileId: activeAccountProfile }),
     getRobloxRuntime: () => invoke('roblox_runtime_status'),
-    setPresenceCookie: (cookie) => invoke('friends_presence_cookie', { cookie }),
-    removePresenceCookie: () => invoke('friends_presence_cookie', { remove: true }),
-    getPresenceStatus: () => invoke('friends_presence_status'),
+    setPresenceCookie: (cookie, username) => invoke('friends_presence_cookie', { cookie, username, profileId: activeAccountProfile }),
+    removePresenceCookie: () => invoke('friends_presence_cookie', { remove: true, profileId: activeAccountProfile }),
+    getPresenceStatus: () => invoke('friends_presence_status', { profileId: activeAccountProfile }),
     importLegacyLocalStorage: () => invoke('import_legacy_local_storage'),
 
     // Announcements

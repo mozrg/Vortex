@@ -39,14 +39,27 @@ function pickCollectionFile() {
     if (!file) return;
     try {
       if (file.size > 1024 * 1024) throw new Error('Collection too large');
-      openCollectionEditor(JSON.parse(await file.text()));
+      const payload = JSON.parse(await file.text());
+      if (payload?.app === 'vortex-quick-folder') openSharedFolder(payload);
+      else openCollectionEditor(payload);
     } catch { showToast(t('settings.data.invalid')); }
   }, { once: true });
   document.body.append(input);
   input.click();
 }
 
-function submitCollection(form) {
+async function saveShareDocument(title, suffix, payload) {
+  const filename = (title.replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 48) || 'vortex') + suffix;
+  const contents = JSON.stringify(payload, null, 2);
+  try {
+    if (await window.vortexDesktop.saveShareFile({ filename, contents })) {
+      launcherDialog.close();
+      showToast(t('tools.fileSaved'));
+    }
+  } catch { showToast(t('tools.fileSaveError')); }
+}
+
+async function submitCollection(form) {
   const selected = new Set(form.getAll('games'));
   const games = collectionDraft.games.filter(game => selected.has(game.id));
   if (!games.length) { showToast(t('tools.selectSome')); return; }
@@ -62,15 +75,60 @@ function submitCollection(form) {
     showToast(t('tools.collectionSaved'));
   } else {
     const title = String(form.get('title') || '').trim().slice(0, 100);
-    const file = new Blob([JSON.stringify({ app: 'vortex-collection', version: 1, title, games }, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(file);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = (title.replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 48) || 'vortex') + '.vortex-collection.json';
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+    await saveShareDocument(title, '.vortex-collection.json', { app: 'vortex-collection', version: 1, title, games });
+    return;
   }
   launcherDialog.close();
+}
+
+let sharedQuickFolder;
+function folderGamesPreview(games) {
+  return `<ul class="launcher-dialog-list launcher-collection-list">${games.map(game => `<li><span class="shared-folder-game">
+    ${gameArt(game)}<strong>${escapeHtml(preferences.streamMode && game.method !== 'public' ? t('tools.privateShortcut') : game.title || 'Roblox #' + game.placeId)}</strong>
+    ${game.method !== 'public' ? icon('lock', 13) : ''}</span></li>`).join('')}</ul>`;
+}
+
+function openQuickFolderShare(id) {
+  if (preferences.streamMode) return;
+  const folder = preferences.quickLaunchItems.find(item => item.id === id && item.type === 'folder');
+  if (!folder) return;
+  sharedQuickFolder = folder;
+  openLauncherDialog(t('tools.shareFolder'), `<form data-launcher-form="folder-export" class="launcher-dialog-form">
+    <strong>${escapeHtml(folder.title || t('quick.folderDefault'))}</strong>
+    ${folderGamesPreview(folder.games)}
+    ${folder.games.some(game => game.method !== 'public') ? `<p class="catalog-disclaimer">${t('tools.folderPrivateLinks')}</p>` : ''}
+    <button class="primary-button" type="submit">${t('tools.saveFolder')}</button></form>`);
+}
+
+async function submitQuickFolderShare() {
+  const { title, color, games } = sharedQuickFolder;
+  const entries = games.map(({ method, placeId, title, thumbnail, linkCode, shareCode, shareType, serverId, accessCode }) =>
+    ({ method, placeId, title, thumbnail, linkCode, shareCode, shareType, serverId, accessCode }));
+  await saveShareDocument(title || t('quick.folderDefault'), '.vortex-folder.json', {
+    app: 'vortex-quick-folder', version: 1, title, color, games: entries
+  });
+}
+
+function openSharedFolder(payload) {
+  if (payload.version !== 1 || !Array.isArray(payload.games)) { showToast(t('settings.data.invalid')); return; }
+  const games = payload.games.slice(0, 80).filter(game => game && typeof game === 'object' &&
+    ['public', 'private', 'share', 'instance', 'access'].includes(game.method))
+    .map(game => ({ ...game, type: 'game', id: quickLaunchId(), hotkey: null, lastPlayed: 0 }));
+  const [folder] = cleanQuickLaunchItems([{ type: 'folder', id: quickLaunchId(), title: payload.title, color: payload.color, games }]);
+  if (folder?.type !== 'folder') { showToast(t('tools.folderInvalid')); return; }
+  sharedQuickFolder = folder;
+  openLauncherDialog(t('tools.openFolder'), `<form data-launcher-form="folder-import" class="launcher-dialog-form">
+    <strong>${escapeHtml(folder.title || t('quick.folderDefault'))}</strong>
+    ${folderGamesPreview(folder.games)}<button class="primary-button" type="submit">${t('tools.addFolder')}</button></form>`);
+}
+
+function submitSharedFolder() {
+  if (preferences.quickLaunchItems.length >= 80) { showToast(t('tools.folderLimit')); return; }
+  preferences.quickLaunchItems.push(sharedQuickFolder);
+  quickFoldersOpen.add(sharedQuickFolder.id);
+  persistQuickLaunchItems();
+  launcherDialog.close();
+  showToast(t('tools.folderAdded'));
 }
 
 const profilePreferenceKeys = ['robloxUsername','robloxDisplayName','robloxAvatar','robloxAccountId','friendsNoticeAccepted'];

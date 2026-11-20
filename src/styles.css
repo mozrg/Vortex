@@ -1140,10 +1140,9 @@ body.no-motion .palette-panel { animation: none; }
 .release-row small { color: var(--muted); font-size: 9.5px; }
 .release-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .14); }
 /* Verified developer check, price and availability markers */
-.verified-badge { display: inline-flex; width: 15px; height: 15px; align-items: center; justify-content: center; margin-left: 5px; border-radius: 50%; background: #3b82f6; color: #fff; vertical-align: middle; }
-.verified-badge svg { width: 9px; height: 9px; }
-.verified-badge.small { width: 13px; height: 13px; }
-.verified-badge.small svg { width: 8px; height: 8px; }
+.verified-badge { display: inline-flex; flex: 0 0 auto; margin-inline-start: .24em; vertical-align: -.22em; }
+.verified-badge svg { display: block; }
+.game-title-row .verified-badge { margin: 1px 0 0; }
 .detail-creator-line { display: flex; align-items: center; gap: 2px; }
 .meta-creator { display: inline-flex; align-items: center; }
 .detail-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
@@ -1963,8 +1962,6 @@ body.sidebar-compact .quick-folder-children { position: absolute; z-index: 12; t
 .profile-row .primary-button, .profile-row .ghost-button { min-height: 30px; padding-inline: 8px; font-size: 10px; }
 .detail-badge { width: min(100%, 220px); max-width: none; }
 .detail-badge > img, .detail-badge-fallback { display: grid; width: 48px; height: 48px; place-items: center; overflow: hidden; border-radius: 9px; background: var(--surface-2); object-fit: cover; color: var(--accent-text); }
-.verified-badge svg { width: 10px; height: 10px; stroke-width: 3.2; }
-.verified-badge.small svg { width: 9px; height: 9px; stroke-width: 3.2; }
 .page-transition-mock .mock-page { animation-duration: calc(1.3s * var(--speed, 1) * var(--animation-duration, 1)); animation-timing-function: var(--animation-easing, var(--motion-ease)); animation-iteration-count: infinite; }
 .card-animation-mock i { animation-duration: calc(1.3s * var(--speed, 1) * var(--animation-duration, 1)); animation-timing-function: var(--animation-easing, var(--motion-ease)); animation-iteration-count: infinite; animation-delay: calc(var(--i, 0) * 120ms); }
 @media (max-width: 940px) {
@@ -2012,11 +2009,6 @@ body.sidebar-compact .quick-launch-tools { display: none; }
 .nav-item.active .nav-icon, .topbar-nav-item.active .topbar-nav-icon, .settings-tab.active .settings-tab-icon,
 .settings-tab.active span, .quick-game-method.active svg { color: var(--selection-ink); }
 
-/* The creator mark uses a crisp tick at both sizes, without the tiny blob-like circle. */
-.verified-badge { display: inline-grid; width: 15px; height: 15px; place-items: center; margin-left: 6px; border: 1px solid rgba(255,255,255,.38); border-radius: 4px; background: #3478f6; color: #fff; vertical-align: -2px; box-shadow: 0 1px 3px rgba(0,0,0,.22); }
-.verified-badge.small { width: 13px; height: 13px; margin-left: 5px; border-radius: 3.5px; vertical-align: -2px; }
-.verified-badge svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.verified-badge.small svg { width: 9px; height: 9px; stroke-width: 3; }
 
 /* Votes are described once: the large value gives the ratio and the legend gives counts. */
 .detail-like-total { color: var(--muted) !important; font-size: 10px; font-weight: 500; }

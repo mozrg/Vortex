@@ -1,6 +1,6 @@
 {
   "name": "vortex-roblox-launcher",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "private": true,
   "description": "A Rust/Tauri desktop launcher for Roblox experiences.",
   "scripts": {

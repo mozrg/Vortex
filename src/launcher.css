@@ -232,12 +232,19 @@ body.light-theme .app-bar-logo { filter: brightness(.4); }
 
 /* Activity uses the full width for the collection and keeps the newest session in reach. */
 .activity-hero { grid-template-columns: minmax(0,1fr) minmax(210px,.63fr); }
-.streak-emblem { --outer: #ef7044; --inner: #ffa650; --core: #ffe28c; --flame-scale: .78;
+.streak-emblem { --outer: #eb623d; --inner: #ffb95b; --core: #fff1bb; --flame-scale: .88;
   position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 8px 0; }
-.streak-art { flex: none; width: clamp(64px,6.8vw,98px); overflow: visible; }
-.fire-shape { transform-origin: 50% 89%; transform: scale(var(--flame-scale)); }
-.fire-floor { fill: var(--outer); opacity: .22; } .fire-outer, .fire-sparks { fill: var(--outer); }
-.fire-inner { fill: var(--inner); } .fire-core { fill: var(--core); } .fire-sparks { opacity: 0; }
+.streak-art { flex: none; width: clamp(74px,8vw,114px); overflow: visible; }
+.fire-shape { transform-origin: 50% 75%; transform: scale(var(--flame-scale)); }
+.streak-medallion { fill: color-mix(in srgb,var(--outer) 14%,var(--surface)); }
+.streak-ring { fill: none; stroke: color-mix(in srgb,var(--outer) 34%,var(--surface)); stroke-width: 1.5; }
+.streak-ring-progress { fill: none; stroke: var(--inner); stroke-width: 2.5; stroke-linecap: round; }
+.streak-flare { stop-color: var(--inner); }
+.streak-base { stop-color: var(--outer); }
+.streak-hot { stop-color: var(--core); }
+.streak-ember-bed { fill: var(--outer); opacity: .28; }
+.fire-core { fill: var(--core); }
+.fire-sparks { fill: var(--inner); opacity: 0; }
 [data-flame="cold"] { --outer: var(--line-strong); --inner: var(--subtle); --core: var(--muted); --flame-scale: .64; }
 [data-flame="flame"] { --flame-scale: .87; } [data-flame="bonfire"] { --outer: #ed553a; --flame-scale: .95; }
 [data-flame="gold"] { --outer: #f09827; --inner: #ffc94f; --core: #fff0ac; --flame-scale: 1; }

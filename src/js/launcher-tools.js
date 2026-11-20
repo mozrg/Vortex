@@ -86,16 +86,183 @@ function rememberGameTab(game) {
   if (!openGameTabs.some(tab => tab.id === id)) openGameTabs.push({ id, title: game.title, game });
 }
 
-function renderGameTabs() {
-  if (!openGameTabs.length) return '';
-  return `<nav class="launcher-game-tabs" aria-label="${t('tools.gameTabs')}">
+function renderGameTabs({ revealActive = true } = {}) {
+  const host = document.querySelector('[data-game-tab-strip]');
+  const markup = !openGameTabs.length ? '' : `<nav class="launcher-game-tabs" aria-label="${t('tools.gameTabs')}">
     ${catalogReturn ? `<button class="ghost-button" data-launcher-action="catalog-return">${icon('chevronLeft', 14)} ${t('nav.catalog')}</button>` : ''}
-    ${openGameTabs.map(tab => `<span class="launcher-game-tab">
-      <button class="ghost-button" data-launcher-action="tab-open" data-id="${tab.id}" title="${escapeHtml(tab.title)}"
-        ${currentView === 'game-detail' && String(detailGame?.id) === tab.id ? 'aria-current="page"' : ''}>${escapeHtml(tab.title)}</button>
-      <button class="ghost-button" data-launcher-action="tab-close" data-id="${tab.id}" aria-label="${escapeHtml(t('tools.closeTab', { game: tab.title }))}">${icon('close', 12)}</button>
+    ${openGameTabs.map(tab => `<span class="launcher-game-tab" data-game-tab="${escapeHtml(tab.id)}">
+      <button class="ghost-button" data-launcher-action="tab-open" data-id="${escapeHtml(tab.id)}" title="${escapeHtml(tab.title)}"
+        ${currentView === 'game-detail' && String(detailGame?.id) === tab.id ? 'aria-current="page"' : ''}>${gameArt(tab.game)}<span>${escapeHtml(tab.title)}</span></button>
+      <button class="ghost-button" data-launcher-action="tab-close" data-id="${escapeHtml(tab.id)}" aria-label="${escapeHtml(t('tools.closeTab', { game: tab.title }))}">${icon('close', 12)}</button>
     </span>`).join('')}</nav>`;
+  if (host.cachedMarkup === markup) return;
+  if (tabDrag) finishTabDrag();
+  const scroll = host.firstElementChild?.scrollLeft || 0;
+  const focused = host.contains(document.activeElement) ? document.activeElement.dataset : null;
+  host.cachedMarkup = markup;
+  host.innerHTML = markup;
+  host.hidden = !markup;
+  const strip = host.firstElementChild;
+  if (!strip) return;
+  strip.scrollLeft = scroll;
+  if (revealActive) strip.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  if (focused?.id) strip.querySelector(`[data-launcher-action="${focused.launcherAction}"][data-id="${CSS.escape(focused.id)}"]`)?.focus();
+  strip.addEventListener('wheel', event => {
+    if (strip.scrollWidth <= strip.clientWidth || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+    strip.scrollLeft += event.deltaY;
+    event.preventDefault();
+  }, { passive: false });
 }
+
+let tabDrag;
+let suppressTabClick = false;
+let cancelledTabPointer = null;
+
+function placeGameTab(id, neighbor, after) {
+  if (id === neighbor) return;
+  const tab = openGameTabs.find(entry => entry.id === id);
+  if (!tab || !openGameTabs.some(entry => entry.id === neighbor)) return;
+  openGameTabs = openGameTabs.filter(entry => entry.id !== id);
+  openGameTabs.splice(openGameTabs.findIndex(entry => entry.id === neighbor) + Number(after), 0, tab);
+  renderGameTabs({ revealActive: false });
+}
+
+function previewTabDrop(drag, scroll = false) {
+  const { strip, tabs, from, others, x, y, ghost, grabX, grabY, width } = drag;
+  const bounds = strip.getBoundingClientRect();
+  if (scroll && x < bounds.left + 24) strip.scrollLeft -= 12;
+  else if (scroll && x > bounds.right - 24) strip.scrollLeft += 12;
+  ghost.style.transform = `translate3d(${x - grabX}px, ${y - grabY}px, 0)`;
+
+  const center = x - grabX + width / 2 - bounds.left + strip.scrollLeft;
+  const next = others.findIndex(tab => center < tab.offsetLeft + tab.offsetWidth / 2);
+  const to = next < 0 ? others.length : next;
+  if (drag.to === to) return;
+  drag.to = to;
+  const source = tabs[from];
+  const gap = Number.parseFloat(getComputedStyle(strip).columnGap) || 0;
+  const slotWidth = width + gap;
+  for (const [index, tab] of tabs.entries()) {
+    let shift = 0;
+    if (index === from) {
+      const neighbor = tabs[to];
+      shift = neighbor.offsetLeft - source.offsetLeft;
+      if (to > from) shift += neighbor.offsetWidth - source.offsetWidth;
+    } else if (index > from && index <= to) shift = -slotWidth;
+    else if (index < from && index >= to) shift = slotWidth;
+    tab.style.setProperty('--tab-drop-shift', `${shift}px`);
+  }
+}
+
+function updateTabDrag() {
+  if (!tabDrag?.ghost) return;
+  previewTabDrop(tabDrag, true);
+  tabDrag.frame = requestAnimationFrame(updateTabDrag);
+}
+
+document.addEventListener('pointerdown', event => {
+  if (cancelledTabPointer === event.pointerId) cancelledTabPointer = null;
+  const button = event.target.closest?.('[data-launcher-action="tab-open"]');
+  if (!button || event.button !== 0 || !event.isPrimary || tabDrag || openGameTabs.length < 2) return;
+  tabDrag = { id: button.dataset.id, tab: button.closest('[data-game-tab]'),
+    strip: button.closest('.launcher-game-tabs'), pointer: event.pointerId,
+    startX: event.clientX, startY: event.clientY };
+});
+
+document.addEventListener('pointermove', event => {
+  if (!tabDrag || event.pointerId !== tabDrag.pointer) return;
+  const drag = tabDrag;
+  drag.x = event.clientX;
+  drag.y = event.clientY;
+  if (drag.ghost || Math.abs(drag.x - drag.startX) < 5) return;
+  const { tab, strip } = drag;
+  const bounds = tab.getBoundingClientRect();
+  const tabs = [...strip.querySelectorAll('[data-game-tab]')];
+  const ghost = document.createElement('div');
+  ghost.className = 'launcher-game-tabs game-tab-drag-ghost';
+  ghost.inert = true;
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.style.width = `${bounds.width}px`;
+  ghost.style.height = `${bounds.height}px`;
+  const copy = tab.cloneNode(true);
+  delete copy.dataset.gameTab;
+  ghost.append(copy);
+  Object.assign(drag, { ghost, tabs, from: tabs.indexOf(tab), others: tabs.filter(item => item !== tab),
+    width: bounds.width, grabX: drag.startX - bounds.left, grabY: drag.startY - bounds.top });
+  tab.classList.add('is-tab-dragged');
+  strip.classList.add('is-tab-reordering');
+  tab.setPointerCapture(event.pointerId);
+  document.body.append(ghost);
+  updateTabDrag();
+  window.vortexMotion.animate(ghost.firstElementChild, [{ scale: .96 }, { scale: 1 }], 135);
+});
+
+function suppressClickAfterTabDrag() {
+  suppressTabClick = true;
+  setTimeout(() => { suppressTabClick = false; }, 0);
+}
+
+function finishTabDrag(event) {
+  if (event?.type === 'pointerup' && cancelledTabPointer === event.pointerId) {
+    cancelledTabPointer = null;
+    suppressClickAfterTabDrag();
+  }
+  if (!tabDrag || (event?.pointerId != null && event.pointerId !== tabDrag.pointer)) return;
+  const drag = tabDrag;
+  tabDrag = null;
+  if (!drag.ghost) return;
+  const { id, strip, tab, tabs, from, others, frame, pointer } = drag;
+  cancelAnimationFrame(frame);
+  const bounds = strip.getBoundingClientRect();
+  const dropped = event?.type === 'pointerup' && event.clientY >= bounds.top - 8 && event.clientY <= bounds.bottom + 8;
+  if (dropped) {
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+    previewTabDrop(drag);
+  }
+  const { to } = drag;
+  drag.ghost.remove();
+  tab.classList.remove('is-tab-dragged');
+  strip.classList.remove('is-tab-reordering');
+  for (const item of tabs) item.style.removeProperty('--tab-drop-shift');
+  if (tab.hasPointerCapture(pointer)) tab.releasePointerCapture(pointer);
+  if (event?.type === 'pointerup') suppressClickAfterTabDrag();
+  else if (event?.type !== 'pointercancel') cancelledTabPointer = pointer;
+  if (dropped && from !== to) placeGameTab(id, (others[to] || others.at(-1)).dataset.gameTab, !others[to]);
+}
+
+document.addEventListener('pointerup', finishTabDrag);
+document.addEventListener('pointercancel', finishTabDrag);
+document.addEventListener('lostpointercapture', event => {
+  if (event.target === tabDrag?.tab) finishTabDrag(event);
+});
+window.addEventListener('blur', finishTabDrag);
+document.addEventListener('click', event => {
+  if (suppressTabClick && event.target.closest?.('[data-game-tab-strip]')) {
+    event.stopImmediatePropagation();
+    event.preventDefault();
+  }
+}, true);
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && tabDrag?.ghost) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    finishTabDrag();
+    return;
+  }
+  const button = event.target.closest?.('[data-launcher-action="tab-open"]');
+  const step = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+  if (!button || !step || !event.altKey || event.ctrlKey || event.metaKey) return;
+  const id = button.dataset.id;
+  const position = openGameTabs.findIndex(tab => tab.id === id);
+  const neighbor = openGameTabs[position + step];
+  if (neighbor) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    placeGameTab(id, neighbor.id, step > 0);
+  }
+}, true);
 
 function returnToSavedCatalog() {
   if (!catalogReturn) { setView('catalog'); return; }
@@ -117,8 +284,11 @@ async function showSurprise(filters, choose = false) {
   const unfamiliar = filters?.unfamiliar ?? true;
   const free = filters?.free ?? true;
   const chooseOptions = `<form data-launcher-form="surprise" class="launcher-dialog-form">
-    <label>${t('tools.genre')} <select name="genre">${['all', ...Object.keys(GENRE_SEARCH_BASE)].map(value =>
-      `<option value="${value}" ${value === genre ? 'selected' : ''}>${t('genre.' + value)}</option>`).join('')}</select></label>
+    <fieldset class="surprise-genre"><legend>${t('tools.genre')}</legend>
+      <details class="surprise-select"><summary><span data-surprise-genre>${t('genre.' + genre)}</span>${icon('chevronDown', 15)}</summary>
+        <div class="surprise-choices">${['all', ...Object.keys(GENRE_SEARCH_BASE)].map(value =>
+          `<label><input type="radio" name="genre" value="${value}" ${value === genre ? 'checked' : ''}>${t('genre.' + value)}</label>`).join('')}</div>
+      </details></fieldset>
     <label><input type="checkbox" name="free" ${free ? 'checked' : ''}> ${t('tools.freeOnly')}</label>
     <label><input type="checkbox" name="unfamiliar" ${unfamiliar ? 'checked' : ''}> ${t('tools.unplayedOnly')}</label>
     <button class="primary-button" type="submit">${t(choose ? 'tools.surpriseAgain' : 'tools.surprise')}</button>
@@ -223,14 +393,20 @@ async function pinPastedLink(target) {
 }
 
 async function saveDesktopShortcut(button) {
-  const item = button.dataset.quick ? findQuickLaunchGame(button.dataset.id) : getGame(button.dataset.id) || detailGame;
+  const id = button.dataset.id;
+  const item = button.dataset.quick ? findQuickLaunchGame(id)
+    : String(detailGame?.id) === id ? detailGame : getGame(id);
   if (!item) return;
   try {
-    await window.vortexDesktop.createDesktopShortcut({
-      title: item.title, method: item.method || 'public', placeId: item.placeId || String(item.id),
-      linkCode: item.linkCode, shareCode: item.shareCode, shareType: item.shareType, serverId: item.serverId, accessCode: item.accessCode
+    let thumbnail = safeThumbnail(item.icon) || safeThumbnail(item.thumbnail);
+    const placeId = item.method ? item.placeId : String(item.id);
+    if (!thumbnail && placeId) thumbnail = (await quickGameMetadata(placeId, item.title)).thumbnail;
+    const hasIcon = await window.vortexDesktop.createDesktopShortcut({
+      title: item.title, method: item.method || 'public', placeId,
+      linkCode: item.linkCode, shareCode: item.shareCode, shareType: item.shareType, serverId: item.serverId, accessCode: item.accessCode,
+      thumbnail: thumbnail || ''
     });
-    showToast(t('tools.shortcutMade'));
+    showToast(t(hasIcon ? 'tools.shortcutMade' : 'tools.shortcutFallback'));
   } catch { showToast(t('tools.shortcutError')); }
 }
 
@@ -240,9 +416,6 @@ document.addEventListener('click', async event => {
   const { launcherAction: action, id } = button.dataset;
   switch (action) {
     case 'close': launcherDialog.close(); return;
-    case 'accounts': openAccountMenu(); return;
-    case 'account-switch': switchLauncherAccount(id); return;
-    case 'friends-open': launcherDialog.close(); openFriendsDrawer(); return;
     case 'surprise': void showSurprise(); return;
     case 'link-open': void openLauncherGame(inboundRobloxLink.placeId); return;
     case 'link-play': void launchPastedLink(inboundRobloxLink); return;
@@ -271,7 +444,7 @@ document.addEventListener('click', async event => {
       pinnedFriendActivity.delete(id);
       accountStorage.setItem('vortex.friendPins', JSON.stringify(pins));
       if (pins[id]) notifyPinnedFriends(friendsCache.data?.friends || []);
-      if (currentView === 'friends') renderPage();
+      if (currentView === 'friends' || isCurrentGamePage(detailGame?.id, 'friends')) renderPage();
       renderFriendsDrawer();
       return;
     }
@@ -293,6 +466,8 @@ document.addEventListener('click', async event => {
       return;
     case 'collection-export': openCollectionEditor(); return;
     case 'collection-import': pickCollectionFile(); return;
+    case 'folder-export': openQuickFolderShare(id); return;
+    case 'folder-import': pickCollectionFile(); return;
     case 'collection-open-game': launcherDialog.close(); void openLauncherGame(id); return;
     case 'shortcut': void saveDesktopShortcut(button); return;
   }
@@ -304,10 +479,9 @@ document.addEventListener('submit', event => {
   event.preventDefault();
   const form = new FormData(event.target);
   switch (action) {
-    case 'account-add':
-      if (!createLauncherAccount(String(form.get('username')).trim())) showToast(t('tools.accountInvalid'));
-      return;
-    case 'collection': submitCollection(form); return;
+    case 'collection': void submitCollection(form); return;
+    case 'folder-export': void submitQuickFolderShare(form); return;
+    case 'folder-import': void submitSharedFolder(); return;
     case 'backup-import': void submitLauncherImport(form); return;
     case 'surprise':
       void showSurprise({ genre: form.get('genre'), free: form.has('free'), unfamiliar: form.has('unfamiliar') }, true);
@@ -326,6 +500,25 @@ document.addEventListener('submit', event => {
     }
   }
 });
+
+document.addEventListener('change', event => {
+  const select = event.target.closest?.('.surprise-select');
+  if (select && event.target.name === 'genre') {
+    select.querySelector('[data-surprise-genre]').textContent = t('genre.' + event.target.value);
+    select.open = false;
+    select.querySelector('summary').focus();
+  }
+});
+
+document.addEventListener('keydown', event => {
+  const select = event.target.closest?.('.surprise-select[open]');
+  if (event.key === 'Escape' && select) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    select.open = false;
+    select.querySelector('summary').focus();
+  }
+}, true);
 
 document.addEventListener('input', event => {
   if (event.target.matches?.('[data-settings-search]')) searchSetting(event.target);

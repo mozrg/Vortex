@@ -15,7 +15,15 @@ const ACTIVITY_ACHIEVEMENTS = [
   ['three-in-a-day', 'grid', 'tour', 'dailyWorlds', 3],
   ['return-five-days', 'rotate', 'regular', 'returnDays', 5],
   ['seven-active-days', 'flag', 'visitor', 'days', 7],
-  ['thirty-active-days', 'mountain', 'season', 'days', 30]
+  ['thirty-active-days', 'mountain', 'season', 'days', 30],
+  ['sixty-day-streak', 'sun', 'emberKeeper', 'streak', 60],
+  ['hundred-day-streak', 'sparkles', 'auroraKeeper', 'streak', 100],
+  ['fifty-worlds', 'compass', 'wanderer', 'worlds', 50],
+  ['hundred-hours', 'trophy', 'centuryHours', 'hours', 100],
+  ['twenty-hours-world', 'gamepad', 'favoriteWorld', 'worldHours', 20],
+  ['four-in-a-day', 'grid', 'fourWorlds', 'dailyWorlds', 4],
+  ['return-fourteen-days', 'rotate', 'twoWeekRegular', 'returnDays', 14],
+  ['two-hour-day', 'clock', 'longDay', 'dayHours', 2]
 ].map(([id, icon, name, metric, target]) => ({ id, icon, name, metric, target }));
 
 function activityMetrics() {
@@ -25,22 +33,23 @@ function activityMetrics() {
     streak: Number(activityData.streak.best) || 0, worlds: played.length,
     hours: Math.floor(played.reduce((sum, game) => sum + game.seconds, 0) / 3600),
     worldHours: Math.floor(played.reduce((best, game) => Math.max(best, game.seconds), 0) / 3600),
-    dailyWorlds: 0, returnDays: 0, days: 0
+    dailyWorlds: 0, returnDays: 0, days: 0, dayHours: 0
   };
   const visits = new Map();
   for (const day of Object.values(activityData.days)) {
     const games = groupedPlaytime(day?.games, gamesById);
     let dailyWorlds = 0;
-    let active = false;
+    let daySeconds = 0;
     for (const [key, game] of games) {
       if (!game.seconds) continue;
-      active = true;
+      daySeconds += game.seconds;
       const days = (visits.get(key) || 0) + 1;
       visits.set(key, days);
       metrics.returnDays = Math.max(metrics.returnDays, days);
       if (game.seconds >= ACTIVITY_GAME_MINUTES * 60) dailyWorlds++;
     }
-    if (active) metrics.days++;
+    if (daySeconds) metrics.days++;
+    metrics.dayHours = Math.max(metrics.dayHours, Math.floor(daySeconds / 3600));
     metrics.dailyWorlds = Math.max(metrics.dailyWorlds, dailyWorlds);
   }
   return metrics;
@@ -83,14 +92,20 @@ function activityDays(count) {
 
 function renderStreak(count) {
   const i = streakLevels.findLastIndex(([min]) => count >= min);
-  const [, level] = streakLevels[Math.max(0, i)];
+  const [start, level] = streakLevels[Math.max(0, i)];
   const next = streakLevels[i + 1];
-  return '<div class="streak-emblem" data-flame="' + level + '"><svg class="streak-art" viewBox="0 0 96 112" aria-hidden="true">' +
-    '<ellipse class="fire-floor" cx="47" cy="103" rx="25" ry="3"/><g class="fire-shape">' +
-    '<path class="fire-outer" d="M48 100C24 100 11 85 15 65c1-9 7-19 14-28-1 13 3 18 8 19C43 40 60 30 54 9c19 12 25 31 19 48 5-2 9-7 11-15 10 26 6 57-36 58Z"/>' +
-    '<path class="fire-inner" d="M49 99C33 99 24 88 28 76c2-7 7-12 11-17 0 6 2 11 6 13 2-10 13-17 14-33 13 15 10 29 8 35 5-2 7-6 8-9 4 17-4 33-26 34Z"/>' +
-    '<path class="fire-core" d="M47 98c-9-1-14-9-10-17 2 4 5 6 7 6 0-8 9-13 11-22 8 11 11 30-8 33Z"/></g>' +
-    '<g class="fire-sparks"><path d="m22 34 3-9 2 4-2 6z"/><path d="m73 23 4-12 2 4-3 9z"/><circle cx="42" cy="20" r="2"/></g></svg>' +
+  const progress = next ? (count - start) / (next[0] - start) * 100 : 100;
+  return '<div class="streak-emblem" data-flame="' + level + '"><svg class="streak-art" viewBox="0 0 108 108" aria-hidden="true">' +
+    '<defs><linearGradient id="streak-outer" x2=".26" y2="1"><stop class="streak-flare"/><stop offset="1" class="streak-base"/></linearGradient>' +
+    '<linearGradient id="streak-inner" x2="0" y2="1"><stop class="streak-hot"/><stop offset="1" class="streak-flare"/></linearGradient></defs>' +
+    '<circle class="streak-medallion" cx="54" cy="54" r="47"/><circle class="streak-ring" cx="54" cy="54" r="43"/>' +
+    (progress > 0 ? '<circle class="streak-ring-progress" cx="54" cy="54" r="43" pathLength="100" stroke-dasharray="' +
+      progress.toFixed(2) + ' 100" transform="rotate(-90 54 54)"/>' : '') +
+    '<ellipse class="streak-ember-bed" cx="54" cy="81" rx="20" ry="3"/><g class="fire-shape">' +
+    '<path fill="url(#streak-outer)" d="M54 81c-14 0-24-9-24-21 0-9 5-15 11-20-1 6 0 9 3 11 0-11 9-16 12-29 10 7 15 18 13 28 4-2 6-5 7-8 9 13 7 28-2 35-5 3-11 4-20 4Z"/>' +
+    '<path fill="url(#streak-inner)" d="M55 79c-8 0-14-5-14-12 0-5 3-8 6-10 0 3 1 5 3 6 2-6 7-9 9-17 7 6 9 13 6 17 3-1 4-3 5-4 4 11-1 19-15 20Z"/>' +
+    '<path class="fire-core" d="M55 78c-4 0-7-3-7-6 0-3 2-4 4-6l2 3c3-2 5-4 5-7 5 4 6 16-4 16Z"/></g>' +
+    '<g class="fire-sparks"><path d="m30 37 1.5-3 1.4 3 3.1 1.4-3.1 1.5-1.4 3-1.5-3-3-1.5z"/><path d="m73 28 1.4-2.6 1.3 2.6 2.7 1.5-2.7 1.2-1.3 2.7-1.4-2.7-2.6-1.2z"/><circle cx="80" cy="49" r="1.3"/></g></svg>' +
     '<div class="streak-caption"><span class="streak-level">' + t('activity.flame.' + level) + '</span><strong>' +
     t('activity.streakLength', { days: activityDays(count) }) + '</strong><small>' + t('activity.bestStreak', { count: activityData.streak.best }) + '</small>' +
     (next ? '<small>' + t('activity.nextFlame', { level: t('activity.flame.' + next[1]), days: activityDays(next[0]) }) + '</small>' : '') + '</div></div>';

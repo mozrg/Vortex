@@ -3,6 +3,9 @@
 mod announcements;
 mod cache;
 mod cookie;
+mod game_servers;
+mod share_files;
+mod shortcut_icon;
 mod discord;
 mod friends;
 mod legacy_storage;
@@ -891,10 +894,6 @@ async fn detail_media(state: &AppState, universe_id: &str) -> Vec<Value> {
         })
         .take(12)
         .collect();
-    if image_ids.is_empty() {
-        return Vec::new();
-    }
-
     let mut image_urls = std::collections::HashMap::new();
     for batch in image_ids.chunks(50) {
         let url = format!(
@@ -918,26 +917,26 @@ async fn detail_media(state: &AppState, universe_id: &str) -> Vec<Value> {
         }
     }
 
-    entries
-        .iter()
-        .filter(|item| {
-            item.get("assetType")
-                .and_then(Value::as_str)
-                .map(|kind| kind.eq_ignore_ascii_case("image"))
-                .unwrap_or(false)
-                && item
-                    .get("approved")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false)
-        })
+    entries.iter()
+        .filter(|item| item.get("approved").and_then(Value::as_bool) == Some(true))
         .filter_map(|item| {
-            let id = value_string(item.get("imageId"));
-            let url = image_urls.get(&id)?;
-            Some(json!({
-                "type": "image",
-                "url": url,
-                "altText": item.get("altText").and_then(Value::as_str).unwrap_or("")
-            }))
+            let kind = item.get("assetType")?.as_str()?;
+            let caption = item.get("altText").and_then(Value::as_str).unwrap_or("");
+            if kind.eq_ignore_ascii_case("image") {
+                let id = value_string(item.get("imageId"));
+                return Some(json!({"type": "image", "url": image_urls.get(&id)?, "altText": caption}));
+            }
+            if kind.to_ascii_lowercase().contains("video") {
+                let hash = item.get("videoHash").and_then(Value::as_str).unwrap_or("");
+                let title = item.get("videoTitle").and_then(Value::as_str).unwrap_or("");
+                let youtube = (hash.len() == 11 && valid_quick_code(hash, 11))
+                    .then(|| format!("https://www.youtube.com/watch?v={hash}"));
+                let id = value_string(item.get("videoId"));
+                if youtube.is_some() || valid_numeric_id(&id) {
+                    return Some(json!({"type": "video", "title": title, "externalUrl": youtube}));
+                }
+            }
+            None
         })
         .take(12)
         .collect()
@@ -1472,7 +1471,7 @@ async fn open_game(
     match open_url(&url) {
         Ok(()) => Ok("roblox".to_string()),
         Err(_) => {
-            let browser = format!("https://www.roblox.com/games/start?placeId={}", place_id);
+            let browser = format!("https://www.roblox.com/games/start?{}", url.trim_start_matches("roblox://"));
             open_url(&browser).map_err(|e| format!("failed to launch Roblox: {}", e))?;
             Ok("browser".to_string())
         }
@@ -1592,7 +1591,8 @@ async fn create_desktop_shortcut(
     share_type: Option<String>,
     server_id: Option<String>,
     access_code: Option<String>,
-) -> Result<(), String> {
+    thumbnail: Option<String>,
+) -> Result<bool, String> {
     let (url, _) = quick_game_links(&method, place_id, link_code, share_code, share_type, server_id, access_code)?;
     let desktop = dirs::desktop_dir().ok_or("Desktop folder not found")?;
     let name: String = title.chars().filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_')).take(64).collect();
@@ -1601,18 +1601,24 @@ async fn create_desktop_shortcut(
         let suffix = if index == 1 { String::new() } else { format!(" ({index})") };
         desktop.join(format!("Vortex - {name}{suffix}.lnk"))
     }).find(|path| !path.exists()).ok_or("No available shortcut name")?;
-    write_windows_shortcut(&filename, &url)
+    let art = shortcut_icon::load_shortcut_icon(thumbnail.as_deref()).await;
+    let fallback = std::env::current_exe().ok();
+    write_windows_shortcut(&filename, &url, art.as_deref().or(fallback.as_deref()))?;
+    Ok(art.is_some())
 }
 
-fn write_windows_shortcut(filename: &Path, url: &str) -> Result<(), String> {
+fn write_windows_shortcut(filename: &Path, url: &str, icon: Option<&Path>) -> Result<(), String> {
     use base64::{engine::general_purpose::STANDARD, Engine};
     let path = filename.to_str().ok_or("Invalid Desktop folder")?.replace('\'', "''");
+    let icon_assignment = icon.and_then(Path::to_str).map(|path| {
+        format!("$link.IconLocation='{},0'; ", path.replace('\'', "''"))
+    }).unwrap_or_default();
     // Both launch routes and query parameters originate from quick_game_links.
     let script = format!(
         "$ErrorActionPreference='Stop'; $shell=New-Object -ComObject WScript.Shell; \
          $link=$shell.CreateShortcut('{path}'); \
          $link.TargetPath=(Join-Path $env:SystemRoot 'System32\\rundll32.exe'); \
-         $link.Arguments='url.dll,FileProtocolHandler \"{url}\"'; $link.Save()"
+         $link.Arguments='url.dll,FileProtocolHandler \"{url}\"'; {icon_assignment}$link.Save()"
     );
     let encoded = STANDARD.encode(script.encode_utf16().flat_map(u16::to_le_bytes).collect::<Vec<_>>());
     let status = std::process::Command::new("powershell.exe")
@@ -1633,10 +1639,13 @@ mod shortcut_tests {
             "private", Some("812001".into()), Some("example_link".into()), None, None, None, None
         ).unwrap();
         let path = std::env::temp_dir().join(format!("vortex-shortcut-{}.lnk", Uuid::new_v4()));
-        write_windows_shortcut(&path, &url).unwrap();
+        let icon_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("icons").join("icon.ico");
+        write_windows_shortcut(&path, &url, Some(&icon_path)).unwrap();
         let bytes = std::fs::read(&path).unwrap();
         let _ = std::fs::remove_file(path);
         let expected: Vec<_> = url.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        assert!(bytes.windows(expected.len()).any(|part| part == expected));
+        let expected: Vec<_> = icon_path.to_str().unwrap().encode_utf16().flat_map(u16::to_le_bytes).collect();
         assert!(bytes.windows(expected.len()).any(|part| part == expected));
         assert!(bytes.starts_with(&[0x4c, 0, 0, 0]));
     }
@@ -2180,6 +2189,10 @@ async fn friends_list(
             obj.insert("isOnline".to_string(), json!(online));
             if playing {
                 if let Some(p) = presence {
+                    for key in ["rootPlaceId", "universeId"] {
+                        let id = value_string(p.get(key));
+                        if valid_numeric_id(&id) { obj.insert(key.to_string(), json!(id)); }
+                    }
                     if let Some(place) = p.get("placeId") {
                         obj.insert("placeId".to_string(), json!(value_string(Some(place))));
                     }
@@ -2201,6 +2214,8 @@ async fn friends_list(
             } else {
                 for key in [
                     "placeId",
+                    "rootPlaceId",
+                    "universeId",
                     "gameId",
                     "gameName",
                     "gameThumbnail",
@@ -2546,6 +2561,7 @@ fn main() {
             shell_open_external,
             games_search,
             games_details,
+            game_servers::games_public_servers,
             games_online,
             games_similar,
             games_featured,
@@ -2558,6 +2574,7 @@ fn main() {
             clear_search_cache,
             open_game,
             create_desktop_shortcut,
+            share_files::save_share_file,
             launch_quick_game,
             report_recent_games,
             tray_get_state,

@@ -157,8 +157,8 @@ function friendPinControls(friend, pins) {
   const pinned = Object.hasOwn(pins, id);
   const label = t(pinned ? 'tools.unpinFriend' : 'tools.pinFriend');
   return `<span class="friend-pin-controls">
-    <button class="ghost-button" data-launcher-action="friend-pin" data-id="${id}"
-      title="${label}" aria-label="${label}" aria-pressed="${pinned}">${icon('star', 13)}</button>
+    <button class="friend-pin-button" type="button" data-launcher-action="friend-pin" data-id="${id}"
+      title="${label}" aria-label="${label}" aria-pressed="${pinned}">${icon('star', 16)}</button>
     ${pinned ? `<button class="ghost-button" data-launcher-action="friend-alert" data-id="${id}"
       title="${t('tools.friendAlert')}" aria-label="${t('tools.friendAlert')}" aria-pressed="${Boolean(pins[id])}">${icon('bell', 13)}</button>` : ''}</span>`;
 }

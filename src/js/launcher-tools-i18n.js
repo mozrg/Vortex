@@ -1,11 +1,4 @@
 const launcherStrings = [
-  ['accounts', 'Профили Roblox', 'Roblox profiles'],
-  ['accountDefault', 'Основной профиль', 'Main profile'],
-  ['profileNumber', 'Профиль {count}', 'Profile {count}'],
-  ['accountUsername', 'Имя пользователя Roblox', 'Roblox username'],
-  ['addProfile', 'Добавить профиль', 'Add profile'],
-  ['profileHint', 'Профиль хранит свою библиотеку, друзей и историю. Вход в самом Roblox переключается отдельно.', 'Each profile has its own library, friends, and history. Switch sign-in in Roblox separately.'],
-  ['accountInvalid', 'Введи уникальное имя Roblox от 3 до 20 символов.', 'Enter a unique Roblox username of 3 to 20 characters.'],
   ['profileMismatch', 'Эта сессия Roblox принадлежит другому аккаунту.', 'This Roblox session belongs to another account.'],
   ['serverLink', 'Ссылка на сервер Roblox', 'Roblox server link'],
   ['gameLink', 'Ссылка на игру Roblox', 'Roblox game link'],
@@ -60,10 +53,11 @@ const launcherStrings = [
   ['collectionName', 'Название подборки', 'Collection name'],
   ['collectionEmpty', 'Добавь игры в избранное или открой их карточки, чтобы собрать подборку.', 'Add favorites or open game pages to start a collection.'],
   ['saveSelected', 'Сохранить выбранное', 'Save selected'],
-  ['downloadCollection', 'Скачать файл подборки', 'Download collection file'],
+  ['downloadCollection', 'Сохранить файл подборки', 'Save collection file'],
   ['collectionSaved', 'Игры добавлены в избранное.', 'Games added to favorites.'],
   ['shortcut', 'Ярлык на рабочий стол', 'Desktop shortcut'],
   ['shortcutMade', 'Ярлык создан на рабочем столе.', 'Shortcut created on the desktop.'],
+  ['shortcutFallback', 'Ярлык создан. Обложка недоступна, поэтому использован значок Vortex.', 'Shortcut created with the Vortex icon because the game art was unavailable.'],
   ['shortcutError', 'Создать ярлык не удалось.', 'Could not create the shortcut.'],
   ['importCompare', 'Проверка перед импортом', 'Review before importing'],
   ['importSettings', 'Настройки', 'Settings'],
@@ -72,9 +66,36 @@ const launcherStrings = [
   ['importActivity', 'Активность и журнал', 'Activity and journal'],
   ['importChange', '{count} изменений', '{count} changes'],
   ['importStorage', 'Данные выбранных разделов будут заменены данными из файла.', 'Data from the file will replace the selected sections.'],
-  ['selectSome', 'Выбери хотя бы один пункт.', 'Select at least one item.']
+  ['selectSome', 'Выбери хотя бы один пункт.', 'Select at least one item.'],
+  ['shareFolder', 'Поделиться папкой', 'Share folder'],
+  ['openFolder', 'Импорт папки', 'Import folder'],
+  ['saveFolder', 'Сохранить файл папки', 'Save folder file'],
+  ['addFolder', 'Добавить в быстрый запуск', 'Add to quick launch'],
+  ['folderPrivateLinks', 'Файл включает ссылки на приватные серверы из папки. Передавай его тем, кому хочешь дать эти ссылки.', 'The file contains the folder’s private server links. Share it with people you want to have those links.'],
+  ['folderAdded', 'Папка добавлена в быстрый запуск.', 'Folder added to quick launch.'],
+  ['folderInvalid', 'В файле папки должно быть хотя бы две подходящие игры.', 'A folder file needs at least two valid games.'],
+  ['folderLimit', 'Освободи место в быстром запуске для новой папки.', 'Make room for this folder in quick launch.'],
+  ['fileSaved', 'Файл сохранён.', 'File saved.'],
+  ['fileSaveError', 'Сохранить файл не удалось.', 'The file could not be saved.']
 ];
 for (const [key, ru, en] of launcherStrings) {
   translations.ru['tools.' + key] = ru;
   translations.en['tools.' + key] = en;
+}
+
+const newAchievementStrings = [
+  ['emberKeeper', 'Хранитель углей', 'Ember keeper', 'Поддерживай серию 60 дней.', 'Keep a 60-day streak.'],
+  ['auroraKeeper', 'Полярное сияние', 'Northern lights', 'Поддерживай серию 100 дней.', 'Keep a 100-day streak.'],
+  ['wanderer', 'Путеводитель', 'World guide', 'Поиграй в 50 разных игр.', 'Play 50 different games.'],
+  ['centuryHours', 'Сто часов', 'A hundred hours', 'Набери 100 часов игрового времени.', 'Log 100 hours of play time.'],
+  ['favoriteWorld', 'Своё место', 'A place of your own', 'Проведи 20 часов в одной игре.', 'Spend 20 hours in one game.'],
+  ['fourWorlds', 'Четыре мира', 'Four worlds', 'Поиграй в четыре игры по 10 минут за один день.', 'Play four games for ten minutes each in one day.'],
+  ['twoWeekRegular', 'Знакомые места', 'Familiar places', 'Возвращайся в одну игру в 14 разных дней.', 'Return to the same game on 14 different days.'],
+  ['longDay', 'Долгая прогулка', 'A long afternoon', 'Проведи два часа в играх за один день.', 'Spend two hours in games in one day.']
+];
+for (const [key, ru, en, ruBody, enBody] of newAchievementStrings) {
+  translations.ru['activity.achievement.' + key] = ru;
+  translations.ru['activity.achievement.' + key + 'Body'] = ruBody;
+  translations.en['activity.achievement.' + key] = en;
+  translations.en['activity.achievement.' + key + 'Body'] = enBody;
 }

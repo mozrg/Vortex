@@ -76,7 +76,7 @@ const preferenceDefaults = {
   accent: '#a68bff', accentMode: 'solid', accentSecondary: '#5b3fd6', gradientAngle: 135,
   theme: 'dark', themeBackground: '', themeSurface: '',
   density: 'comfortable', corners: 'soft', showDescriptions: true, showStats: true,
-  homeGreeting: '', customGames: [], homeFeaturedGame: '', homePicks: [], homeGameCount: 4, quickLaunchItems: [],
+  homeGreeting: '', customGames: [], homeFeaturedGame: '', homePicks: [], homeGameCount: 4, quickLaunchItems: [], gameLaunchOptions: {},
   homeShowHero: true, homeShowRecommendations: true,
   homeLayout: 'balanced', homeMinimal: false,
   sidebarOrder: [], topbarOrder: [], uiSidebarTip: true, uiProfileCard: true, uiTopbarSearch: true,
@@ -347,9 +347,7 @@ let detailStatus = 'idle';
 let detailRequestId = 0;
 let detailBadgeCount = 3;
 let detailBadgesExpanded = true;
-let detailGalleryIndex = 0;
 let detailDescriptionExpanded = false;
-let detailGalleryCount = 0;
 let detailOnlineRefreshing = false;
 let detailOnlineUpdatedAt = 0;
 
@@ -1236,6 +1234,12 @@ function localizeGame(game) {
   };
 }
 
+function renderVerifiedCreatorBadge(game) {
+  if (!game.creator || game.creatorVerified !== true) return '';
+  const label = escapeHtml(t('game.verifiedCreator'));
+  return `<span class="verified-badge" role="img" aria-label="${label}" title="${label}">${icon('verified', 15)}</span>`;
+}
+
 function formatCount(value) {
   const count = Number(value) || 0;
   return new Intl.NumberFormat(preferences.language === 'ru' ? 'ru-RU' : 'en-US', {
@@ -1291,6 +1295,7 @@ let playtimeSummary = null;
 function playtimeForView() {
   if (!playtimeSummary) {
     const gamesById = new Map(allGames().map(game => [String(game.id), game]));
+    if (currentView === 'game-detail' && detailGame?.universeId) gamesById.set(String(detailGame.id), detailGame);
     playtimeSummary = { gamesById, totals: groupedPlaytime(playStats, gamesById) };
   }
   return playtimeSummary;
@@ -1317,10 +1322,10 @@ function openGameDetails(id) {
   const requestId = ++detailRequestId;
   detailBadgeCount = 3;
   detailBadgesExpanded = true;
-  detailGalleryIndex = 0;
   detailDescriptionExpanded = false;
-  detailGalleryCount = 0;
   detailOnlineUpdatedAt = 0;
+  detailOnlineRefreshing = false;
+  const placeId = String(game.id);
   detailGame = { ...game, upVotes: Number(game.upVotes) || 0, downVotes: Number(game.downVotes) || 0, playing: Number(game.playerCount) || 0, visits: Number(game.visits) || 0, favorites: Number(game.favorites) || 0 };
   detailStatus = 'loading';
   pushNavigationHistory('game-detail');
@@ -1329,7 +1334,7 @@ function openGameDetails(id) {
   const cacheKey = String(game.universeId || game.id);
   const cached = readDetailCache(cacheKey);
   if (cached) {
-    detailGame = { ...detailGame, ...cached };
+    detailGame = { ...detailGame, ...cached, id: placeId };
     detailStatus = 'success';
     renderPage();
     return;
@@ -1339,34 +1344,30 @@ function openGameDetails(id) {
   Promise.race([window.vortexDesktop.getGameDetails({ universeId: game.universeId, placeId: game.id }), timeout]).then((response) => {
     if (requestId !== detailRequestId || currentView !== 'game-detail') return;
     if (!response?.ok) { detailStatus = 'error'; renderPage(); return; }
-    detailGame = { ...detailGame, ...response.game };
+    detailGame = { ...detailGame, ...response.game, id: placeId };
     detailStatus = 'success';
     writeDetailCache(cacheKey, response.game);
     renderPage();
-    loadSimilarGames(requestId);
+    loadGameReleaseHistory(requestId);
   }).catch(() => { if (requestId === detailRequestId && currentView === 'game-detail') { detailStatus = 'error'; renderPage(); } });
 }
 
-async function loadSimilarGames(requestId = detailRequestId) {
-  if (!detailGame || !window.vortexDesktop?.getSimilarGames) return;
+async function loadGameReleaseHistory(requestId) {
+  if (!detailGame?.universeId || !window.vortexDesktop?.getReleaseHistory) return;
   try {
-    const [list, history] = await Promise.all([
-      window.vortexDesktop.getSimilarGames({ universeId: detailGame.universeId, genre: detailGame.genre, title: detailGame.title }).catch(() => []),
-      window.vortexDesktop.getReleaseHistory?.(detailGame.universeId).catch(() => [])
-    ]);
+    const history = await window.vortexDesktop.getReleaseHistory(String(detailGame.universeId));
     if (requestId !== detailRequestId || currentView !== 'game-detail') return;
-    const patch = {};
-    if (Array.isArray(history) && history.length) patch.releaseHistory = history;
-    if (!Object.keys(patch).length) return;
-    detailGame = { ...detailGame, ...patch };
+    if (!Array.isArray(history) || !history.length) return;
+    detailGame = { ...detailGame, releaseHistory: history };
     renderPage();
-  } catch { /* similar games and release log are optional */ }
+  } catch { /* Release history is optional. */ }
 }
 
 // Refresh just the live numbers of the open game: the rest of the page keeps
 // its scroll and its loaded media.
 async function refreshGameOnline() {
   if (!detailGame || detailOnlineRefreshing) return;
+  const requestId = detailRequestId;
   detailOnlineRefreshing = true;
   renderPage();
   try {
@@ -1374,15 +1375,16 @@ async function refreshGameOnline() {
       universeId: String(detailGame.universeId || ''),
       placeId: String(detailGame.id || '')
     });
+    if (requestId !== detailRequestId) return;
     if (response?.ok && currentView === 'game-detail') {
       detailGame = {
         ...detailGame,
         playing: Number(response.playing) || 0,
-        visits: Number(response.visits) || detailGame.visits,
-        favorites: Number(response.favorites) || detailGame.favorites,
+        visits: Number(response.visits ?? detailGame.visits) || 0,
+        favorites: Number(response.favorites ?? detailGame.favorites) || 0,
         updated: response.updated || detailGame.updated,
-        upVotes: Number(response.upVotes) || detailGame.upVotes,
-        downVotes: Number(response.downVotes) || detailGame.downVotes
+        upVotes: Number(response.upVotes ?? detailGame.upVotes) || 0,
+        downVotes: Number(response.downVotes ?? detailGame.downVotes) || 0
       };
       detailOnlineUpdatedAt = Date.now();
       writeDetailCache(String(detailGame.universeId || detailGame.id), detailGame);
@@ -1390,79 +1392,13 @@ async function refreshGameOnline() {
       showToast(t('game.onlineRefreshError'));
     }
   } catch {
-    showToast(t('game.onlineRefreshError'));
+    if (requestId === detailRequestId) showToast(t('game.onlineRefreshError'));
   } finally {
-    detailOnlineRefreshing = false;
-    if (currentView === 'game-detail') renderPage();
+    if (requestId === detailRequestId) {
+      detailOnlineRefreshing = false;
+      if (currentView === 'game-detail') renderPage();
+    }
   }
-}
-
-function renderGameDetail() {
-  const game = detailGame;
-  if (!game) return `<div class="empty-state"><h2>${t('game.detailNotFound')}</h2><button class="ghost-button" data-nav="catalog">${t('empty.openCatalog')}</button></div>`;
-  const thumbnail = safeThumbnail(game.icon || game.thumbnail);
-  const media = Array.isArray(game.media) ? game.media : [];
-  const videos = media.filter((item) => item.type === 'video' && item.url);
-  const screenshots = [...new Map([...(Array.isArray(game.screenshots) ? game.screenshots : []), ...media.filter((item) => item.type !== 'video' && item.url)].map((item) => [item.url, item])).values()];
-  const likesTotal = Number(game.upVotes || 0) + Number(game.downVotes || 0);
-  const likePercent = likesTotal ? Math.round(Number(game.upVotes || 0) / likesTotal * 100) : null;
-  const dislikePercent = likePercent === null ? 0 : 100 - likePercent;
-  const voteBar = likesTotal ? `<div class="detail-like-bar" role="img" aria-label="${t('game.likeRatio')} ${likePercent}%"><span class="detail-like-positive" style="width:${likePercent}%"></span><span class="detail-like-negative" style="width:${dislikePercent}%"></span></div><div class="detail-like-legend"><span><i class="like-dot"></i>${t('game.likeRatio')} · ${formatCount(game.upVotes)}</span><span><i class="dislike-dot"></i>${t('game.dislikeRatio')} · ${formatCount(game.downVotes)}</span></div>` : '';
-  const playtime = renderPlaytimeBadge(game.id) || t('stats.noData');
-  const description = String(game.description || t('game.fallbackDescription')).trim();
-  const isUnavailable = game.availability === 'unavailable';
-  const canPlay = !isUnavailable && Boolean(game.id);
-  const priceLabel = Number(game.price) > 0 ? `${formatCount(game.price)} R$` : '';
-  const badgeRow = (isUnavailable || Number(game.price) > 0)
-    ? `<div class="detail-tags">${isUnavailable ? `<span class="detail-tag detail-tag-bad">${icon('close', 11)} ${t('game.notAvailable')}</span>` : ''}${Number(game.price) > 0 ? `<span class="detail-tag detail-tag-price">${t('game.paid', { price: priceLabel })}</span>` : ''}</div>`
-    : '';
-  const allBadges = Array.isArray(game.badges) ? game.badges : [];
-  const visibleBadges = detailBadgesExpanded ? allBadges.slice(0, detailBadgeCount) : [];
-  const badges = allBadges.length ? `<section class="detail-section"><div class="detail-section-heading"><h2>${icon('award', 15)} ${t('game.badges')}</h2><button class="ghost-button" data-action="toggle-badges">${t(detailBadgesExpanded ? 'game.hideBadges' : 'game.showBadges')}</button></div>${detailBadgesExpanded ? `<div class="detail-badges">${visibleBadges.map((badge) => `<span class="detail-badge">${badge.icon ? `<img src="${escapeHtml(badge.icon)}" alt="" loading="lazy" decoding="async" />` : `<span class="detail-badge-fallback">${icon('award', 18)}</span>`}<strong>${escapeHtml(badge.name)}</strong>${badge.description ? `<small>${escapeHtml(badge.description)}</small>` : ''}</span>`).join('')}</div>${visibleBadges.length < allBadges.length ? `<button class="ghost-button" data-action="show-more-badges">${t('game.showMoreBadges')}</button>` : ''}` : ''}</section>` : '';
-  const social = Array.isArray(game.socialLinks) && game.socialLinks.length ? `<section class="detail-section"><h2>${icon('link', 15)} ${t('game.socialLinks')}</h2><div class="detail-social-links">${game.socialLinks.map((link) => {
-    const href = safeExternalUrl(link.url);
-    if (!href) return '';
-    const label = link.title || link.type || new URL(href).hostname.replace(/^www\./, '');
-    const platform = String(link.type || label).toLowerCase();
-    const platformLabel = /discord/.test(platform) ? 'Discord' : /youtube|video/.test(platform) ? 'YouTube' : /twitter|x\.com/.test(platform) ? 'X' : /tiktok/.test(platform) ? 'TikTok' : /roblox/.test(platform) ? 'Roblox' : label;
-    const platformIcon = /discord/.test(platform) ? 'discord' : /youtube|video/.test(platform) ? 'youtube' : /twitter|x\.com/.test(platform) ? 'twitter' : /tiktok/.test(platform) ? 'tiktok' : /roblox/.test(platform) ? 'roblox' : 'link';
-    return `<button class="detail-social-card" type="button" data-action="open-social-link" data-url="${escapeHtml(href)}"><span class="social-platform-icon">${icon(platformIcon, 20)}</span><span><strong>${escapeHtml(platformLabel)}</strong><small>${escapeHtml(href.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</small></span></button>`;
-  }).join('')}</div></section>` : '';
-  const galleryItems = [...videos.map((item) => ({ ...item, kind: 'video' })), ...screenshots.map((item) => ({ ...item, kind: 'image' }))];
-  detailGalleryCount = galleryItems.length;
-  detailGalleryIndex = Math.min(detailGalleryIndex, Math.max(0, galleryItems.length - 1));
-  const currentMedia = galleryItems[detailGalleryIndex];
-  const galleryTitle = videos.length ? t('game.media') : t('game.screenshots');
-  const gallery = currentMedia ? `<section class="detail-section"><div class="detail-section-heading"><div><h2>${icon(videos.length ? 'film' : 'image', 15)} ${galleryTitle}</h2><p>${detailGalleryIndex + 1} / ${galleryItems.length}</p></div>${galleryItems.length > 1 ? `<div class="detail-gallery-controls"><button class="icon-button" data-action="gallery-prev" aria-label="${t('game.previousMedia')}">${icon('arrowLeft', 16)}</button><button class="icon-button" data-action="gallery-next" aria-label="${t('game.nextMedia')}">${icon('arrow', 16)}</button></div>` : ''}</div><div class="detail-gallery"><div class="detail-gallery-slide">${currentMedia.kind === 'video' ? `<video controls preload="metadata" poster="${escapeHtml(currentMedia.thumbnail || '')}"><source src="${escapeHtml(currentMedia.url)}" type="video/mp4" /></video>` : `<img src="${escapeHtml(currentMedia.url)}" alt="${escapeHtml(currentMedia.altText || currentMedia.title || game.title)}" loading="lazy" decoding="async" />`}</div>${galleryItems.length > 1 ? `<div class="detail-gallery-dots">${galleryItems.map((_, index) => `<button class="gallery-dot ${index === detailGalleryIndex ? 'active' : ''}" data-action="gallery-goto" data-index="${index}" aria-label="${index + 1}"></button>`).join('')}</div>` : ''}</div></section>` : '';
-  const releaseHistory = Array.isArray(game.releaseHistory) && game.releaseHistory.length > 1
-    ? `<section class="detail-section"><h2>${t('game.releaseHistory')}</h2><div class="release-history">${game.releaseHistory.slice(0, 8).map((entry) => `<div class="release-row"><span class="release-dot"></span><span><strong>${escapeHtml(new Date(entry.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: 'long', year: 'numeric' }))}</strong><small>${t('game.releaseSeen')}</small></span></div>`).join('')}</div><p class="catalog-disclaimer">${t('game.releaseHistoryHint')}</p></section>`
-    : '';
-  const similar = '';
-  const heroArt = safeThumbnail(screenshots[0]?.url) || thumbnail;
-  const onlineUpdated = detailOnlineUpdatedAt
-    ? new Date(detailOnlineUpdatedAt).toLocaleTimeString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { hour: '2-digit', minute: '2-digit' })
-    : '';
-  const refreshOnline = `<button class="icon-button detail-refresh ${detailOnlineRefreshing ? 'is-loading' : ''}" type="button" data-action="refresh-online" ${detailOnlineRefreshing ? 'disabled' : ''} aria-label="${t('game.refreshOnline')}" title="${t('game.refreshOnline')}">${icon('refreshCw', 14)}</button>`;
-  const stats = `<section class="detail-stats">
-    <div class="detail-stat detail-stat-online"><div class="detail-stat-head"><span>${icon('users', 13)} ${t('game.online')}</span>${refreshOnline}</div><strong>${formatCount(game.playing ?? game.playerCount)}</strong><small>${onlineUpdated ? t('game.onlineUpdated', { time: onlineUpdated }) : t('game.onlineHint')}</small></div>
-    <div class="detail-stat detail-like-stat"><div class="detail-stat-head"><span>${t('game.likeRatio')}</span><span class="detail-like-total">${t('game.votesTotal')} · ${formatCount(likesTotal)}</span></div><strong>${likePercent === null ? '—' : `${likePercent}%`}</strong>${voteBar}</div>
-    <div class="detail-stat"><div class="detail-stat-head"><span>${icon('eye', 13)} ${t('game.visits')}</span></div><strong>${formatCount(game.visits)}</strong><small>${t('game.visitsHint')}</small></div>
-    <div class="detail-stat"><div class="detail-stat-head"><span>${icon('heart', 13)} ${t('game.favorites')}</span></div><strong>${formatCount(game.favorites)}</strong><small>${t('game.favoritesHint')}</small></div>
-  </section>`;
-  return `<button class="detail-back ghost-button" data-action="detail-back" aria-label="${t('game.backToCatalog')}" title="${t('game.backToCatalog')}">${icon('arrowLeft', 17)} ${t('game.backToCatalog')}</button>
-    <article class="game-detail">
-      <header class="detail-hero"${heroArt ? ` style="--detail-art:url('${escapeHtml(heroArt)}')"` : ''}>
-        <div class="detail-hero-copy"><div class="eyebrow">${t('game.placeEyebrow')}</div><h1>${escapeHtml(game.title)}</h1><p class="detail-creator-line">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge" title="${t('game.verifiedCreator')}" aria-label="${t('game.verifiedCreator')}">${icon('verified', 17)}</span>` : ''}</p>${badgeRow}<div class="detail-actions">${canPlay ? `<button class="primary-button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button>` : `<button class="primary-button" disabled>${icon('close', 14)} ${t('game.notAvailable')}</button>`}<button class="ghost-button" data-action="favorite" data-id="${escapeHtml(game.id)}">${icon('heart', 14)} ${favorites.has(String(game.id)) ? t('card.favoriteRemove') : t('card.favoriteAdd')}</button>${gameIdPattern.test(String(game.id)) ? `<button class="ghost-button" data-launcher-action="shortcut" data-id="${escapeHtml(game.id)}">${icon('windowMaximize', 13)} ${t('tools.shortcut')}</button>` : ''}<span class="detail-playtime">${playtime}</span></div></div>
-      </header>
-      ${detailStatus === 'loading' ? `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('game.loadingDetails')}</strong></div>` : ''}
-      ${detailStatus === 'error' ? `<p class="catalog-disclaimer">${t('game.detailsUnavailable')}</p>` : ''}
-      ${stats}
-      <div class="detail-columns">
-        <section class="detail-section detail-about"><h2>${t('game.description')}</h2><p class="detail-description ${detailDescriptionExpanded ? 'expanded' : 'collapsed'}">${escapeHtml(description)}</p>${description.length > 420 ? `<button class="ghost-button detail-description-toggle" data-action="toggle-detail-description">${t(detailDescriptionExpanded ? 'card.readLess' : 'card.readMore')}</button>` : ''}</section>
-        <section class="detail-section detail-meta"><div><span>${t('game.author')}</span><strong class="meta-creator">${escapeHtml(game.creator || t('game.unknownCreator'))}${game.creatorVerified ? `<span class="verified-badge small" title="${t('game.verifiedCreator')}">${icon('verified', 17)}</span>` : ''}</strong></div><div><span>${t('game.genre')}</span><strong>${escapeHtml(game.genre || t('genre.other'))}</strong></div><div><span>${t('game.access')}</span><strong>${isUnavailable ? t('game.notAvailable') : Number(game.price) > 0 ? t('game.paid', { price: priceLabel }) : t('game.free')}</strong></div><div><span>${t('game.updated')}</span><strong>${game.updated ? escapeHtml(new Date(game.updated).toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU')) : '—'}</strong></div></section>
-      </div>
-      ${gallery}${badges}${social}${releaseHistory}${similar}
-    </article>`;
 }
 
 function renderGameCard(game) {
@@ -1473,15 +1409,15 @@ function renderGameCard(game) {
   const thumbnail = safeThumbnail(game.thumbnail);
   const likes = Number(game.upVotes) + Number(game.downVotes) > 0 ? Math.round((Number(game.upVotes) / (Number(game.upVotes) + Number(game.downVotes))) * 100) : null;
   const liveStats = game.live ? `<div class="game-live-stats"><span>${icon('users', 12)} ${t('search.players', { count: formatCount(game.playerCount) })}</span>${likes === null ? '' : `<span>${icon('thumb', 12)} ${t('search.likes', { percent: likes })}</span>`}</div>` : '';
-  const creatorLabel = game.creator ? t('game.creator', { creator: escapeHtml(game.creator) }) : '';
-  const cardVerified = game.creatorVerified ? `<span class="verified-badge small" title="${t('game.verifiedCreator')}">${icon('verified', 17)}</span>` : '';
+  const cardVerified = renderVerifiedCreatorBadge(game);
   const cardPrice = Number(game.price) > 0 ? `<span class="card-price-tag">${formatCount(game.price)} R$</span>` : '';
   const cardUnavailable = game.availability === 'unavailable' ? `<span class="card-unavailable-tag">${t('game.notAvailable')}</span>` : '';
   const description = String(game.description || t('game.fallbackDescription')).trim();
   const category = game.genre ? `<span class="game-category"><i></i>${escapeHtml(game.genre)}</span>` : '<span></span>';
   const expandedDescription = expandedDescriptions.has(String(game.id));
   const canExpandDescription = description.length > 100;
-  return `<article class="game-card" style="--game-color: var(--accent)" data-game="${id}" data-universe-id="${escapeHtml(game.universeId || '')}">
+  const reason = showRecommendationReason(game);
+  return `<article class="game-card${reason ? ' is-recommendation' : ''}" style="--game-color: var(--accent)" data-game="${id}" data-universe-id="${escapeHtml(game.universeId || '')}">
     <div class="game-cover art-${art} ${thumbnail ? 'has-thumbnail' : ''}">
       <button class="game-cover-action" type="button" data-action="open-details" data-id="${id}" aria-label="${t('card.openDetails', { title: escapeHtml(game.title) })}"></button>
       ${thumbnail ? `<img class="game-thumbnail" src="${escapeHtml(thumbnail)}" alt="" loading="${preferences.lazyImages ? 'lazy' : 'eager'}" decoding="async" />` : ''}
@@ -1490,12 +1426,14 @@ function renderGameCard(game) {
       <button class="favorite-button ${isFavorite ? 'is-favorite' : ''}" data-action="favorite" data-id="${id}" aria-label="${isFavorite ? t('card.favoriteRemove') : t('card.favoriteAdd')}" aria-pressed="${isFavorite}">${icon('heart', 15)}</button>
     </div>
     <div class="game-info">
+      <div class="game-card-copy">
       <h3 class="game-title-row"><button class="game-title" type="button" data-action="open-details" data-id="${id}">${escapeHtml(game.title)}</button>${cardVerified}</h3>
       ${preferences.cardShowDescription ? `<p class="game-description ${expandedDescription ? 'expanded' : ''}" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
       ${canExpandDescription ? `<button class="description-more" data-action="toggle-description" data-id="${id}" aria-expanded="${expandedDescription}">${t(expandedDescription ? 'card.readLess' : 'card.readMore')}</button>` : ''}` : ''}
       ${preferences.cardShowLikes ? liveStats : ''}
-      ${showRecommendationReason(game)}
-      <div class="game-card-footer">${preferences.cardShowGenre ? category : ''}${cardPrice}${preferences.cardShowPlaytime ? renderPlaytimeBadge(game.id) : ''}<button class="card-play" data-action="play" data-id="${id}">${icon('play', 11)} ${t('card.play')}</button></div>
+      </div>
+      <div class="game-card-end">${reason}
+      <div class="game-card-footer"><span class="game-card-meta">${preferences.cardShowGenre ? category : ''}${cardPrice}${preferences.cardShowPlaytime ? renderPlaytimeBadge(game.id) : ''}</span><button class="card-play" data-action="play" data-id="${id}">${icon('play', 11)} ${t('card.play')}</button></div></div>
     </div>
   </article>`;
 }
@@ -1604,7 +1542,8 @@ function renderWeekActivity() {
 function renderShelfBanner(featured) {
   const art = safeThumbnail(featured?.thumbnail);
   const title = featured ? escapeHtml(featured.title) : t('home.empty.title');
-  const description = featured ? escapeHtml(featured.description || featured.creator || '') : t('home.empty.body');
+  const description = featured ? (featured.description ? escapeHtml(featured.description) :
+    escapeHtml(featured.creator || '') + renderVerifiedCreatorBadge(featured)) : t('home.empty.body');
   return `<section class="hero-card shelf-banner ${featured ? 'home-widget' : 'shelf-empty'}" ${featured ? 'data-home-widget="hero"' : ''} ${art ? `style="--shelf-art:${escapeHtml('url(' + JSON.stringify(art) + ')')}"` : ''}>
     <div class="hero-copy"><span class="hero-kicker">${t(featured ? 'hero.kicker' : 'page.home.title')}</span>
       <h2>${title}</h2><p>${description}</p>
@@ -2230,7 +2169,8 @@ async function loadFriends(username, force = false) {
     }
   } finally {
     friendsLoading = false;
-    if (currentView === 'friends') renderPage();
+    if (currentView === 'friends' || isCurrentGamePage(detailGame?.id, 'overview') ||
+        isCurrentGamePage(detailGame?.id, 'friends') || isCurrentGamePage(detailGame?.id, 'servers')) renderPage();
     renderFriendsDrawer();
   }
 }
@@ -2565,7 +2505,7 @@ function renderHomeSettings() {
     const badge = (text, key, active) => `<button class="home-game-badge ${active ? 'active' : ''}" data-${key}="${escapeHtml(id)}" aria-pressed="${active}">${icon(active ? 'check' : 'plus', 12)}<span>${text}</span></button>`;
     return `<div class="custom-game-row" data-custom-row="${escapeHtml(id)}">
       <span class="home-game-art art-live ${thumbnail ? 'has-thumbnail' : ''}">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}</span>
-      <span class="home-game-copy"><strong>${escapeHtml(game.title)}</strong><small>${escapeHtml(game.creator || game.genre || 'Roblox')}</small></span>
+      <span class="home-game-copy"><strong>${escapeHtml(game.title)}</strong><small>${escapeHtml(game.creator || game.genre || 'Roblox')}${renderVerifiedCreatorBadge(game)}</small></span>
       <span class="home-game-badges">
         ${badge(t('settings.home.forBanner'), 'banner-pick', featuredId === id)}
         ${badge(t('settings.home.forPicks'), 'picks-pick', picksIds.has(id))}
@@ -2690,11 +2630,12 @@ function renderGameSearchResults(items, note = '') {
   }
   list.innerHTML = items.map((game, index) => {
     const thumbnail = safeThumbnail(game.thumbnail);
-    const meta = [game.creator, game.playerCount ? t('search.players', { count: formatCount(game.playerCount) }) : ''].filter(Boolean).join(' · ');
+    const meta = [game.creator ? escapeHtml(game.creator) + renderVerifiedCreatorBadge(game) : '',
+      game.playerCount ? escapeHtml(t('search.players', { count: formatCount(game.playerCount) })) : ''].filter(Boolean).join(' · ');
     const hint = String(game.description || '').trim();
     return `<button class="game-search-option" role="option" data-game-pick="${escapeHtml(game.id)}" data-index="${index}" aria-selected="false">
       <span class="game-search-art ${thumbnail ? 'has-thumbnail' : ''}">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}</span>
-      <span class="game-search-copy"><strong>${escapeHtml(game.title)}</strong><small>${escapeHtml(meta || t('tag.roblox'))}</small>${hint ? `<em>${escapeHtml(hint.slice(0, 84))}</em>` : ''}</span>
+      <span class="game-search-copy"><strong>${escapeHtml(game.title)}</strong><small>${meta || escapeHtml(t('tag.roblox'))}</small>${hint ? `<em>${escapeHtml(hint.slice(0, 84))}</em>` : ''}</span>
       ${icon('arrow', 13)}
     </button>`;
   }).join('');
@@ -3549,7 +3490,7 @@ async function checkApiStatus() {
 function renderGeneralSettings() {
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.friends.title')}</h2><p>${t('settings.friends.body')}</p></div>${icon('users', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.friends.username')}</strong><small>${t('settings.friends.usernameHint')}</small></div>
-        <span class="roblox-username-field"><input type="text" maxlength="20" autocomplete="off" placeholder="Roblox" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username ${activeAccountProfile !== 'default' ? 'readonly' : ''} />${activeAccountProfile === 'default' ? `<button class="ghost-button" data-detect-username>${t('friends.detect')}</button><button class="primary-button" data-save-username>${t('common.save')}</button>` : ''}</span></div>
+        <span class="roblox-username-field"><input type="text" maxlength="20" autocomplete="off" placeholder="Roblox" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username /><button class="ghost-button" data-detect-username>${t('friends.detect')}</button><button class="primary-button" data-save-username>${t('common.save')}</button></span></div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.history.title')}</h2><p>${t('settings.history.body')}</p></div>${icon('history', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.history.title')}</strong><small>${t('settings.history.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.saveHistory}" data-toggle="saveHistory" aria-label="${t('settings.history.title')}"></button></div>
@@ -3710,7 +3651,9 @@ function quickFolderMarkup(folder) {
         <button class="quick-launch-button" type="button" data-quick-folder-toggle="${escapeHtml(folder.id)}" aria-expanded="${open}" title="${escapeHtml(folderTitle)}" aria-label="${escapeHtml(folderTitle)}">
           <span class="quick-folder-chevron">${icon('chevronLeft', 11)}</span><span class="quick-folder-stack">${previews}</span><span class="quick-launch-copy"><strong>${escapeHtml(folderTitle)}</strong></span>
         </button>
-        <span class="quick-folder-tools"><button class="quick-folder-tool" type="button" data-quick-folder-edit="${escapeHtml(folder.id)}" aria-label="${t('quick.folderEdit')}" title="${t('quick.folderEdit')}">${icon('edit', 12)}</button><button class="quick-launch-remove" type="button" data-quick-remove="${escapeHtml(folder.id)}" aria-label="${t('quick.remove')}" title="${t('quick.remove')}">${icon('close', 12)}</button></span>
+        <span class="quick-folder-tools">
+          ${preferences.streamMode ? '' : `<button class="quick-folder-tool" type="button" data-launcher-action="folder-export" data-id="${escapeHtml(folder.id)}" aria-label="${t('tools.shareFolder')}" title="${t('tools.shareFolder')}">${icon('share', 12)}</button>`}
+          <button class="quick-folder-tool" type="button" data-quick-folder-edit="${escapeHtml(folder.id)}" aria-label="${t('quick.folderEdit')}" title="${t('quick.folderEdit')}">${icon('edit', 12)}</button><button class="quick-launch-remove" type="button" data-quick-remove="${escapeHtml(folder.id)}" aria-label="${t('quick.remove')}" title="${t('quick.remove')}">${icon('close', 12)}</button></span>
       </div>
       <div class="quick-folder-children" ${open ? '' : 'hidden'}>${folder.games.map((game) => quickGameRowMarkup(game, true)).join('')}</div>
     </div>`;
@@ -3828,9 +3771,13 @@ function renderPage() {
     : currentView === 'game-detail' ? 'game/' + detailGame?.id
     : currentView === 'plans' ? 'plans/' + roadmapStage : currentView;
   const sameView = pageContent.dataset.renderedView === viewKey;
+  const gamePaneFocus = currentView === 'game-detail' && document.activeElement.matches?.('[role="tab"][data-game-pane]')
+    ? document.activeElement.id : '';
   const activityControl = sameView && currentView === 'activity' ? document.activeElement?.dataset.activityControl : '';
   const existing = sameView ? new Set([...pageContent.querySelectorAll('.game-grid [data-game]')].map(el => el.dataset.game)) : null;
-  pageContent.innerHTML = renderGameTabs() + (pages[currentView] || renderHome)();
+  pageContent.innerHTML = (pages[currentView] || renderHome)();
+  renderGameTabs();
+  if (gamePaneFocus) document.getElementById(gamePaneFocus)?.focus({ preventScroll: true });
   focusActivityControl(activityControl);
   if (existing) for (const card of pageContent.querySelectorAll('.game-grid [data-game]')) {
     card.classList.add(existing.has(card.dataset.game) ? 'motion-retained' : 'motion-added');
@@ -4331,10 +4278,12 @@ function recordGameLaunch(game) {
 }
 
 async function openGame(id, gameId = '', accessCode = '') {
-  const game = getGame(id) || (String(id).match(/^\d{5,20}$/) ? { id: String(id), title: t('friends.joinGameTitle') } : null);
+  const game = getGame(id) || (String(detailGame?.id) === String(id) ? detailGame : null) ||
+    (gameIdPattern.test(String(id)) ? { id: String(id), title: t('friends.joinGameTitle') } : null);
   if (!game) return;
   // A specific server instance (joining a friend) rides along to the main process.
-  const joinGameId = /^(?:\d{5,40}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(String(gameId)) ? String(gameId) : '';
+  const joinGameId = serverIdPattern.test(String(gameId)) || /^\d{5,40}$/.test(String(gameId)) ? String(gameId) : '';
+  if (gameId && !joinGameId) { showToast(t('toast.launchError')); return false; }
   const safeAccessCode = /^[A-Za-z0-9-]{8,100}$/.test(String(accessCode || '')) ? String(accessCode) : '';
   try {
     if (window.vortexDesktop?.openGame) {
@@ -4348,6 +4297,7 @@ async function openGame(id, gameId = '', accessCode = '') {
   }
   recordGameLaunch(game);
   showToast(t('toast.opening', { game: game.title }));
+  return true;
 }
 
 // Roblox itself is the source of truth for "am I in a game right now". The
@@ -4363,7 +4313,10 @@ function startDetectedSession(id, key, start, joinedAt) {
     thumbnail: safeThumbnail(known?.thumbnail) || '', startedAt: joinedAt || start };
   if (preferences.saveHistory) saveRecentGames([id, ...recentGames]);
   const entry = playStats[id] || { seconds: 0, launches: 0 };
-  if (stored?.session !== key) entry.launches = (Number(entry.launches) || 0) + 1;
+  if (stored?.session !== key) {
+    entry.launches = (Number(entry.launches) || 0) + 1;
+    entry.lastLaunchAt = joinedAt || start;
+  }
   entry.lastPlayed = start;
   playStats[id] = entry;
   savePlayStats();
@@ -5125,6 +5078,7 @@ async function launchQuickGame(id) {
       reportRecentGamesToTray();
     }
     showToast(t('quick.launching', { title: item.title }));
+    return true;
   } catch (launchError) {
     showToast(t('quick.launchError', { error: String(launchError?.message || launchError || '') }));
   }
@@ -5495,9 +5449,6 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'refresh-online') { void refreshGameOnline(); return; }
     if (action.dataset.action === 'show-more-badges') { detailBadgeCount += 3; renderPage(); return; }
     if (action.dataset.action === 'toggle-badges') { detailBadgesExpanded = !detailBadgesExpanded; renderPage(); return; }
-    if (action.dataset.action === 'gallery-prev') { detailGalleryIndex = Math.max(0, detailGalleryIndex - 1); renderPage(); return; }
-    if (action.dataset.action === 'gallery-next') { detailGalleryIndex = Math.min(detailGalleryCount - 1, detailGalleryIndex + 1); renderPage(); return; }
-    if (action.dataset.action === 'gallery-goto') { detailGalleryIndex = Math.max(0, Number(action.dataset.index) || 0); renderPage(); return; }
 
     if (action.dataset.action === 'toggle-description') {
       const id = String(action.dataset.id);

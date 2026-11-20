@@ -1,6 +1,6 @@
 (() => {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-  const enabled = () => !reduced.matches && !document.body.classList.contains('no-motion');
+  const enabled = () => !reduced.matches && !document.body.matches('.no-motion, .in-game-mode');
   function animate(node, frames, ms = 190) {
     if (!enabled() || !node) return null;
     const css = getComputedStyle(document.documentElement);
@@ -47,14 +47,15 @@
     const selector = selectorFor(button);
     const area = button.closest('nav, #page-content, .sidebar, .workspace-toolbar, .tray-shell');
     const action = button.dataset.action || '';
-    const section = button.closest('.detail-section, .home-widget, .game-card');
+    const sectionSelector = '.detail-section, .home-widget, .game-card, .game-page-description';
+    const section = button.closest(sectionSelector);
     const before = section?.getBoundingClientRect().height;
     requestAnimationFrame(() => {
       const node = button.isConnected ? button : selector && (area?.isConnected ? area : document).querySelector(selector);
       if (!node || !node.getClientRects().length) return;
       animate(node, [{ scale: node.clientWidth > 250 ? '.992' : '.965' }, { scale: '1' }], 165);
       if (event.detail === 0 && !button.isConnected && document.activeElement === document.body) node.focus({ preventScroll: true });
-      const next = node.closest('.detail-section, .home-widget, .game-card');
+      const next = node.closest(sectionSelector);
       if (before && next && (button.hasAttribute('data-widget-collapse') || /description|badges/.test(action))) {
         const to = next.getBoundingClientRect().height;
         if (Math.abs(before - to) > 2) animate(next, [{ height: before+'px', overflow:'clip' },{ height: to+'px', overflow:'clip' }], 220);
@@ -76,5 +77,5 @@
     });
   });
 
-  window.vortexMotion = { disclose, dismiss };
+  window.vortexMotion = { animate, disclose, dismiss };
 })();

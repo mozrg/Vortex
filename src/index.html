@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="launcher.css" />
     <link rel="stylesheet" href="launcher-tools.css" />
+    <link rel="stylesheet" href="game-page.css" />
     <link rel="stylesheet" href="./motion.css" />
   <script src="./js/motion.js" defer></script>
 </head>
@@ -26,6 +27,7 @@
         <button class="icon-button nav-history-button" type="button" data-action="history-back" data-i18n-aria="nav.back" aria-label="Назад" title="Назад" disabled><span data-icon="arrowLeft"></span></button>
         <button class="icon-button nav-history-button nav-history-forward" type="button" data-action="history-forward" data-i18n-aria="nav.forward" aria-label="Вперёд" title="Вперёд" disabled><span data-icon="arrowLeft"></span></button>
       </div>
+      <div class="titlebar-games" data-game-tab-strip hidden></div>
       <div class="titlebar-space" data-window-drag data-tauri-drag-region></div>
       <div class="window-controls">
         <button class="window-control" type="button" data-window-control="minimize" data-i18n-aria="window.minimize" aria-label="Свернуть окно"><span data-icon="windowMinimize"></span></button>
@@ -44,7 +46,10 @@
           <button class="nav-item" data-nav="plans"><span class="nav-icon" data-icon="flag"></span><span data-i18n="nav.plans">В планах</span></button>
         </nav>
         <section class="quick-launch-section" aria-label="Быстрый запуск">
-          <div class="quick-launch-heading"><span data-i18n="quick.title">Быстрый запуск</span><button class="quick-launch-add icon-button" type="button" data-action="open-quick-game-modal" data-i18n-aria="quick.add" aria-label="Добавить быстрый запуск" title="Добавить быстрый запуск"><span data-icon="plus"></span></button></div>
+          <div class="quick-launch-heading"><span data-i18n="quick.title">Быстрый запуск</span><div class="quick-heading-tools">
+            <button class="quick-launch-add icon-button" type="button" data-launcher-action="folder-import" data-i18n-aria="tools.openFolder" aria-label="Импорт папки"><span data-icon="fileUp"></span></button>
+            <button class="quick-launch-add icon-button" type="button" data-action="open-quick-game-modal" data-i18n-aria="quick.add" aria-label="Добавить быстрый запуск" title="Добавить быстрый запуск"><span data-icon="plus"></span></button>
+          </div></div>
           <div class="quick-launch-items" id="quick-launch-items"></div>
         </section>
 
@@ -70,7 +75,7 @@
           <div class="app-bar-actions">
             <button class="icon-button stream-switch" type="button" data-launcher-action="stream-toggle" data-i18n-aria="tools.stream" aria-label="Режим стрима" aria-pressed="false"><span data-icon="eye"></span></button>
             <button class="icon-button notification-button" data-ui-part="notifications" data-i18n-aria="notifications" aria-label="Уведомления" data-action="notifications"><span data-icon="bell"></span><i></i></button>
-            <button class="avatar avatar-small" type="button" data-launcher-action="accounts" data-i18n-aria="tools.accounts" aria-label="Профили Roblox" aria-haspopup="dialog"><span class="avatar-letter" data-account-avatar>V</span></button>
+            <button class="avatar avatar-small" type="button" data-action="toggle-friends-drawer" data-i18n-aria="friends.drawer.open" aria-label="Открыть друзей" aria-controls="friends-drawer" aria-haspopup="dialog" aria-expanded="false"><span class="avatar-letter" data-account-avatar>V</span></button>
           </div>
         </header>
         <section class="update-banner" id="update-banner" aria-live="polite" hidden></section>
@@ -118,7 +123,7 @@
     </div>
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
     <script src="./js/icons.js"></script>
-    <script src="./js/account-profiles.js"></script>
+    <script src="./js/library-storage.js"></script>
     <script src="./js/color.js"></script>
     <script src="./js/i18n.js"></script>
     <script src="./js/desktop.js"></script>
@@ -131,6 +136,10 @@
     <script src="./js/launcher-options.js"></script>
     <script src="./js/launcher-files.js"></script>
     <script src="./js/launcher-tools-i18n.js"></script>
+    <script src="./js/game-page-i18n.js"></script>
+    <script src="./js/game-page.js"></script>
+    <script src="./js/game-page-servers.js"></script>
+    <script src="./js/game-page-actions.js"></script>
     <script src="./js/bootstrap.js"></script>
   </body>
 </html>

@@ -37,6 +37,7 @@
     // Game search and details
     searchGames: (request) => invoke('games_search', request),
     getGameDetails: (request) => invoke('games_details', request),
+    getPublicServers: (request) => invoke('games_public_servers', request),
     getGameOnline: (request) => invoke('games_online', request),
     getSimilarGames: (request) => invoke('games_similar', request),
     getFeaturedGames: (placeIds) => invoke('games_featured', { placeIds }),
@@ -48,6 +49,7 @@
     openGame: (placeId, gameId, accessCode) => invoke('open_game', { placeId, gameId, accessCode }),
     launchQuickGame: (request) => invoke('launch_quick_game', request),
     createDesktopShortcut: (request) => invoke('create_desktop_shortcut', request),
+    saveShareFile: (request) => invoke('save_share_file', request),
 
     // Cache
     setDiskCacheEnabled: (enabled) => invoke('cache_set_disk_enabled', { enabled }),

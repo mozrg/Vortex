@@ -68,7 +68,7 @@
 
   document.addEventListener('keydown', event => {
     if (!enabled() || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const scope = event.target.closest?.('#command-palette, .custom-select, [role="combobox"], .game-search');
+    const scope = event.target.closest?.('#command-palette, .vortex-dropdown, [role="combobox"], .game-search');
     if (!scope) return;
     requestAnimationFrame(() => {
       const selected = scope.querySelector('[aria-selected="true"],.palette-item.active')

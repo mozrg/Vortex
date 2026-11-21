@@ -1,0 +1,246 @@
+:root {
+  --control-height: 35px;
+  --control-radius: 8px;
+  --control-ink: color-mix(in srgb, var(--text) 91%, var(--muted));
+  --control-surface: color-mix(in srgb, var(--surface) 56%, var(--bg));
+  --control-hover: color-mix(in srgb, var(--surface-2) 60%, var(--surface));
+  --control-speed: calc(155ms * var(--speed, 1) * var(--animation-duration, 1)) var(--animation-easing, var(--motion-ease));
+}
+
+.ghost-button {
+  border-color: var(--line);
+  background: var(--control-surface);
+  color: var(--control-ink);
+}
+.ghost-button:hover:not(:disabled) { border-color: var(--accent-border); color: var(--accent-text); background: var(--accent-wash); }
+
+.control-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: var(--control-height);
+  min-width: 0;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--control-surface);
+  color: var(--control-ink);
+  font: 560 calc(12px * var(--vortex-text-scale, 1))/1.25 var(--font-ui);
+  text-align: center;
+  cursor: pointer;
+  transition: color var(--control-speed), background-color var(--control-speed), border-color var(--control-speed), opacity var(--control-speed);
+}
+.control-button svg { flex: none; }
+.control-button > svg { color: var(--muted); transition: color var(--control-speed), rotate var(--control-speed); }
+.control-button:hover:not(:disabled), .control-button[aria-expanded="true"],
+.control-button[aria-pressed="true"], .catalog-genre-select[open] .control-button {
+  border-color: var(--accent-border);
+  background: var(--accent-wash);
+  color: var(--accent-text);
+}
+.control-button:hover:not(:disabled) > svg, .control-button[aria-pressed="true"] > svg,
+.control-button[aria-expanded="true"] > svg, .catalog-genre-select[open] .control-button > svg { color: currentColor; }
+.control-button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.control-button:disabled { cursor: default; opacity: .56; }
+.control-button-primary, .settings-panel .primary-button {
+  background: var(--accent-wash);
+  border-color: var(--accent-border);
+  color: var(--accent-text);
+  font-weight: 630;
+}
+.control-button-primary > svg { color: currentColor; }
+.control-button-primary:hover:not(:disabled), .settings-panel .primary-button:hover:not(:disabled) {
+  color: var(--accent-text); background: color-mix(in srgb, var(--accent) 19%, var(--surface)); border-color: var(--accent-border);
+}
+.control-button-quiet { background: transparent; border-color: transparent; color: var(--muted); }
+.control-button-icon { width: var(--control-height); flex: none; padding: 0; }
+
+.catalog-page .control-button-pill {
+  border-radius: 999px;
+  border-color: transparent;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: calc(13px * var(--vortex-text-scale, 1));
+  min-height: var(--control-height);
+  white-space: nowrap;
+}
+.catalog-page .control-button-pill:is(:hover,[aria-pressed="true"]), .catalog-genre-select[open] .control-button-pill {
+  background: var(--accent-wash); color: var(--accent-text);
+}
+.catalog-page .catalog-genre-select > .control-button { justify-content: flex-start; padding-inline: 11px; }
+.catalog-page .catalog-heading-actions .control-button { font-weight: 580; }
+.catalog-page .catalog-heading-actions { gap: 6px; }
+.catalog-page .catalog-sort-row .filter-chip { display: inline-flex; align-items: center; gap: 5px; padding-inline: 10px; }
+.catalog-page .catalog-sort-row .filter-chip svg { flex: none; }
+
+body .settings-tabs .settings-tab { display: inline-flex; align-items: center; gap: 6px; padding-inline: 11px; }
+body .settings-tabs .settings-tab > .settings-tab-glyph { display: inline-flex; }
+
+.collection-tabs .filter-chip { display: inline-flex; align-items: center; gap: 6px; }
+.game-view-switch {
+  display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; padding: 2px;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--control-surface);
+}
+.game-view-option {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 28px; min-width: 29px; padding: 0 7px;
+  border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted);
+  font: 550 calc(12px * var(--vortex-text-scale, 1))/1.2 var(--font-ui);
+  cursor: pointer; transition: color var(--control-speed), background-color var(--control-speed), border-color var(--control-speed);
+}
+.game-view-option[aria-pressed="true"], .game-view-option:hover { color: var(--accent-text); background: var(--accent-wash); border-color: var(--accent-border); }
+.game-view-option:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 1px; }
+.catalog-page .catalog-view-toggle button[aria-pressed="true"] {
+  color: var(--accent-text); background: var(--accent-wash); border-color: var(--accent-border);
+}
+.home-widget-head .home-game-view { margin-inline-start: 2px; }
+.home-widget-head:has(.home-game-view) { flex-wrap: wrap; }
+
+.settings-panel :is(.home-greeting-field,.custom-game-form,.profile-editor,.presence-form,.discord-id-field,.roblox-username-field) .control-field {
+  min-height: var(--control-height);
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  padding: 7px 10px;
+  background: var(--control-surface);
+  color: var(--text);
+  font: 450 calc(12px * var(--vortex-text-scale, 1))/1.45 var(--font-ui);
+  transition: border-color var(--control-speed), background-color var(--control-speed), box-shadow var(--control-speed);
+}
+.settings-panel :is(.home-greeting-field,.custom-game-form,.profile-editor,.presence-form,.discord-id-field,.roblox-username-field) .control-field::placeholder { color: var(--muted); opacity: 1; }
+.settings-panel :is(.home-greeting-field,.custom-game-form,.profile-editor,.presence-form,.discord-id-field,.roblox-username-field) .control-field:focus {
+  outline: none;
+  border-color: var(--accent-border);
+  background: var(--control-surface);
+  box-shadow: 0 0 0 2px var(--accent-wash);
+}
+.settings-panel .roblox-username-field, .settings-panel .discord-id-field { flex-wrap: wrap; gap: 6px; }
+.settings-panel .discord-id-field .control-field { font-family: ui-monospace, 'Cascadia Mono', monospace; }
+.settings-panel .roblox-username-field .control-field { flex: 1 1 138px; max-width: 185px; }
+
+.settings-panel .color-trigger.control-button {
+  display: inline-grid;
+  grid-template-columns: 19px minmax(0, 1fr) 12px;
+  min-width: 117px;
+  min-height: 32px;
+  justify-content: start;
+  gap: 7px;
+  padding: 4px 8px 4px 6px;
+}
+.settings-panel .color-trigger .color-swatch {
+  width: 19px; height: 19px; border-radius: 5px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 24%, transparent);
+}
+.settings-panel .color-trigger-code { color: var(--control-ink); font-size: calc(11px * var(--vortex-text-scale, 1)); }
+.settings-panel .color-trigger-chevron { color: var(--muted); transition: rotate var(--control-speed); }
+.settings-panel .color-trigger[aria-expanded="true"] .color-trigger-chevron { rotate: 180deg; color: var(--accent-text); }
+.settings-panel .theme-io { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+.settings-panel .home-greeting-field {
+  width: min(100%, 33rem); margin: 0 0 15px; gap: 6px;
+  color: var(--control-ink); font-size: calc(12px * var(--vortex-text-scale, 1)); font-weight: 540;
+}
+.settings-panel .home-greeting-field .control-field { width: 100%; }
+.settings-panel .section-title-fields {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; margin: 7px 0 10px;
+}
+.settings-panel .section-title-field { width: 100%; min-width: 0; margin: 0; }
+.settings-panel .section-title-field span { font-size: inherit; color: inherit; }
+.settings-panel .custom-game-form { gap: 7px; margin-block: 0 9px; align-items: stretch; }
+.settings-panel .custom-game-form .control-field { padding-inline: 33px 9px; }
+.settings-panel .custom-game-form .game-search-icon { inset-inline: 10px auto; color: var(--muted); }
+.settings-panel .home-game-options-list { gap: 0; border-top: 1px solid var(--line); }
+.settings-panel .custom-game-row {
+  background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+  padding: 7px 4px; column-gap: 10px; grid-template-columns: 36px minmax(0, 1fr) auto 30px;
+}
+.settings-panel .custom-game-row:hover { background: var(--control-hover); }
+.settings-panel .custom-game-row .home-game-art { width: 36px; height: 36px; }
+.settings-panel .home-game-copy strong { font-size: calc(12px * var(--vortex-text-scale, 1)); }
+.settings-panel .home-game-copy small { font-size: calc(11px * var(--vortex-text-scale, 1)); }
+.settings-panel .home-game-badges { flex-wrap: wrap; }
+.settings-panel .home-game-badge {
+  min-height: 29px; background: transparent; font-size: calc(11px * var(--vortex-text-scale, 1)); border-radius: 999px;
+  transition: color var(--control-speed), background-color var(--control-speed), border-color var(--control-speed);
+}
+.settings-panel .home-game-badge:is(:hover,.active) { background: var(--accent-wash); color: var(--accent-text); border-color: var(--accent-border); }
+.settings-panel .custom-game-remove { --control-height: 30px; height: 30px; }
+
+.nav-order-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+.nav-order-group > .ui-section-title { margin: 0 0 7px; }
+.settings-panel :is(.home-widget-list, .nav-order-group .ui-list) { gap: 0; border-block-start: 1px solid var(--line); }
+.settings-panel :is(.home-widget-list, .nav-order-group) .ui-row {
+  gap: 8px; padding: 7px 4px;
+  border: 0; border-block-end: 1px solid var(--line); border-radius: 0; background: transparent;
+}
+.settings-panel :is(.home-widget-list, .nav-order-group) .ui-row:hover { background: var(--control-hover); }
+.settings-panel :is(.home-widget-list, .nav-order-group) .ui-row:focus-visible {
+  outline: 2px solid var(--accent-text); outline-offset: -2px; box-shadow: none;
+}
+.settings-panel :is(.home-widget-list, .nav-order-group) .ui-row.ui-row-dragging {
+  border-radius: 6px; outline: 1px dashed var(--accent-text); outline-offset: -1px;
+  background: var(--accent-wash); box-shadow: none;
+}
+.settings-panel :is(.home-widget-list, .nav-order-group) .ui-row-icon {
+  width: 26px; height: 26px; border-color: transparent; background: transparent;
+}
+.settings-panel :is(.home-widget-list, .nav-order-group) .ui-row-copy {
+  overflow-wrap: anywhere; line-height: 1.25;
+}
+.settings-panel :is(.home-widget-list, .nav-order-group) .ui-row-copy strong { font-size: calc(12px * var(--vortex-text-scale, 1)); font-weight: 600; }
+.settings-panel :is(.home-widget-list, .nav-order-group) .ui-row-copy small { font-size: calc(11px * var(--vortex-text-scale, 1)); }
+.settings-panel :is(.home-widget-list, .nav-order-group) .ui-row-handle {
+  opacity: 1; background: var(--control-surface); color: var(--muted);
+}
+.settings-panel :is(.home-widget-list, .nav-order-group) .ui-row-handle:disabled { opacity: .33; }
+.settings-panel :is(.home-widget-list, .nav-order-group) .ui-row-handle:hover:not(:disabled) {
+  background: var(--accent-wash); color: var(--accent-text);
+}
+.settings-panel .home-widget-list + .control-button { margin-block-start: 7px; }
+
+.settings-panel .hotkey-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 18px; }
+.settings-panel .hotkey-row {
+  min-width: 0; gap: 9px; min-height: 42px; padding: 6px 2px;
+  background: transparent; border: 0; border-block-start: 1px solid var(--line); border-radius: 0;
+  font-size: calc(12px * var(--vortex-text-scale, 1)); overflow-wrap: anywhere;
+}
+.settings-panel .hotkey-recorder {
+  flex: none; min-height: 28px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--control-surface); box-shadow: inset 0 -1px var(--line);
+  color: var(--control-ink); font: 540 calc(11px * var(--vortex-text-scale, 1))/1.2 ui-monospace, 'Cascadia Mono', monospace;
+  transition: color var(--control-speed), background-color var(--control-speed), border-color var(--control-speed);
+}
+.settings-panel .hotkey-recorder:is(:hover,.recording) { color: var(--accent-text); background: var(--accent-wash); border-color: var(--accent-border); }
+.settings-panel .hotkey-recorder:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+.settings-panel .settings-action-line {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 7px 13px;
+  margin-block-start: 9px; padding-block-start: 8px; border-top: 1px solid var(--line);
+}
+.settings-panel .settings-action-line > :is(.update-settings-meta, .catalog-disclaimer, .update-settings-actions) { margin: 0; padding: 0; }
+.settings-panel .settings-action-line .update-settings-meta { gap: 8px 15px; }
+.settings-panel .settings-action-line .update-settings-meta small { font-size: calc(11px * var(--vortex-text-scale, 1)); }
+.settings-panel .settings-action-line .update-settings-meta strong { font-size: calc(13px * var(--vortex-text-scale, 1)); }
+.settings-panel .settings-action-line-cache { margin-block-end: 8px; }
+.settings-panel .data-actions, .settings-panel .presence-actions { gap: 6px; }
+.settings-panel .wallpaper-actions { justify-content: flex-end; }
+.settings-panel .presence-form .control-field {
+  width: min(100%, 44rem);
+  min-height: 66px;
+  font-family: ui-monospace, 'Cascadia Mono', monospace;
+}
+.settings-panel .presence-form :is([data-presence-meter],[data-presence-error]):empty { display: none; }
+.settings-panel .profile-actions { justify-content: space-between; gap: 8px; }
+.settings-panel .profile-editor { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 300px; }
+.settings-panel .profile-editor .control-field { width: auto; min-width: 0; flex: 0 1 203px; }
+
+@media (max-width: 880px) {
+  .settings-panel .section-title-fields,
+  .settings-panel .nav-order-columns,
+  .settings-panel .hotkey-list { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .settings-panel .setting-line:has(.roblox-username-field) { align-items: start; flex-direction: column; gap: 7px; }
+  .settings-panel .custom-game-row { grid-template-columns: 36px minmax(0, 1fr) 30px; row-gap: 5px; }
+  .settings-panel .custom-game-remove { grid-area: 1 / 3; }
+  .settings-panel .home-game-badges { grid-area: 2 / 2 / 2 / -1; }
+}

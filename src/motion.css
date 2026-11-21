@@ -20,19 +20,19 @@ body[data-card-animation] .game-grid > .game-card.motion-retained { animation: n
   body:not(.no-motion) :is(.nav-item,.settings-tab):is(:hover,:focus-visible) svg { translate: 1px 0; }
   body:not(.no-motion) :is(button,input,textarea,a[href],select,[tabindex="0"]):focus-visible { outline-color: var(--accent); }
   body:not(.no-motion) .toggle::after { transition-duration: var(--feedback-time); }
-  body:not(.no-motion) :is(.quick-game-modal,#command-palette,.custom-select-menu,.color-popover,.hover-preview-layer,.game-search-results) {
+  body:not(.no-motion) :is(.quick-game-modal,#command-palette,.color-popover,.hover-preview-layer,.game-search-results) {
     transition: display var(--feedback-time) allow-discrete, opacity var(--feedback-time), translate var(--feedback-time);
     animation: none;
   }
-  body:not(.no-motion) :is(.quick-game-modal,#command-palette,.custom-select-menu,.color-popover,.hover-preview-layer,.game-search-results)[hidden] {
+  body:not(.no-motion) :is(.quick-game-modal,#command-palette,.color-popover,.hover-preview-layer,.game-search-results)[hidden] {
     opacity: 0; pointer-events: none;
   }
   body:not(.no-motion) :is(.quick-game-dialog,.palette-panel,.announcements-panel,.friends-warn,.friend-preview,.quick-game-fields,.tray-now-playing:not([hidden])) {
     animation: surface-appear var(--reveal-time) var(--animation-easing, ease-out);
   }
   @starting-style {
-    body:not(.no-motion) :is(.quick-game-modal,#command-palette,.custom-select-menu,.color-popover,.hover-preview-layer,.game-search-results):not([hidden]) { opacity: 0; }
-    body:not(.no-motion) :is(.custom-select-menu,.color-popover,.hover-preview-layer,.game-search-results):not([hidden]) { translate: 0 -4px; }
+    body:not(.no-motion) :is(.quick-game-modal,#command-palette,.color-popover,.hover-preview-layer,.game-search-results):not([hidden]) { opacity: 0; }
+    body:not(.no-motion) :is(.color-popover,.hover-preview-layer,.game-search-results):not([hidden]) { translate: 0 -4px; }
   }
   body:not(.no-motion) .quick-folder-chevron { transition: transform var(--reveal-time); }
   body:not(.no-motion) .page-entering[data-transition]:not([data-transition="none"]) :is(.settings-tabs,.collection-tabs,.catalog-controls,.detail-actions) {

@@ -77,10 +77,11 @@ function gamePageMedia(game) {
 }
 
 function gamePageTabs(view) {
+  const glyphs = { overview: 'board', media: 'image', servers: 'server', friends: 'users', launch: 'sliders', other: 'dots' };
   return `<nav class="game-page-tabs" role="tablist" aria-label="${t('place.tabs')}">
     ${gamePanes.map(pane => `<button type="button" role="tab" id="game-pane-${pane}" data-game-pane="${pane}"
       aria-selected="${view.pane === pane}" aria-controls="game-page-panel" tabindex="${view.pane === pane ? 0 : -1}">
-      ${t('place.' + pane)}<span class="game-page-tab-line" aria-hidden="true"></span></button>`).join('')}
+      ${icon(glyphs[pane], 14)} ${t('place.' + pane)}<span class="game-page-tab-line" aria-hidden="true"></span></button>`).join('')}
   </nav>`;
 }
 
@@ -98,7 +99,7 @@ function renderGameDetail() {
     <span>${icon('thumb', 15)} ${formatCount(likes)}</span><span>${icon('thumb', 15)} ${formatCount(dislikes)}</span></span>` : '';
   const official = officialGameUrl(game);
   const voteMarkup = voteSummary && official ? `<button type="button" class="game-page-vote-button" data-action="open-social-link" data-url="${official}"
-    title="${t('place.rateOnRoblox')}" aria-label="${escapeHtml(t('place.voteCounts', { likes, dislikes }) + ' · ' + t('place.rateOnRoblox'))}">${voteSummary}</button>` : voteSummary;
+    data-tooltip="${t('place.rateOnRoblox')}" aria-label="${escapeHtml(t('place.voteCounts', { likes, dislikes }) + ' · ' + t('place.rateOnRoblox'))}">${voteSummary}</button>` : voteSummary;
   scheduleGamePageData(game, view);
   const pane = {
     overview: () => renderGameOverview(game, likes, dislikes),
@@ -151,7 +152,7 @@ function gamePageFacts(game) {
   }) : t('game.refreshOnline');
   return `<section class="game-page-card game-page-facts"><header class="game-page-card-head"><h2>${t('place.aboutGame')}</h2>
     <button class="ghost-button game-page-icon-button" data-action="refresh-online" aria-label="${t('game.refreshOnline')}"
-      title="${escapeHtml(onlineLabel)}" ${detailOnlineRefreshing ? 'disabled' : ''}>${icon('refreshCw', 14)}</button></header><dl>${entries.map(([label, value, badge = '']) =>
+      data-tooltip="${escapeHtml(onlineLabel)}" ${detailOnlineRefreshing ? 'disabled' : ''}>${icon('refreshCw', 14)}</button></header><dl>${entries.map(([label, value, badge = '']) =>
     `<div><dt>${label}</dt><dd>${escapeHtml(value)}${badge}</dd></div>`).join('')}</dl></section>`;
 }
 

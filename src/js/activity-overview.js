@@ -1,5 +1,3 @@
-const activityPeriods = { week: 7, month: 30, year: 365 };
-let activityPeriod = 'week';
 let activityCalendarMonth = '';
 let activityCalendarTabDate = '';
 
@@ -44,37 +42,32 @@ function summaryLeader(summary, label, ranges, gamesById) {
     <span class="journal-art">${art ? `<img src="${escapeHtml(art)}" alt="" loading="lazy">` : icon('gamepad', 17)}</span>
     <div class="activity-summary-game">
       <small>${t(label)} · ${ranges.formatRange(activityLocalDate(summary.from), activityLocalDate(summary.to))}</small>
-      <strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
+      <strong data-tooltip="${escapeHtml(title)}">${escapeHtml(title)}</strong>
     </div>
     ${summary.leader ? `<span class="activity-summary-duration">${activityDuration(summary.leader.seconds)}</span>` : ''}
   </div>`;
 }
 
-function activitySummaryContent(today) {
-  const count = activityPeriods[activityPeriod];
-  const start = shiftActivityDate(today, 1 - count);
+function activitySummaryContent() {
+  const range = libraryPeriodRange();
   const { gamesById } = playtimeForView();
-  const current = summarizeActivity(start, today, gamesById);
-  const previous = summarizeActivity(shiftActivityDate(start, -count), shiftActivityDate(start, -1), gamesById);
-  const change = current.total - previous.total;
-  const changeLabel = !previous.total ? 'noPrevious' : change === 0 ? 'same' : change > 0 ? 'more' : 'less';
-  const ranges = new Intl.DateTimeFormat(preferences.language, { day: 'numeric', month: 'short', year: count === 365 ? 'numeric' : undefined });
+  const current = summarizeActivity(range.from, range.to, gamesById);
+  const priorRange = libraryPeriod === 'all' ? null : libraryPeriodRange(libraryPeriod, libraryPeriodOffset - 1);
+  const previous = priorRange ? summarizeActivity(priorRange.from, priorRange.to, gamesById) : null;
+  const change = current.total - (previous?.total || 0);
+  const changeLabel = !previous?.total ? 'noPrevious' : change === 0 ? 'same' : change > 0 ? 'more' : 'less';
+  const ranges = new Intl.DateTimeFormat(preferences.language, { day: 'numeric', month: 'short', year: libraryPeriod === 'year' || libraryPeriod === 'all' ? 'numeric' : undefined });
   return `<header class="settings-card-head activity-overview-head">
     <h2>${t('activity.summary.title')}</h2>
-    <div class="activity-periods" role="group" aria-label="${t('activity.summary.period')}">
-      ${Object.entries(activityPeriods).map(([period, days]) => `<button type="button"
-        data-action="activity-period" data-activity-control="period-${period}" data-period="${period}"
-        aria-pressed="${period === activityPeriod}" title="${t('activity.summary.days', { count: days })}">${t('activity.summary.' + period)}</button>`).join('')}
-    </div>
   </header>
   <div class="activity-summary-body">
     <div class="activity-summary-total"><div><small>${t('activity.summary.total')}</small><strong>${activityDuration(current.total)}</strong></div>
-      <div class="activity-summary-comparison">
+      ${previous ? `<div class="activity-summary-comparison">
         ${previous.total ? `<span>${t('activity.summary.previousTotal', { time: activityDuration(previous.total) })}</span>` : ''}
         <span>${t('activity.summary.' + changeLabel, { time: activityDuration(Math.abs(change)) })}</span>
-      </div></div>
+      </div>` : ''}</div>
     ${summaryLeader(current, 'activity.summary.leader', ranges, gamesById)}
-    ${summaryLeader(previous, 'activity.summary.previousLeader', ranges, gamesById)}
+    ${previous ? summaryLeader(previous, 'activity.summary.previousLeader', ranges, gamesById) : ''}
   </div>`;
 }
 
@@ -101,7 +94,7 @@ function activityCalendarContent(today) {
     const label = escapeHtml(spokenDate.format(activityLocalDate(date)) + ' · ' + activityDuration(total));
     const level = total >= 7200 ? 3 : total >= 1800 ? 2 : total > 0 ? 1 : 0;
     return `<button type="button" class="activity-calendar-day" data-level="${level}" data-date="${date}"
-      data-action="activity-calendar-day" data-activity-control="day-${date}" aria-label="${label}" title="${label}"
+      data-action="activity-calendar-day" data-activity-control="day-${date}" aria-label="${label}" data-tooltip="${label}"
       aria-pressed="${date === journalDate}" ${date === today ? 'aria-current="date"' : ''} ${date > today ? 'disabled' : ''}
       tabindex="${date === tabDate ? 0 : -1}">${index + 1}</button>`;
   }).join('');
@@ -109,9 +102,9 @@ function activityCalendarContent(today) {
     <div class="activity-calendar-nav"><strong id="activity-calendar-month">${monthLabel}</strong>
       <div>
         <button type="button" class="ghost-button" data-action="activity-calendar-month" data-activity-control="month-prev" data-step="-1"
-          aria-label="${t('activity.calendar.prev')}" title="${t('activity.calendar.prev')}">${icon('chevronLeft', 15)}</button>
+          aria-label="${t('activity.calendar.prev')}" data-tooltip="${t('activity.calendar.prev')}">${icon('chevronLeft', 15)}</button>
         <button type="button" class="ghost-button" data-action="activity-calendar-month" data-activity-control="month-next" data-step="1"
-          aria-label="${t('activity.calendar.next')}" title="${t('activity.calendar.next')}" ${today.startsWith(month) ? 'disabled' : ''}>${icon('chevronRight', 15)}</button>
+          aria-label="${t('activity.calendar.next')}" data-tooltip="${t('activity.calendar.next')}" ${today.startsWith(month) ? 'disabled' : ''}>${icon('chevronRight', 15)}</button>
       </div>
     </div>
     <div class="activity-calendar-grid" role="group" aria-labelledby="activity-calendar-month">
@@ -122,7 +115,7 @@ function activityCalendarContent(today) {
         data-activity-control="journal-jump">${t('activity.calendar.showJournal')} ${icon('navDown', 12)}</button>`
         : `<small>${t('activity.calendar.hint')}</small>`}
       <div class="activity-calendar-legend">${[0, 1, 2, 3].map(level => `<span data-level="${level}"
-        title="${t('activity.calendar.level' + level)}"></span>`).join('')}</div>
+        data-tooltip="${t('activity.calendar.level' + level)}"></span>`).join('')}</div>
     </div>`;
 }
 
@@ -135,12 +128,6 @@ function handleActivityOverviewAction(button) {
   const today = activityDateKey();
   const calendar = document.getElementById('activity-calendar');
   switch (button.dataset.action) {
-    case 'activity-period':
-      if (!Object.hasOwn(activityPeriods, button.dataset.period) || activityPeriod === button.dataset.period) return true;
-      activityPeriod = button.dataset.period;
-      document.getElementById('activity-summary').innerHTML = activitySummaryContent(today);
-      focusActivityControl(button.dataset.activityControl);
-      return true;
     case 'activity-calendar-month': {
       const first = activityLocalDate((activityCalendarMonth || today.slice(0, 7)) + '-01');
       first.setMonth(first.getMonth() + Number(button.dataset.step));
@@ -154,19 +141,21 @@ function handleActivityOverviewAction(button) {
     case 'activity-calendar-day': {
       activityCalendarTabDate = button.dataset.date;
       const date = journalDate === activityCalendarTabDate ? '' : activityCalendarTabDate;
-      filterJournalByDate(date);
+      journalDate = date;
       calendar.innerHTML = activityCalendarContent(today);
       focusActivityControl(button.dataset.activityControl);
       return true;
     }
     case 'activity-calendar-clear':
       filterJournalByDate('');
-      calendar.innerHTML = activityCalendarContent(today);
-      calendar.querySelector('.activity-calendar-day[tabindex="0"]')?.focus();
       return true;
     case 'activity-calendar-journal':
-      document.getElementById('activity-journal-filter').scrollIntoView({ block: 'center' });
-      focusActivityControl('journal-clear');
+      journalQuickPeriod = 'all';
+      journalFilters = { query: '', from: '', to: '', min: '', max: '' };
+      journalFriendsOnly = false;
+      journalHourOnly = false;
+      resetLibraryJournal();
+      showLibraryActivityPane('history');
       return true;
     default:
       return false;

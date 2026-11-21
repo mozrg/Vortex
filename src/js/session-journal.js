@@ -1,3 +1,17 @@
+function validSessionServer(value) {
+  return typeof value === 'string' && serverIdPattern.test(value) && value !== '00000000-0000-0000-0000-000000000000'
+    ? value.toLowerCase() : '';
+}
+
+function cleanSessionFriends(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Map(value.slice(0, 200).flatMap(friend => {
+    const id = String(friend?.id || '');
+    if (!/^\d{1,20}$/.test(id)) return [];
+    return [[id, { id, name: String(friend.name || '').slice(0, 80), avatar: safeThumbnail(friend.avatar) }]];
+  })).values()];
+}
+
 // One IndexedDB record per observed join. Checkpoints update that record in
 // place, so a long history does not rewrite the launcher's settings or stats.
 const sessionJournal = (() => {
@@ -29,16 +43,25 @@ const sessionJournal = (() => {
     });
   }
 
-  async function record({ key, gameId, startedAt, title, from, through, closed }) {
+  async function record({ key, gameId, startedAt, title, from, through, closed, serverId, friends }) {
     await transaction('readwrite', store => {
       const request = store.get(key);
       request.onsuccess = () => {
-        const row = request.result || { key, gameId, startedAt, title: '', trackedMs: 0, seenAt: from, endedAt: null };
+        const row = request.result || { key, gameId, startedAt, title: '', trackedMs: 0, seenAt: from, endedAt: null, intervals: [] };
         // Only credit intervals confirmed by the play clock. A sleep, outage or
         // launcher restart can leave a gap between two confirmed intervals.
-        row.trackedMs += Math.max(0, through - Math.max(row.seenAt, from));
-        row.seenAt = Math.max(row.seenAt, through);
+        const start = Math.max(row.seenAt, from);
+        if (through > start) {
+          row.intervals ??= row.trackedMs && row.trackedMs === row.seenAt - row.startedAt ? [[row.startedAt, row.seenAt]] : [];
+          const previous = row.intervals.at(-1);
+          if (previous?.[1] === start) previous[1] = through;
+          else row.intervals.push([start, through]);
+          row.trackedMs += through - start;
+          row.seenAt = through;
+        }
         if (title) row.title = title;
+        if (validSessionServer(serverId)) row.serverId = validSessionServer(serverId);
+        if (friends?.length) row.friends = cleanSessionFriends([...(row.friends || []), ...friends]);
         row.endedAt = closed ? row.seenAt : null;
         store.put(row);
       };
@@ -70,10 +93,22 @@ const sessionJournal = (() => {
     }
     await transaction('readwrite', store => {
       store.clear();
-      for (const {key, gameId, startedAt, title, trackedMs, seenAt, endedAt} of rows) {
-        store.put({key, gameId: String(gameId), startedAt, title: title.slice(0, 250), trackedMs, seenAt, endedAt});
+      for (const {key, gameId, startedAt, title, trackedMs, seenAt, endedAt, intervals, serverId, friends} of rows) {
+        const clean = {key, gameId: String(gameId), startedAt, title: title.slice(0, 250), trackedMs, seenAt, endedAt,
+          serverId: validSessionServer(serverId), friends: cleanSessionFriends(friends)};
+        let end = startedAt;
+        let total = 0;
+        if (Array.isArray(intervals) && intervals.every(interval => {
+          if (!Array.isArray(interval)) return false;
+          const [from, to] = interval;
+          if (!validTime(from) || !validTime(to) || from < end || to <= from || to > seenAt) return false;
+          end = to;
+          total += to - from;
+          return total <= trackedMs;
+        })) clean.intervals = intervals;
+        store.put(clean);
       }
     });
   }
-  return { record, recent, restore };
+  return { record, recent, restore, clear: () => transaction('readwrite', store => store.clear()) };
 })();

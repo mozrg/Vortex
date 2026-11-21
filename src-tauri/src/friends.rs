@@ -103,28 +103,22 @@ pub async fn fetch_roblox_user_names(
 /// Fetch live presence (what game a user is playing). Requires the cookie for
 /// accurate results — Roblox hides statuses from anonymous callers.
 pub async fn fetch_roblox_presence(user_ids: &[String], cookie: &str) -> Vec<Value> {
-    if user_ids.is_empty() {
-        return Vec::new();
+    let mut presence = Vec::new();
+    for batch in user_ids.chunks(100) {
+        let body = json!({"userIds": batch});
+        if let Ok(payload) = roblox::fetch_json_post(
+            "https://presence.roblox.com/v1/presence/users",
+            &body,
+            (!cookie.is_empty()).then_some(cookie),
+        )
+        .await
+        {
+            if let Some(rows) = payload.get("userPresences").and_then(Value::as_array) {
+                presence.extend(rows.iter().cloned());
+            }
+        }
     }
-    let body = json!({"userIds": user_ids.iter().take(100).collect::<Vec<_>>()});
-    match roblox::fetch_json_post(
-        "https://presence.roblox.com/v1/presence/users",
-        &body,
-        if cookie.is_empty() {
-            None
-        } else {
-            Some(cookie)
-        },
-    )
-    .await
-    {
-        Ok(payload) => payload
-            .get("userPresences")
-            .and_then(|p| p.as_array())
-            .map(|arr| arr.iter().cloned().collect::<Vec<_>>())
-            .unwrap_or_default(),
-        Err(_) => Vec::new(),
-    }
+    presence
 }
 
 /// Fetch avatar headshot thumbnails for a batch of user IDs.

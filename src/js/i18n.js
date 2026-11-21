@@ -249,6 +249,15 @@ Object.assign(translations.en, {
   'quick.saveChanges': 'Save', 'quick.updated': 'Updated “{title}”.', 'game.votesTotal': 'Total votes'
 });
 
+Object.assign(translations.ru, {
+  'settings.ui.tooltips': 'Всплывающие подсказки',
+  'settings.ui.tooltipsBody': 'Показывать подсказки и предпросмотры при наведении и фокусе.'
+});
+Object.assign(translations.en, {
+  'settings.ui.tooltips': 'Tooltips',
+  'settings.ui.tooltipsBody': 'Show hints and previews on hover and focus.'
+});
+
 function t(key, values = {}) {
   const language = (typeof window !== 'undefined' && window.preferences && window.preferences.language) || 'ru';
   const table = (translations[language] || translations.ru || {});
@@ -482,4 +491,17 @@ Object.assign(translations.en, {
   'activity.journal.startedOn': 'Sessions started · {date}',
   'activity.journal.all': 'All dates',
   'activity.journal.dayEmpty': 'No recorded sessions started on this day.'
+});
+
+Object.assign(translations.ru, {
+  'settings.home.gameView': 'Вид подборки на главной',
+  'settings.home.gameViewHint': 'Как располагать карточки в блоке «Подборка игр».',
+  'palette.layoutCommand': '{view} · {layout}',
+  'palette.settingsCommand': 'Настройки · {tab}'
+});
+Object.assign(translations.en, {
+  'settings.home.gameView': 'Home game layout',
+  'settings.home.gameViewHint': 'Choose how cards appear in the game collection on Home.',
+  'palette.layoutCommand': '{view} · {layout}',
+  'palette.settingsCommand': 'Settings · {tab}'
 });

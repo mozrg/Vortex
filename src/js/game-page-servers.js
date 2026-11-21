@@ -18,7 +18,7 @@ function renderGameFriendSection(game, compact = false) {
   const friends = detailGameFriends(game);
   const pins = friendPins();
   const refresh = `<button class="ghost-button game-page-icon-button" data-game-page-action="friends-refresh"
-    title="${t('friends.refresh')}" aria-label="${t('friends.refresh')}" ${friendsLoading ? 'disabled' : ''}>${icon('refreshCw', 14)}</button>`;
+    data-tooltip="${t('friends.refresh')}" aria-label="${t('friends.refresh')}" ${friendsLoading ? 'disabled' : ''}>${icon('refreshCw', 14)}</button>`;
   const configure = `<button class="ghost-button" data-game-page-action="friends-settings">${t('friends.setup.action')}</button>`;
   const fullList = `<button class="ghost-button" data-game-pane="friends">${t('place.viewFriends')}</button>`;
   const hasAccount = Boolean(preferences.robloxUsername);
@@ -148,7 +148,7 @@ function gameServerResults(game, view) {
         <td><div class="game-server-label"><strong>${t('place.serverNumber', { index: row.index })}</strong>
           ${row.best ? `<small class="game-server-ping-badge">${t('place.lowPing')}</small>` : ''}</div>
           ${row.friends.length ? `<small class="game-server-friends">${escapeHtml(row.friends.join(', '))}</small>` : ''}
-          <button class="game-server-id" type="button" data-game-page-action="copy-server" data-server-id="${row.id}" title="${row.id}">#${row.id.slice(0, 8)}</button></td>
+          <button class="game-server-id" type="button" data-game-page-action="copy-server" data-server-id="${row.id}" data-tooltip="${row.id}">#${row.id.slice(0, 8)}</button></td>
         <td>${filled ? `<span>${row.playing} / ${row.capacity}</span><div class="game-server-capacity"><i style="width:${percent}%"></i></div>` : '—'}</td>
         <td>${row.ping ? t('place.ms', { ping: row.ping }) : '—'}</td>
         <td><button type="button" class="ghost-button game-page-join" data-game-page-action="join" data-server-id="${row.id}" data-place-id="${row.placeId}" ${full ? 'disabled' : ''}>${t(full ? 'place.full' : 'place.join')}</button></td>

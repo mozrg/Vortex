@@ -137,7 +137,8 @@ function writeJournalInterval(from, through, closed = false) {
 }
 
 function journalChanged() {
-  if (currentView === 'activity') void loadJournalRows();
+  refreshLibraryDashboard();
+  if (currentView === 'activity' && libraryActivityPane === 'history') void loadJournalRows();
   else journalStatus = 'idle';
 }
 
@@ -161,7 +162,8 @@ function filterJournalByDate(date) {
   journalDate = date;
   journalLimit = activityJournalPage;
   journalRows = [];
-  document.getElementById('activity-journal-filter').innerHTML = journalFilter();
+  const filter = document.getElementById('activity-journal-filter');
+  if (filter) filter.innerHTML = journalFilter();
   void loadJournalRows();
   paintJournal();
 }
@@ -196,38 +198,42 @@ function tickJournalClock() {
 
 function journalContent() {
   const rows = journalRows.slice(0, journalLimit);
-  let text = '';
   if (!rows.length && journalStatus !== 'error') {
     const message = journalStatus === 'loading' ? 'activity.journal.loading'
-      : Object.values(journalFilters).some(Boolean) ? 'tools.emptySessions'
+      : Object.values(journalFilters).some(Boolean) || journalFriendsOnly && !preferences.streamMode || journalHourOnly || journalQuickPeriod !== 'all' ? 'tools.emptySessions'
       : journalDate ? 'activity.journal.dayEmpty' : preferences.saveHistory ? 'activity.journal.empty' : 'activity.journal.off';
     return '<p class="journal-empty">' + t(message) + '</p>';
   }
   const fmtDate = new Intl.DateTimeFormat(preferences.language, { day: 'numeric', month: 'short', year: 'numeric' });
   const fmtTime = new Intl.DateTimeFormat(preferences.language, { hour: '2-digit', minute: '2-digit' });
-  let dateKey = '';
-  for (const row of rows) {
+  const table = rows.length ? `<div class="library-table-scroll"><table class="library-journal-table">
+    <thead><tr><th scope="col">${t('library.when')}</th><th scope="col">${t('library.game')}</th>
+      <th scope="col">${t('library.duration')}</th><th scope="col">${t('library.server')}</th>
+      <th scope="col">${t('nav.friends')}</th><th scope="col"><span class="sr-only">${t('library.actions')}</span></th></tr></thead>
+    <tbody>${rows.map(row => {
     const day = activityDateKey(row.startedAt);
-    if (day !== dateKey) {
-      if (dateKey) text += '</ul>';
-      text += '<h3 class="journal-date">' + fmtDate.format(row.startedAt) + '</h3><ul class="journal-day">';
-      dateKey = day;
-    }
     const game = getGame(row.gameId);
     const active = recordingSession?.key === row.key && !row.endedAt && !runtimeSample?.unknown;
-    const until = row.endedAt ?? row.seenAt;
-    const stop = (day !== activityDateKey(until) ? fmtDate.format(until) + ' ' : '') + fmtTime.format(until);
-    const period = !active && !row.endedAt ? t('activity.journal.lastSeen', { start: fmtTime.format(row.startedAt), stop })
-      : fmtTime.format(row.startedAt) + ' – ' + (active ? t('activity.journal.now') : stop);
+    const today = activityDateKey();
+    const date = day === today ? t('library.today') : day === shiftActivityDate(today, -1) ? t('library.yesterday') : fmtDate.format(row.startedAt);
     const duration = journalDuration(row, active);
-    const art = safeThumbnail(game?.thumbnail);
-    text += '<li class="journal-row"><span class="journal-art">' +
-      (art ? '<img src="' + escapeHtml(art) + '" alt="" loading="lazy">' : icon('gamepad', 18)) +
-      '</span><span class="journal-copy"><strong>' + escapeHtml(game?.title || row.title || t('activity.unknownGame') + ' #' + row.gameId) +
-      '</strong><small>' + period + '</small></span><span class="journal-duration">' +
-      (active ? '<span class="journal-live">' + t('activity.journal.playing') + '</span><span id="journal-current-duration">' + duration + '</span>' : duration) + '</span></li>';
-  }
-  if (dateKey) text += '</ul>';
+    const title = escapeHtml(game?.title || row.title || 'Roblox #' + row.gameId);
+    const server = preferences.streamMode ? '' : validSessionServer(row.serverId);
+    const friends = preferences.streamMode ? [] : row.friends || [];
+    return `<tr><td><time datetime="${new Date(row.startedAt).toISOString()}">${date}, ${fmtTime.format(row.startedAt)}</time></td>
+      <td><button class="library-game-link" type="button" data-action="open-details" data-id="${row.gameId}" data-tooltip="${title}">${libraryArt(game)}<strong>${title}</strong></button></td>
+      <td><strong ${active ? 'id="journal-current-duration"' : ''}>${duration}</strong>${active ? `<small class="journal-live">${t('activity.journal.playing')}</small>` : ''}</td>
+      <td>${server ? `<span class="library-server" data-tooltip="${server}">${server.slice(0, 8)}</span>` : '—'}</td>
+      <td>${friends.length ? `<span class="library-journal-friends" data-tooltip="${escapeHtml(friends.map(friend => friend.name || friend.id).join(', '))}">
+        ${friends.slice(0, 3).map(friend => friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="${escapeHtml(friend.name || friend.id)}" loading="lazy">` :
+          `<i aria-label="${escapeHtml(friend.name || friend.id)}">${escapeHtml((friend.name || friend.id).charAt(0))}</i>`).join('')}${friends.length > 3 ? `<small>+${friends.length - 3}</small>` : ''}</span>` : '—'}</td>
+      <td><div class="library-row-actions">
+        ${server ? `<button class="icon-button" type="button" data-library-action="rejoin" data-id="${row.gameId}" data-server="${server}"
+          data-tooltip="${t('library.rejoin')}" aria-label="${t('library.rejoin')}">${icon('rotate', 14)}</button>` : ''}
+        <button class="icon-button" type="button" data-action="play" data-id="${row.gameId}" data-tooltip="${t('card.play')}" aria-label="${t('card.play')}">${icon('play', 14)}</button>
+      </div></td></tr>`;
+  }).join('')}</tbody></table></div>` : '';
+  let text = table;
   if (journalStatus === 'error') text += '<p class="journal-empty">' + t('activity.journal.error') + '</p><button class="ghost-button" data-action="journal-retry">' + t('activity.journal.retry') + '</button>';
   else if (journalRows.length > journalLimit) text += '<button class="ghost-button journal-more" data-action="journal-more">' + t('activity.journal.more') + '</button>';
   return text;
@@ -235,8 +241,13 @@ function journalContent() {
 
 function renderSessionJournal() {
   if (journalStatus === 'idle') void loadJournalRows();
-  return '<section class="settings-card activity-journal"><header class="settings-card-head"><div><h2>' + t('activity.journal.title') +
-    '</h2><p>' + t('activity.journal.hint') + '</p></div>' + icon('history', 18) + '</header>' + renderJournalFilters() +
+  const filters = `<div class="library-toolbar"><div class="library-tools">
+    ${librarySelect('journal-period', 'library.periodLabel', ['all', 'week', 'month', 'year'].map(id => [id, t('library.period.' + id)]), journalQuickPeriod)}
+    ${preferences.streamMode ? '' : `<button type="button" class="filter-chip" data-library-action="journal-friends" aria-pressed="${journalFriendsOnly}">${icon('users', 14)} ${t('library.withFriends')}</button>`}
+    <button type="button" class="filter-chip" data-library-action="journal-hour" aria-pressed="${journalHourOnly}">${t('library.overHour')}</button>
+    </div>${libraryAction('clear-sessions', 'library.clearHistory', 'trash')}</div>`;
+  return '<section class="library-panel activity-journal"><header class="settings-card-head"><h2>' + t('activity.journal.title') +
+    '</h2>' + icon('history', 18) + '</header>' + filters + renderJournalFilters() +
     '<div id="activity-journal-filter">' + journalFilter() +
     '</div><div id="activity-journal-body" tabindex="-1">' +
     journalContent() + '</div></section>';

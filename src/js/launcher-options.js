@@ -16,8 +16,9 @@ function renderJournalFilters() {
 
 function journalQuery() {
   const { query, from, to, min, max } = journalFilters;
-  const first = [from, journalDate].filter(Boolean).sort().at(-1);
-  const last = [to, journalDate].filter(Boolean).sort()[0];
+  const period = journalQuickPeriod === 'all' ? null : libraryPeriodRange(journalQuickPeriod, 0);
+  const first = [from, journalDate, period?.from].filter(Boolean).sort().at(-1);
+  const last = [to, journalDate, period?.to].filter(Boolean).sort()[0];
   const empty = Boolean(first && last && first > last);
   const lower = query.toLocaleLowerCase(preferences.language);
   return {
@@ -29,6 +30,7 @@ function journalQuery() {
     matches(row) {
       const seconds = row.trackedMs / 1000;
       return (!min || seconds >= Number(min) * 60) && (!max || seconds <= Number(max) * 60) &&
+        (!journalHourOnly || seconds > 3600) && (!journalFriendsOnly || preferences.streamMode || row.friends?.length > 0) &&
         (!lower || [row.gameId, row.title, getGame(row.gameId)?.title].some(value =>
           String(value || '').toLocaleLowerCase(preferences.language).includes(lower)));
     }
@@ -36,12 +38,14 @@ function journalQuery() {
 }
 
 const settingIndex = [
+  ['home', 'homeGameView', 'settings.home.gameView', 'главная вид список сетка плитки home layout list grid'],
   ['accent', 'accent', 'settings.accent.title', 'цвет акцент accent color'],
   ['accent', 'theme', 'tools.themePreview', 'цвет тема theme предпросмотр'],
   ['effects', 'motion', 'settings.motion.title', 'анимация анимации эффекты motion animation'],
   ['effects', 'gamingMode', 'tools.gaming', 'игра режим game mode'],
   ['interface', 'textScale', 'tools.textScale', 'шрифт размер масштаб интерфейс text font zoom'],
   ['interface', 'sidebarAutoHide', 'settings.ui.autoHide', 'боковая панель sidebar'],
+  ['interface', 'uiTooltips', 'settings.ui.tooltips', 'подсказки tooltip hover наведение предпросмотр'],
   ['tray', 'trayMiniPlayer', 'settings.tray.miniPlayer', 'трей окно мини плеер tray now playing'],
   ['tray', 'trayScale', 'settings.tray.scale', 'трей размер масштаб tray size'],
   ['general', 'saveHistory', 'settings.history.title', 'история время сессии журнал history session tracking'],
@@ -104,11 +108,11 @@ function completeSettingsIndex() {
 function renderLauncherSettings(tab) {
   const toggle = (key, label, hint) => `<div class="setting-line"><div class="setting-label"><strong>${t(label)}</strong><small>${t(hint)}</small></div>
     <button class="toggle" data-toggle="${key}" role="switch" aria-label="${t(label)}" aria-checked="${Boolean(preferences[key])}"></button></div>`;
-  if (tab === 'general') return `<section class="settings-card"><div class="settings-card-head"><h2>${t('tools.stream')}</h2></div>
+  if (tab === 'general') return `<section class="settings-card"><div class="settings-card-head"><h2>${t('tools.stream')}</h2>${icon('eyeOff', 18)}</div>
     ${toggle('streamMode', 'tools.stream', 'tools.streamHint')}</section>`;
-  if (tab === 'effects') return `<section class="settings-card"><div class="settings-card-head"><h2>${t('tools.gaming')}</h2></div>
+  if (tab === 'effects') return `<section class="settings-card"><div class="settings-card-head"><h2>${t('tools.gaming')}</h2>${icon('gamepad', 18)}</div>
     ${toggle('gamingMode', 'tools.gaming', 'tools.gamingHint')}</section>`;
-  if (tab === 'interface') return `<section class="settings-card"><div class="settings-card-head"><h2>${t('tools.textScale')}</h2></div>
+  if (tab === 'interface') return `<section class="settings-card"><div class="settings-card-head"><h2>${t('tools.textScale')}</h2>${icon('textSize', 18)}</div>
     <label class="range-control"><input type="range" min="85" max="140" step="5" data-text-scale="textScale"
       aria-label="${t('tools.textScale')}" value="${Number(preferences.textScale) || 100}"><output data-text-scale-value>${Number(preferences.textScale) || 100}%</output></label></section>`;
   return '';
@@ -158,9 +162,9 @@ function friendPinControls(friend, pins) {
   const label = t(pinned ? 'tools.unpinFriend' : 'tools.pinFriend');
   return `<span class="friend-pin-controls">
     <button class="friend-pin-button" type="button" data-launcher-action="friend-pin" data-id="${id}"
-      title="${label}" aria-label="${label}" aria-pressed="${pinned}">${icon('star', 16)}</button>
+      data-tooltip="${label}" aria-label="${label}" aria-pressed="${pinned}">${icon('pin', 16)}</button>
     ${pinned ? `<button class="ghost-button" data-launcher-action="friend-alert" data-id="${id}"
-      title="${t('tools.friendAlert')}" aria-label="${t('tools.friendAlert')}" aria-pressed="${Boolean(pins[id])}">${icon('bell', 13)}</button>` : ''}</span>`;
+      data-tooltip="${t('tools.friendAlert')}" aria-label="${t('tools.friendAlert')}" aria-pressed="${Boolean(pins[id])}">${icon('bell', 13)}</button>` : ''}</span>`;
 }
 
 function notifyPinnedFriends(friends) {

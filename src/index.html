@@ -11,6 +11,10 @@
     <link rel="stylesheet" href="launcher.css" />
     <link rel="stylesheet" href="launcher-tools.css" />
     <link rel="stylesheet" href="game-page.css" />
+    <link rel="stylesheet" href="catalog.css" />
+    <link rel="stylesheet" href="library.css" />
+    <link rel="stylesheet" href="controls.css" />
+    <link rel="stylesheet" href="overlays.css" />
     <link rel="stylesheet" href="./motion.css" />
   <script src="./js/motion.js" defer></script>
 </head>
@@ -22,10 +26,10 @@
         <img class="app-bar-logo" data-tauri-drag-region src="./assets/vortex-logo.svg" alt="" aria-hidden="true" />
         <span class="window-app-caption" data-tauri-drag-region>VORTEX</span>
       </div>
-      <button class="sidebar-hide-button icon-button" type="button" data-sidebar-hide aria-label="Развернуть меню" title="Развернуть меню" aria-expanded="false" aria-controls="app-sidebar"><span data-icon="chevronLeft"></span></button>
+      <button class="sidebar-hide-button icon-button" type="button" data-sidebar-hide aria-label="Развернуть меню" data-tooltip="Развернуть меню" aria-expanded="false" aria-controls="app-sidebar"><span data-icon="chevronLeft"></span></button>
       <div class="nav-history-controls" aria-label="История навигации" data-i18n-aria="nav.history">
-        <button class="icon-button nav-history-button" type="button" data-action="history-back" data-i18n-aria="nav.back" aria-label="Назад" title="Назад" disabled><span data-icon="arrowLeft"></span></button>
-        <button class="icon-button nav-history-button nav-history-forward" type="button" data-action="history-forward" data-i18n-aria="nav.forward" aria-label="Вперёд" title="Вперёд" disabled><span data-icon="arrowLeft"></span></button>
+        <button class="icon-button nav-history-button" type="button" data-action="history-back" data-i18n-aria="nav.back" aria-label="Назад" disabled><span data-icon="arrowLeft"></span></button>
+        <button class="icon-button nav-history-button nav-history-forward" type="button" data-action="history-forward" data-i18n-aria="nav.forward" aria-label="Вперёд" disabled><span data-icon="arrowLeft"></span></button>
       </div>
       <div class="titlebar-games" data-game-tab-strip hidden></div>
       <div class="titlebar-space" data-window-drag data-tauri-drag-region></div>
@@ -39,16 +43,14 @@
         <div class="sidebar-hover-zone" aria-hidden="true"></div>
         <aside class="sidebar" id="app-sidebar">
         <nav class="primary-nav" data-nav-group="topbar" aria-label="Основные разделы" data-i18n-aria="topbar.primaryNav"></nav>
-        <div class="side-label" data-i18n="sidebar.menu">Библиотека</div>
         <nav class="primary-nav" data-nav-group="menu" aria-label="Основная навигация" data-i18n-aria="sidebar.primaryNav">
-          <button class="nav-item" data-nav="favorites"><span class="nav-icon" data-icon="heart"></span><span data-i18n="nav.favorites">Избранное</span></button>
-          <button class="nav-item" data-nav="recent"><span class="nav-icon" data-icon="clock"></span><span data-i18n="nav.recent">Недавние</span></button>
+          <button class="nav-item" data-nav="library"><span class="nav-icon" data-icon="book"></span><span data-i18n="nav.library">Библиотека</span></button>
           <button class="nav-item" data-nav="plans"><span class="nav-icon" data-icon="flag"></span><span data-i18n="nav.plans">В планах</span></button>
         </nav>
         <section class="quick-launch-section" aria-label="Быстрый запуск">
           <div class="quick-launch-heading"><span data-i18n="quick.title">Быстрый запуск</span><div class="quick-heading-tools">
             <button class="quick-launch-add icon-button" type="button" data-launcher-action="folder-import" data-i18n-aria="tools.openFolder" aria-label="Импорт папки"><span data-icon="fileUp"></span></button>
-            <button class="quick-launch-add icon-button" type="button" data-action="open-quick-game-modal" data-i18n-aria="quick.add" aria-label="Добавить быстрый запуск" title="Добавить быстрый запуск"><span data-icon="plus"></span></button>
+            <button class="quick-launch-add icon-button" type="button" data-action="open-quick-game-modal" data-i18n-aria="quick.add" aria-label="Добавить быстрый запуск"><span data-icon="plus"></span></button>
           </div></div>
           <div class="quick-launch-items" id="quick-launch-items"></div>
         </section>
@@ -60,7 +62,7 @@
             <button class="text-button" data-nav="catalog"><span data-i18n="sidebar.explore">Исследовать</span><span data-icon="arrowUpRight"></span></button>
           </div>
           <nav class="primary-nav sidebar-nav-bottom" aria-label="Настройки" data-i18n-aria="nav.settings">
-            <button class="nav-item" data-nav="settings"><span class="nav-icon" data-icon="sliders"></span><span data-i18n="nav.settings">Настройки</span></button>
+            <button class="nav-item" data-nav="settings"><span class="nav-icon" data-icon="settings"></span><span data-i18n="nav.settings">Настройки</span></button>
           </nav>
         </div>
       </aside>
@@ -73,7 +75,7 @@
             <kbd>Ctrl K</kbd>
           </label>
           <div class="app-bar-actions">
-            <button class="icon-button stream-switch" type="button" data-launcher-action="stream-toggle" data-i18n-aria="tools.stream" aria-label="Режим стрима" aria-pressed="false"><span data-icon="eye"></span></button>
+            <button class="icon-button stream-switch" type="button" data-launcher-action="stream-toggle" data-i18n-aria="tools.stream" aria-label="Режим стрима" aria-pressed="false"><span data-icon="eyeOff"></span></button>
             <button class="icon-button notification-button" data-ui-part="notifications" data-i18n-aria="notifications" aria-label="Уведомления" data-action="notifications"><span data-icon="bell"></span><i></i></button>
             <button class="avatar avatar-small" type="button" data-action="toggle-friends-drawer" data-i18n-aria="friends.drawer.open" aria-label="Открыть друзей" aria-controls="friends-drawer" aria-haspopup="dialog" aria-expanded="false"><span class="avatar-letter" data-account-avatar>V</span></button>
           </div>
@@ -93,15 +95,15 @@
         <header class="quick-game-dialog-header"><div><span class="quick-game-dialog-kicker" data-i18n="quick.kicker">БЫСТРЫЙ ЗАПУСК</span><h2 id="quick-game-title" data-i18n="quick.dialogTitle">Добавить игру</h2></div><button class="icon-button" type="button" data-action="close-quick-game-modal" data-i18n-aria="common.close" aria-label="Закрыть"><span data-icon="close"></span></button></header>
         <form id="quick-game-form" class="quick-game-form">
           <fieldset class="quick-game-methods"><legend data-i18n="quick.methodLabel">Способ запуска</legend>
-            <button type="button" class="quick-game-method active" data-quick-method="private"><span data-icon="users"></span><span><strong data-i18n="quick.privateTitle">Приватный сервер</strong><small data-i18n="quick.privateBody">Place ID и Link Code</small></span></button>
-            <button type="button" class="quick-game-method" data-quick-method="share"><span data-icon="arrowUpRight"></span><span><strong data-i18n="quick.shareTitle">Ссылка Roblox</strong><small data-i18n="quick.shareBody">Код или share-ссылка</small></span></button>
+            <button type="button" class="quick-game-method active" data-quick-method="private"><span data-icon="lock"></span><span><strong data-i18n="quick.privateTitle">Приватный сервер</strong><small data-i18n="quick.privateBody">Place ID и Link Code</small></span></button>
+            <button type="button" class="quick-game-method" data-quick-method="share"><span data-icon="link"></span><span><strong data-i18n="quick.shareTitle">Ссылка Roblox</strong><small data-i18n="quick.shareBody">Код или share-ссылка</small></span></button>
             <button type="button" class="quick-game-method" data-quick-method="public"><span data-icon="gamepad"></span><span><strong data-i18n="quick.publicTitle">Публичная игра</strong><small data-i18n="quick.publicBody">Запуск по Place ID</small></span></button>
           </fieldset>
           <div class="quick-game-fields" id="quick-game-fields"></div>
           <label class="quick-game-name-field"><span data-i18n="quick.nameLabel">Название в меню</span><input name="title" type="text" maxlength="64" data-i18n-placeholder="quick.namePlaceholder" placeholder="Например, вечерний сервер" /></label>
           <label class="quick-code-import"><span data-i18n="quick.codeLabel">Код пресета быстрого запуска</span><span><input type="text" autocomplete="off" data-quick-code data-i18n-placeholder="quick.codePlaceholder" placeholder="VORTEXQL1-…" /><button class="ghost-button" type="button" data-action="import-quick-code" data-i18n="quick.importCode">Загрузить</button></span></label>
           <div class="quick-game-form-error" id="quick-game-error" role="alert" hidden></div>
-          <footer class="quick-game-dialog-actions"><button class="ghost-button" type="button" data-action="close-quick-game-modal" data-i18n="common.cancel">Отмена</button><button class="primary-button" type="submit"><span data-quick-submit-icon data-icon="plus"></span><span data-quick-submit-label data-i18n="quick.save">Добавить</span></button></footer>
+          <footer class="quick-game-dialog-actions"><button class="ghost-button" type="button" data-action="close-quick-game-modal" data-i18n="common.cancel">Отмена</button><button class="primary-button" type="submit"><span data-quick-submit-icon data-icon="gamePlus"></span><span data-quick-submit-label data-i18n="quick.save">Добавить</span></button></footer>
         </form>
       </section>
     </div>
@@ -123,6 +125,7 @@
     </div>
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
     <script src="./js/icons.js"></script>
+    <script src="./js/overlays.js"></script>
     <script src="./js/library-storage.js"></script>
     <script src="./js/color.js"></script>
     <script src="./js/i18n.js"></script>
@@ -140,6 +143,12 @@
     <script src="./js/game-page.js"></script>
     <script src="./js/game-page-servers.js"></script>
     <script src="./js/game-page-actions.js"></script>
+    <script src="./js/catalog-i18n.js"></script>
+    <script src="./js/catalog.js"></script>
+    <script src="./js/recommendations.js"></script>
+    <script src="./js/library-i18n.js"></script>
+    <script src="./js/library.js"></script>
+    <script src="./js/library-activity.js"></script>
     <script src="./js/bootstrap.js"></script>
   </body>
 </html>

@@ -5,7 +5,7 @@ const storedAccountProfile = localStorage.getItem(accountActiveKey);
 const activeAccountProfile = /^[0-9a-f]{32}$/.test(storedAccountProfile) ? storedAccountProfile : 'default';
 const accountScopedKeys = new Set([
   'vortex.preferences', 'vortex.cardAspectDefault', 'vortex.activity', 'vortex.playStats',
-  'vortex.playSession', 'vortex.recent', 'vortex.favorites', 'vortex.friendPins', 'vortex.recommendationFeedback'
+  'vortex.playSession', 'vortex.recent', 'vortex.recentDetails', 'vortex.favorites', 'vortex.friendPins', 'vortex.recommendationFeedback'
 ]);
 
 function accountStorageKey(key, profile = activeAccountProfile) {

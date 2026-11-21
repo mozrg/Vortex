@@ -123,6 +123,7 @@ fn player_logs(starts: &[u64]) -> Vec<PathBuf> {
 struct PlayerLog {
     offset: u64,
     place: Option<String>,
+    server: Option<String>,
     joined: u64,
     left: u64,
 }
@@ -133,15 +134,31 @@ impl PlayerLog {
             return;
         };
         let lower = message.to_ascii_lowercase();
-        let place = lower
+        let join = lower
             .split_once("joining game")
-            .and_then(|(_, rest)| rest.split_once(" place "))
+            .and_then(|(_, rest)| rest.split_once(" place "));
+        let server = join
+            .and_then(|(name, _)| name.trim().strip_prefix('\'')?.strip_suffix('\''))
+            .filter(|id| {
+                id.len() == 36
+                    && id.bytes().enumerate().all(|(i, ch)| {
+                        if matches!(i, 8 | 13 | 18 | 23) {
+                            ch == b'-'
+                        } else {
+                            ch.is_ascii_hexdigit()
+                        }
+                    })
+                    && *id != "00000000-0000-0000-0000-000000000000"
+            });
+        let place = join
+            .map(|(_, rest)| rest)
             .or_else(|| {
                 lower
                     .split_once("game_join_loadtime")
                     .and_then(|(_, rest)| rest.split_once("placeid:"))
+                    .map(|(_, rest)| rest)
             })
-            .map(|(_, rest)| {
+            .map(|rest| {
                 rest.trim_start()
                     .split(|c: char| !c.is_ascii_digit())
                     .next()
@@ -159,14 +176,22 @@ impl PlayerLog {
         };
         let at = time.timestamp_millis().max(0) as u64;
         if let Some(id) = place {
-            if self.place.as_deref() != Some(id) {
+            let different_server = server
+                .zip(self.server.as_deref())
+                .is_some_and(|(next, old)| next != old);
+            if self.place.as_deref() != Some(id) || different_server {
                 if self.place.is_some() {
                     self.left = at;
                 }
                 self.place = Some(id.to_owned());
+                self.server = None;
                 self.joined = at;
             }
+            if let Some(server) = server {
+                self.server = Some(server.to_owned());
+            }
         } else if self.place.take().is_some() {
+            self.server = None;
             self.left = at;
         }
     }
@@ -221,6 +246,7 @@ pub fn status() -> Value {
         false
     });
     let mut active = None;
+    let mut active_server = None;
     let mut newest = 0;
     for path in &paths {
         let log = cache.entry(path.clone()).or_default();
@@ -231,6 +257,7 @@ pub fn status() -> Value {
         if log.place.is_some() && log.joined >= newest {
             newest = log.joined;
             active = log.place.clone();
+            active_server = log.server.clone();
         }
     }
     let mut uptime = 0;
@@ -240,7 +267,7 @@ pub fn status() -> Value {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64;
-    json!({"available": true, "running": !starts.is_empty(), "placeId": active, "startedAt": newest,
+    json!({"available": true, "running": !starts.is_empty(), "placeId": active, "serverId": active_server, "startedAt": newest,
         "endedAt": ended, "observedAt": now, "awakeMs": awake})
 }
 
@@ -268,5 +295,23 @@ mod tests {
         assert!(!is_player_log(Path::new(
             "123_Player_abc_CrashHandler_last.log"
         )));
+    }
+
+    #[test]
+    fn changing_servers_in_the_same_place_starts_one_new_session() {
+        let mut log = PlayerLog::default();
+        let first = "98371923-b960-4342-90d8-c8c4c68edebd";
+        let second = "6c90ccb9-aefd-46bb-be55-18f4b0689cf2";
+        log.event(&format!("2026-11-20T09:00:01Z,Info Joining game '{first}' place 11111"));
+        let original = log.joined;
+        log.event("2026-11-20T09:00:02Z,Info Game_join_loadtime: placeid:11111");
+        assert_eq!(log.joined, original);
+        assert_eq!(log.server.as_deref(), Some(first));
+        log.event(&format!("2026-11-20T09:00:03Z,Info Joining game '{second}' place 11111"));
+        assert_eq!(log.joined, original + 2000);
+        assert_eq!(log.left, log.joined);
+        assert_eq!(log.server.as_deref(), Some(second));
+        log.event("2026-11-20T09:00:04Z,Info leaveUGCGame");
+        assert!(log.server.is_none());
     }
 }

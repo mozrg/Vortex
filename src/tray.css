@@ -97,3 +97,4 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tray-section-heading { height: 18px; }
 .tray-game-copy strong { line-height: calc(15px * var(--tray-scale)); }
 .tray-game-copy small { line-height: calc(11px * var(--tray-scale)); }
+.tray-glyph { display: inline-flex; }

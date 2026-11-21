@@ -9,15 +9,16 @@ function collectionGame(game) {
   return { id, title: String(game.title || 'Roblox #' + id).slice(0, 140), thumbnail: safeThumbnail(game.thumbnail) };
 }
 
-function openCollectionEditor(payload = null) {
+function openCollectionEditor(payload = null, localCollection = null) {
   const imported = payload !== null;
   if (imported && (payload?.app !== 'vortex-collection' || payload.version !== 1 || !Array.isArray(payload.games))) {
     showToast(t('settings.data.invalid'));
     return;
   }
-  const games = [...new Map((imported ? payload.games : listCollectionGames()).slice(0, 300)
+  const candidates = imported ? payload.games : localCollection ? localCollection.games.filter(id => favorites.has(id)).map(libraryGame) : listCollectionGames();
+  const games = [...new Map(candidates.slice(0, 300)
     .map(collectionGame).filter(Boolean).map(game => [game.id, game])).values()];
-  collectionDraft = { imported, games, name: String(payload?.title || '').slice(0, 100) };
+  collectionDraft = { imported, games, name: String(payload?.title || localCollection?.title || '').slice(0, 100) };
   openLauncherDialog(t(imported ? 'tools.openCollection' : 'tools.collection'), `<form data-launcher-form="collection" class="launcher-dialog-form">
     <label>${t('tools.collectionName')}<input name="title" maxlength="100" value="${escapeHtml(collectionDraft.name)}" ${imported ? 'readonly' : ''}></label>
     ${games.length ? `<ul class="launcher-dialog-list launcher-collection-list">${games.map(game =>
@@ -71,6 +72,14 @@ async function submitCollection(form) {
     dynamicGames = dynamicGames.slice(-1200);
     try { localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames)); } catch { /* In-memory cache. */ }
     accountStorage.setItem('vortex.favorites', JSON.stringify([...favorites]));
+    const collections = favoriteCollections();
+    if (collectionDraft.name.trim() && collections.length < 80) {
+      activeFavoriteCollection = quickLaunchId();
+      preferences.favoriteCollections = [...collections, {
+        id: activeFavoriteCollection, title: collectionDraft.name.trim().slice(0, 60), games: games.map(game => game.id)
+      }];
+      savePreferences();
+    }
     renderPage();
     showToast(t('tools.collectionSaved'));
   } else {
@@ -101,11 +110,11 @@ function openQuickFolderShare(id) {
 }
 
 async function submitQuickFolderShare() {
-  const { title, color, games } = sharedQuickFolder;
+  const { title, color, games, server, showInTray } = sharedQuickFolder;
   const entries = games.map(({ method, placeId, title, thumbnail, linkCode, shareCode, shareType, serverId, accessCode }) =>
     ({ method, placeId, title, thumbnail, linkCode, shareCode, shareType, serverId, accessCode }));
   await saveShareDocument(title || t('quick.folderDefault'), '.vortex-folder.json', {
-    app: 'vortex-quick-folder', version: 1, title, color, games: entries
+    app: 'vortex-quick-folder', version: 1, title, color, server, showInTray, games: entries
   });
 }
 
@@ -114,7 +123,7 @@ function openSharedFolder(payload) {
   const games = payload.games.slice(0, 80).filter(game => game && typeof game === 'object' &&
     ['public', 'private', 'share', 'instance', 'access'].includes(game.method))
     .map(game => ({ ...game, type: 'game', id: quickLaunchId(), hotkey: null, lastPlayed: 0 }));
-  const [folder] = cleanQuickLaunchItems([{ type: 'folder', id: quickLaunchId(), title: payload.title, color: payload.color, games }]);
+  const [folder] = cleanQuickLaunchItems([{ type: 'folder', id: quickLaunchId(), title: payload.title, color: payload.color, server: payload.server, showInTray: payload.showInTray, games }]);
   if (folder?.type !== 'folder') { showToast(t('tools.folderInvalid')); return; }
   sharedQuickFolder = folder;
   openLauncherDialog(t('tools.openFolder'), `<form data-launcher-form="folder-import" class="launcher-dialog-form">
@@ -125,6 +134,7 @@ function openSharedFolder(payload) {
 function submitSharedFolder() {
   if (preferences.quickLaunchItems.length >= 80) { showToast(t('tools.folderLimit')); return; }
   preferences.quickLaunchItems.push(sharedQuickFolder);
+  if (currentView === 'quick') selectedLibraryFolder = sharedQuickFolder.id;
   quickFoldersOpen.add(sharedQuickFolder.id);
   persistQuickLaunchItems();
   launcherDialog.close();
@@ -202,7 +212,7 @@ async function submitLauncherImport(form) {
   if (picked.has('settings')) Object.assign(data.preferences, incoming);
   if (picked.has('folders')) data.preferences.quickLaunchItems = folderChanges;
   if (picked.has('library')) for (const key of ['favorites','customGames']) data[key] = payload.data[key];
-  if (picked.has('activity')) for (const key of ['recentGames','activityData','playStats','sessionHistory']) data[key] = payload.data[key];
+  if (picked.has('activity')) for (const key of ['recentGames','recentDetails','activityData','playStats','sessionHistory']) data[key] = payload.data[key];
   try {
     if (await applyDataImport({ ...payload, data })) {
       launcherDialog.close();

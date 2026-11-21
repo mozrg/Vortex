@@ -31,7 +31,7 @@
   min-height: 31px; padding: 4px 7px; border: 0; border-radius: 7px; box-shadow: none; background: transparent;
   color: inherit; white-space: nowrap; -webkit-app-region: no-drag;
 }
-.launcher-game-tab:hover,.launcher-game-tabs > .ghost-button:hover { background: var(--surface); color: var(--text); }
+.launcher-game-tab:hover { background: var(--surface); color: var(--text); }
 .launcher-game-tab [data-launcher-action="tab-open"] { display: inline-flex; max-width: min(176px,24vw); min-width: 65px; gap: 6px; }
 .launcher-game-tab {
   position: relative; touch-action: pan-y; translate: var(--tab-drop-shift, 0px) 0;
@@ -137,19 +137,6 @@
 body.sidebar-compact .quick-heading-tools { flex-wrap: wrap; }
 .surprise-genre { min-inline-size: 0; border: 0; padding: 0; margin: 0; }
 .surprise-genre legend { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
-.surprise-select summary {
-  display: flex; justify-content: space-between; align-items: center; min-height: 36px; padding: 6px 10px;
-  list-style: none; background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: 9px; cursor: pointer;
-}
-.surprise-select summary::-webkit-details-marker { display: none; }
-.surprise-select summary { transition: border-color 160ms ease, background-color 160ms ease; }
-.surprise-select summary > svg { flex: none; transition: transform 170ms var(--motion-ease); }
-.surprise-select[open] summary { border-color: var(--accent-text); }
-.surprise-select[open] summary > svg { transform: rotate(180deg); }
-.surprise-choices { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; margin-top: 5px; padding: 5px; background: var(--bg); border: 1px solid var(--line); border-radius: 9px; }
-.surprise-choices label { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
-.surprise-choices label:hover,.surprise-choices label:has(:checked) { background: var(--accent-wash); color: var(--text); }
-.surprise-choices input[type="radio"] { width: auto; min-height: 0; margin: 0; padding: 0; accent-color: var(--accent); }
 .launcher-import-section { padding: 9px 10px; border: 1px solid var(--line); border-radius: 7px; }
 .launcher-import-section summary { cursor: pointer; }
 .launcher-import-section summary small { margin-left: 6px; color: var(--muted); }

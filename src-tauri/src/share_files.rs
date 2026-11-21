@@ -14,9 +14,10 @@ pub async fn save_share_file(
     filename: String,
     contents: String,
 ) -> Result<bool, String> {
-    if contents.len() > 1024 * 1024
+    let csv = filename.ends_with(".csv");
+    if contents.len() > if csv { 16 * 1024 * 1024 } else { 1024 * 1024 }
         || filename.len() > 255
-        || ![".vortex-folder.json", ".vortex-collection.json"]
+        || ![".vortex-folder.json", ".vortex-collection.json", ".csv"]
             .iter()
             .any(|suffix| filename.ends_with(suffix))
         || filename.chars().any(|ch| ch.is_control() || "/\\:\"<>|?*".contains(ch))
@@ -26,7 +27,7 @@ pub async fn save_share_file(
     let owner = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
     let (send, receive) = tokio::sync::oneshot::channel();
     window.run_on_main_thread(move || {
-        let _ = send.send(choose_save_path(owner, &filename));
+        let _ = send.send(choose_save_path(owner, &filename, csv));
     }).map_err(|e| e.to_string())?;
     let Some(path) = receive.await.map_err(|_| "Save dialog closed unexpectedly")?? else {
         return Ok(false);
@@ -35,13 +36,13 @@ pub async fn save_share_file(
     Ok(true)
 }
 
-fn choose_save_path(owner: isize, filename: &str) -> Result<Option<PathBuf>, String> {
+fn choose_save_path(owner: isize, filename: &str, csv: bool) -> Result<Option<PathBuf>, String> {
     let mut path = vec![0u16; 32768];
     for (index, unit) in filename.encode_utf16().enumerate() {
         path[index] = unit;
     }
-    let filter: Vec<u16> = "Vortex (*.json)\0*.json\0\0".encode_utf16().collect();
-    let extension: Vec<u16> = "json\0".encode_utf16().collect();
+    let filter: Vec<u16> = if csv { "CSV (*.csv)\0*.csv\0\0" } else { "Vortex (*.json)\0*.json\0\0" }.encode_utf16().collect();
+    let extension: Vec<u16> = if csv { "csv\0" } else { "json\0" }.encode_utf16().collect();
     let mut dialog = OPENFILENAMEW {
         lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,
         hwndOwner: HWND(owner as *mut _),

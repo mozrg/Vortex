@@ -499,16 +499,6 @@ body.ui-dragging .ui-row:not(.ui-row-dragging) { transition: transform .18s cubi
 .filter-chip:hover { border-color: var(--line-strong); color: var(--text-soft); }
 .filter-chip.active { border-color: var(--accent-border); background: var(--accent-wash); color: var(--accent-text); }
 .filter-chip svg { width: 12px; height: 12px; }
-.custom-select { position: relative; z-index: 8; width: 166px; flex: 0 0 auto; }
-.custom-select-trigger { display: flex; width: 100%; height: 33px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface-2); color: #c5c2ce; font-size: 10px; text-align: left; cursor: pointer; transition: border-color .16s ease, background .16s ease; }
-.custom-select-trigger:hover, .custom-select-trigger[aria-expanded="true"] { border-color: rgba(var(--accent-rgb), .7); background: var(--surface-3); }
-.custom-select-trigger > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.custom-select-trigger svg { width: 13px; height: 13px; flex: 0 0 auto; color: #a49caf; transition: transform .16s ease; }
-.custom-select-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
-.custom-select-menu { position: absolute; top: calc(100% + 5px); right: 0; left: 0; display: grid; gap: 2px; padding: 5px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-2); box-shadow: 0 15px 38px rgba(0,0,0,.4); }
-.custom-select-menu[hidden] { display: none; }
-.custom-select-option { min-height: 30px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: #aaaeba; font-size: 10px; text-align: left; cursor: pointer; }
-.custom-select-option:hover, .custom-select-option[aria-selected="true"] { background: var(--accent-wash); color: var(--accent-text); }
 .result-note { margin: -4px 0 15px; color: #777b89; font-size: 10px; }
 .empty-state { display: flex; min-height: 245px; flex-direction: column; align-items: center; justify-content: center; padding: 35px; border: 1px dashed rgba(255,255,255,.12); border-radius: 17px; background: rgba(255,255,255,.015); text-align: center; }
 .empty-icon { display: grid; width: 45px; height: 45px; place-items: center; margin-bottom: 13px; border: 1px solid var(--accent-border); border-radius: 14px; background: var(--accent-wash); color: var(--accent-text); }
@@ -716,8 +706,6 @@ body.light-theme .nav-item { color: #676475; }
 body.light-theme .nav-item.active { color: var(--accent-text); }
 body.light-theme .breadcrumb strong { color: #514e5c; }
 body.light-theme .page-heading p, body.light-theme .section-heading p { color: #797685; }
-body.light-theme .custom-select-trigger, body.light-theme .custom-select-menu { background: var(--surface-2); color: var(--text); }
-body.light-theme .custom-select-option { color: #55515f; }
 body.light-theme .nav-item:hover { background: rgba(20,16,30,.045); color: var(--text); }
 body.light-theme .hero-card { box-shadow: inset 0 1px rgba(0,0,0,.04), 0 18px 40px rgba(30,24,50,.14); }
 body.light-theme .hero-copy p { color: #5c5868; }
@@ -820,7 +808,6 @@ body.light-theme .game-title { color: #282431; }
   .catalog-controls { align-items: flex-start; }
   .filter-row { gap: 6px; }
   .filter-chip { padding: 0 8px; }
-  .custom-select { margin-left: auto; }
   .settings-layout { grid-template-columns: 1fr; }
   .settings-tabs { display: flex; overflow-x: auto; }
   .settings-tab { flex: 0 0 auto; }
@@ -1497,7 +1484,7 @@ body.light-theme .settings-card { box-shadow: none; }
 /* Motion language: one short curve for navigation, controls and entrance. */
 :root { --motion-ease: cubic-bezier(.22, 1, .36, 1); --motion-fast: 150ms; --motion-enter: 260ms; }
 .nav-item, .icon-button, .primary-button, .ghost-button, .subtle-button, .settings-tab, .segment,
-.filter-chip, .card-play, .favorite-button, .home-widget-collapse, .custom-select-trigger,
+.filter-chip, .card-play, .favorite-button, .home-widget-collapse,
 .toggle, .friend-join {
   transition-property: background-color, border-color, color, opacity, transform, box-shadow;
   transition-duration: var(--motion-fast);
@@ -1517,7 +1504,6 @@ body.light-theme .settings-card { box-shadow: none; }
 .toggle::after { transition: transform 180ms var(--animation-easing, var(--motion-ease)), background-color 140ms ease; }
 .toggle:active::after { transform: scale(.9); }
 .toggle[aria-checked="true"]:active::after { transform: translateX(14px) scale(.9); }
-.custom-select-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
 #page-content.page-entering[data-transition="fade"] { animation-duration: calc(var(--motion-enter) * var(--speed, 1) * var(--animation-duration, 1)); animation-timing-function: var(--animation-easing, var(--motion-ease)); }
 #page-content.page-entering[data-transition="slide"] { animation-duration: calc(240ms * var(--speed, 1) * var(--animation-duration, 1)); animation-timing-function: var(--animation-easing, var(--motion-ease)); }
 #page-content.page-entering[data-transition="zoom"] { animation-duration: calc(240ms * var(--speed, 1) * var(--animation-duration, 1)); animation-timing-function: var(--animation-easing, var(--motion-ease)); }
@@ -1660,7 +1646,6 @@ body.sidebar-compact .sidebar .sidebar-hide-button svg { transform: rotate(180de
 .home-game-badge.active,
 .home-game-option.active,
 .game-search-option.active,
-.custom-select-option[aria-selected="true"],
 .palette-row.active,
 .filter-chip.active,
 .plans-filter.active {
@@ -1904,7 +1889,7 @@ body.sidebar-compact .quick-folder-children { position: absolute; z-index: 12; t
 
 /* Keep active controls restrained and consistent across settings and navigation. */
 :root { --selection-bg: var(--surface-2); --selection-border: var(--line-strong); --selection-ink: var(--text); }
-.nav-item.active, .topbar-nav-item.active, .settings-tab.active, .segment.active, .palette-option.active, .home-game-badge.active, .home-game-option.active, .game-search-option.active, .custom-select-option[aria-selected="true"], .palette-row.active, .filter-chip.active, .plans-filter.active { border-color: var(--line-strong); background: var(--surface-2); color: var(--text); }
+.nav-item.active, .topbar-nav-item.active, .settings-tab.active, .segment.active, .palette-option.active, .home-game-badge.active, .home-game-option.active, .game-search-option.active, .palette-row.active, .filter-chip.active, .plans-filter.active { border-color: var(--line-strong); background: var(--surface-2); color: var(--text); }
 .nav-item.active .nav-icon, .topbar-nav-item.active .topbar-nav-icon, .settings-tab.active .settings-tab-icon { color: var(--accent-text); }
 .home-widget-list .ui-row[data-widget-visible="true"] { border-color: var(--line); background: var(--surface-2); }
 .home-widget-list .ui-row[data-widget-visible="true"] .ui-row-icon { border-color: var(--line-strong); color: var(--muted); }
@@ -1998,7 +1983,7 @@ body.sidebar-compact .quick-launch-tools { display: none; }
 :root { --selection-bg: var(--accent-wash); --selection-border: var(--accent-border); --selection-ink: var(--accent-text); }
 .nav-item.active, .topbar-nav-item.active, .settings-tab.active, .segment.active, .palette-option.active,
 .home-game-badge.active, .home-game-option.active, .game-search-option.active,
-.custom-select-option[aria-selected="true"], .palette-row.active, .filter-chip.active,
+.palette-row.active, .filter-chip.active,
 .plans-filter.active, .quick-game-method.active {
   border-color: var(--selection-border);
   background: var(--selection-bg);
@@ -2223,15 +2208,6 @@ body.light-theme .home-empty-state, body.light-theme .detail-section, body.light
 .setting-line.is-disabled .toggle { pointer-events: none; }
 
 /* Horizontal top-bar ordering chips in Settings → Interface */
-.ui-list-horizontal { display: flex; flex-wrap: wrap; gap: 6px; }
-.ui-list-horizontal .ui-row { width: auto; flex: 0 0 auto; gap: 6px; padding: 7px 8px; cursor: grab; }
-.ui-list-horizontal .ui-row-grip { display: none; }
-.ui-list-horizontal .ui-row-icon { width: 22px; height: 22px; border: 0; background: transparent; }
-.ui-list-horizontal .ui-row-copy { flex: 0 0 auto; }
-.ui-list-horizontal .ui-row-copy strong { font-size: 11px; white-space: nowrap; }
-.ui-list-horizontal .ui-row-copy small { display: none; }
-.ui-list-horizontal .ui-row-handle { width: 22px; height: 24px; }
-.ui-list-horizontal .ui-row-handle svg { width: 11px; height: 11px; }
 
 /* Discord setup instructions */
 .discord-guide { padding: 14px 16px; margin-bottom: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }

@@ -1300,16 +1300,42 @@ async fn games_discover(
         encode_query(&selected)
     );
     let payload = roblox::fetch_cached_json(&*state, &sort_url).await?;
-    let rows = map_content_rows(&payload);
+    let rows: Vec<Value> = map_content_rows(&payload)
+        .into_iter()
+        .filter(|row| row.get("isSponsored").and_then(Value::as_bool) != Some(true))
+        .collect();
     let ids: Vec<String> = rows
         .iter()
         .map(|row| value_string(row.get("universeId").or_else(|| row.get("id"))))
         .filter(|id| valid_numeric_id(id))
         .collect();
-    let mut items = roblox::get_game_details_by_universe(&*state, &ids).await;
-    if items.is_empty() {
-        items = map_game_rows(&rows);
-    }
+    let mut details: std::collections::HashMap<String, Value> =
+        roblox::get_game_details_by_universe(&*state, &ids)
+            .await
+            .into_iter()
+            .map(|game| (value_string(game.get("universeId")), game))
+            .collect();
+    let items: Vec<Value> = rows
+        .iter()
+        .zip(map_game_rows(&rows))
+        .enumerate()
+        .map(|(index, (row, summary))| {
+            let universe = value_string(summary.get("universeId"));
+            let mut game = details.remove(&universe).unwrap_or(summary);
+            for (source, target) in [
+                ("playerCount", "playerCount"),
+                ("totalUpVotes", "upVotes"),
+                ("totalDownVotes", "downVotes"),
+                ("genreL1", "genre"),
+            ] {
+                if let Some(value) = row.get(source).filter(|value| !value.is_null()) {
+                    game[target] = value.clone();
+                }
+            }
+            game["catalogRank"] = json!(index + 1);
+            game
+        })
+        .collect();
     Ok(
         json!({"sessionId": session, "sorts": sorts, "selectedSortId": selected, "items": items, "nextSortsPageToken": null}),
     )
@@ -2337,6 +2363,14 @@ async fn notifications_friend_playing(
 }
 
 #[tauri::command]
+fn notifications_activity_break(app: AppHandle, title: String, body: String) -> bool {
+    use tauri_plugin_notification::NotificationExt;
+    let title: String = title.chars().filter(|ch| !ch.is_control()).take(64).collect();
+    let body: String = body.chars().filter(|ch| !ch.is_control()).take(160).collect();
+    app.notification().builder().title(title).body(body).show().is_ok()
+}
+
+#[tauri::command]
 async fn discord_set_enabled(
     state: tauri::State<'_, Arc<AppState>>,
     enabled: bool,
@@ -2596,6 +2630,7 @@ fn main() {
             plans_list,
             announcements_open,
             notifications_friend_playing,
+            notifications_activity_break,
             discord_set_enabled,
             discord_set_client_id,
             discord_status,

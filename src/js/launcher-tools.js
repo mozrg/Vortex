@@ -11,6 +11,8 @@ const linkCodePattern = /^[a-z0-9_-]{1,128}$/i;
 const looksLikeRobloxLink = input => /^(?:https?:\/\/)?(?:www\.)?roblox\.com\/|^roblox:\/\//i.test(String(input).trim());
 
 function openLauncherDialog(title, content) {
+  window.vortexOverlays.closeTooltip();
+  window.vortexOverlays.closeMenu();
   if (!launcherDialog) {
     launcherDialog = document.createElement('dialog');
     launcherDialog.className = 'launcher-tool-dialog settings-card';
@@ -79,9 +81,11 @@ async function openLauncherGame(id) {
 function rememberGameTab(game) {
   const id = String(game.id);
   if (currentView === 'catalog' || currentView === 'search') {
+    if (isRecommendationsView()) rememberRecommendationScroll();
     const area = document.querySelector('.main-area');
     catalogReturn = { view: currentView, top: area?.scrollTop || 0, query: searchQuery, results: searchResults,
-      status: searchStatus, token: searchPageToken, genre: activeCategory, session: searchSessionId };
+      status: searchStatus, token: searchPageToken, genre: activeCategory, session: searchSessionId, sort: activeDiscoverySort,
+      access: activeAccess, mode: sortMode, friendsOnly: catalogFriendsOnly, genreExplore: catalogGenreExplore, visible: catalogVisibleCount };
   }
   if (!openGameTabs.some(tab => tab.id === id)) openGameTabs.push({ id, title: game.title, game });
 }
@@ -89,9 +93,8 @@ function rememberGameTab(game) {
 function renderGameTabs({ revealActive = true } = {}) {
   const host = document.querySelector('[data-game-tab-strip]');
   const markup = !openGameTabs.length ? '' : `<nav class="launcher-game-tabs" aria-label="${t('tools.gameTabs')}">
-    ${catalogReturn ? `<button class="ghost-button" data-launcher-action="catalog-return">${icon('chevronLeft', 14)} ${t('nav.catalog')}</button>` : ''}
     ${openGameTabs.map(tab => `<span class="launcher-game-tab" data-game-tab="${escapeHtml(tab.id)}">
-      <button class="ghost-button" data-launcher-action="tab-open" data-id="${escapeHtml(tab.id)}" title="${escapeHtml(tab.title)}"
+      <button class="ghost-button" data-launcher-action="tab-open" data-id="${escapeHtml(tab.id)}" data-tooltip="${escapeHtml(tab.title)}"
         ${currentView === 'game-detail' && String(detailGame?.id) === tab.id ? 'aria-current="page"' : ''}>${gameArt(tab.game)}<span>${escapeHtml(tab.title)}</span></button>
       <button class="ghost-button" data-launcher-action="tab-close" data-id="${escapeHtml(tab.id)}" aria-label="${escapeHtml(t('tools.closeTab', { game: tab.title }))}">${icon('close', 12)}</button>
     </span>`).join('')}</nav>`;
@@ -264,18 +267,26 @@ document.addEventListener('keydown', event => {
   }
 }, true);
 
-function returnToSavedCatalog() {
-  if (!catalogReturn) { setView('catalog'); return; }
-  const { view, top, query, results, status, token, genre, session } = catalogReturn;
+function returnToSavedCatalog({ track = true } = {}) {
+  if (!catalogReturn) { setView('catalog', { track }); return; }
+  const { view, top, query, results, status, token, genre, session, sort, access, mode, friendsOnly, genreExplore, visible } = catalogReturn;
   searchQuery = query;
   searchResults = results;
   searchStatus = status;
   searchPageToken = token;
   searchSessionId = session;
   activeCategory = genre;
+  activeDiscoverySort = sort;
+  activeAccess = access;
+  sortMode = mode;
+  catalogFriendsOnly = friendsOnly;
+  catalogGenreExplore = genreExplore;
+  catalogVisibleCount = visible;
   searchInput.value = query;
-  setView(view);
-  requestAnimationFrame(() => { const area = document.querySelector('.main-area'); if (area) area.scrollTop = top; });
+  setView(view, { track });
+  requestAnimationFrame(() => {
+    if (currentView === view) document.querySelector('.main-area').scrollTop = top;
+  });
 }
 
 async function showSurprise(filters, choose = false) {
@@ -285,10 +296,9 @@ async function showSurprise(filters, choose = false) {
   const free = filters?.free ?? true;
   const chooseOptions = `<form data-launcher-form="surprise" class="launcher-dialog-form">
     <fieldset class="surprise-genre"><legend>${t('tools.genre')}</legend>
-      <details class="surprise-select"><summary><span data-surprise-genre>${t('genre.' + genre)}</span>${icon('chevronDown', 15)}</summary>
-        <div class="surprise-choices">${['all', ...Object.keys(GENRE_SEARCH_BASE)].map(value =>
-          `<label><input type="radio" name="genre" value="${value}" ${value === genre ? 'checked' : ''}>${t('genre.' + value)}</label>`).join('')}</div>
-      </details></fieldset>
+      ${renderVortexDropdown({ label: t('tools.genre'), value: genre, kind: 'surprise-genre',
+        options: ['all', ...Object.keys(GENRE_SEARCH_BASE)].map(value => ({ value, text: t('genre.' + value) })),
+        input: `<input type="hidden" name="genre" data-vortex-field value="${escapeHtml(genre)}">` })}</fieldset>
     <label><input type="checkbox" name="free" ${free ? 'checked' : ''}> ${t('tools.freeOnly')}</label>
     <label><input type="checkbox" name="unfamiliar" ${unfamiliar ? 'checked' : ''}> ${t('tools.unplayedOnly')}</label>
     <button class="primary-button" type="submit">${t(choose ? 'tools.surpriseAgain' : 'tools.surprise')}</button>
@@ -345,26 +355,29 @@ function showRecommendationReason(game) {
   if (!reason || currentView !== 'catalog' || activeDiscoverySort !== RECOMMENDED_SORT.id || searchQuery) return '';
   const label = t(reason.signal === 'favorite' ? 'tools.becauseFavorite' : reason.signal === 'feedback' ? 'tools.becauseFeedback' : 'tools.becausePlayed',
     { game: reason.title });
-  return `<aside class="recommendation-reason"><p title="${escapeHtml(label)}">${icon('sparkle', 12)} ${escapeHtml(label)}</p>
+  return `<aside class="recommendation-reason"><p data-tooltip="${escapeHtml(label)}">${icon('sparkle', 12)} ${escapeHtml(label)}</p>
     <div class="launcher-tool-actions"><button class="ghost-button" data-launcher-action="recommend-hide" data-id="${game.id}">${t('tools.notInterested')}</button>
     <button class="ghost-button" data-launcher-action="recommend-more" data-id="${game.id}">${t('tools.moreLike')}</button></div></aside>`;
 }
 
 function updateRecommendationFeedback(action, id) {
-  const game = recommendationState.items.find(item => String(item.id) === id);
+  const game = recommendationState.items.find(item => String(item.id) === id) || catalogFriendGames().find(item => String(item.id) === id);
   if (!game) return;
   const key = experienceKey(game);
   const data = recommendationFeedback();
   if (action === 'recommend-hide') {
     data.hidden = [...new Set([...data.hidden, key, 'place:' + id])].slice(-400);
+    const saved = { ...data.hiddenGames, [key]: collectionGame(game), ['place:' + id]: collectionGame(game) };
+    data.hiddenGames = Object.fromEntries(data.hidden.filter(hidden => saved[hidden]).map(hidden => [hidden, saved[hidden]]));
+    recommendationState.items = recommendationState.items.filter(item => experienceKey(item) !== key && String(item.id) !== id);
   } else {
     data.boosted = Object.fromEntries([...Object.entries(data.boosted).filter(([seed]) => seed !== id),
       [id, { ...collectionGame(game), genreKey: game.genreKey || inferGenreKey(game), universeId: game.universeId }]].slice(-12));
   }
   accountStorage.setItem('vortex.recommendationFeedback', JSON.stringify(data));
-  recommendationState.items = recommendationState.items.filter(item => experienceKey(item) !== key);
-  renderPage();
-  void loadRecommendations(true);
+  if (action === 'recommend-more') refreshRecommendationPreferences();
+  else recommendationState.retry = false;
+  renderRecommendationUpdate();
   showToast(t('tools.feedbackSaved'));
 }
 
@@ -433,7 +446,6 @@ document.addEventListener('click', async event => {
       } else renderPage();
       return;
     }
-    case 'catalog-return': returnToSavedCatalog(); return;
     case 'friend-pin':
     case 'friend-alert': {
       if (!gameIdPattern.test(id)) return;
@@ -500,25 +512,6 @@ document.addEventListener('submit', event => {
     }
   }
 });
-
-document.addEventListener('change', event => {
-  const select = event.target.closest?.('.surprise-select');
-  if (select && event.target.name === 'genre') {
-    select.querySelector('[data-surprise-genre]').textContent = t('genre.' + event.target.value);
-    select.open = false;
-    select.querySelector('summary').focus();
-  }
-});
-
-document.addEventListener('keydown', event => {
-  const select = event.target.closest?.('.surprise-select[open]');
-  if (event.key === 'Escape' && select) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    select.open = false;
-    select.querySelector('summary').focus();
-  }
-}, true);
 
 document.addEventListener('input', event => {
   if (event.target.matches?.('[data-settings-search]')) searchSetting(event.target);

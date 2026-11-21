@@ -35,14 +35,12 @@ const palettes = [
 // destinations and library links retain separate saved ordering in the sidebar.
 const NAV_ITEMS = [
   { key: 'home', icon: 'home', group: 'topbar' },
-  { key: 'catalog', icon: 'compass', group: 'topbar' },
+  { key: 'catalog', icon: 'catalog', group: 'topbar' },
   { key: 'friends', icon: 'users', group: 'topbar' },
-  { key: 'favorites', icon: 'heart', group: 'menu' },
-  { key: 'recent', icon: 'clock', group: 'menu' },
-  { key: 'activity', icon: 'activity', group: 'menu' },
+  { key: 'library', icon: 'book', group: 'menu' },
   { key: 'plans', icon: 'flag', group: 'menu' },
   // Settings live next to the profile at the very bottom of the sidebar.
-  { key: 'settings', icon: 'sliders', group: 'bottom' }
+  { key: 'settings', icon: 'settings', group: 'bottom' }
 ];
 const NAV_KEYS = NAV_ITEMS.map((item) => item.key);
 
@@ -56,7 +54,7 @@ function navOrder(group = 'menu') {
 
 function navItemMarkup(item) {
   const label = t(`nav.${item.key}`);
-  return `<button class="nav-item" type="button" data-nav="${item.key}" aria-label="${label}" title="${label}"><span class="nav-icon" data-icon="${item.icon}"></span><span>${label}</span></button>`;
+  return `<button class="nav-item" type="button" data-nav="${item.key}" aria-label="${label}" data-tooltip="${label}"><span class="nav-icon" data-icon="${item.icon}"></span><span>${label}</span></button>`;
 }
 
 function renderSidebarNav() {
@@ -77,10 +75,11 @@ const preferenceDefaults = {
   theme: 'dark', themeBackground: '', themeSurface: '',
   density: 'comfortable', corners: 'soft', showDescriptions: true, showStats: true,
   homeGreeting: '', customGames: [], homeFeaturedGame: '', homePicks: [], homeGameCount: 4, quickLaunchItems: [], gameLaunchOptions: {},
+  favoriteCollections: [], activityWeeklyGoal: 0, activityBreakHours: 0,
   homeShowHero: true, homeShowRecommendations: true,
-  homeLayout: 'balanced', homeMinimal: false,
+  homeLayout: 'balanced', homeGameView: null, homeMinimal: false,
   sidebarOrder: [], topbarOrder: [], uiSidebarTip: true, uiProfileCard: true, uiTopbarSearch: true,
-  uiBreadcrumb: true, uiNotifications: true, uiSidebarFoot: true, uiUpdateBanner: true,
+  uiBreadcrumb: true, uiNotifications: true, uiSidebarFoot: true, uiUpdateBanner: true, uiTooltips: true,
   pageTransition: 'fade', cardAnimation: 'rise', animationEasing: 'smooth', animationDuration: 1, glow: 72, ambient: true, motion: true,
   contrast: false, language: 'ru', saveHistory: true, settingsTab: 'home', trayScale: 'normal', robloxUsername: '', friendsNoticeAccepted: false,
   robloxAccountId: '', robloxDisplayName: '', robloxAvatar: '',
@@ -225,10 +224,10 @@ const PROFILE_KEYS = [
   'glassStrength', 'themeSchedule', 'scheduleDay', 'scheduleNight',
   'homeWidgetOrder', 'homeWidgetHidden', 'homeWidgetCollapsed',
   'catalogView', 'catalogGenre',
-  'homeLayout', 'homeMinimal', 'homeShowHero', 'homeShowRecommendations',
+  'homeLayout', 'homeGameView', 'homeMinimal', 'homeShowHero', 'homeShowRecommendations',
   'density', 'corners', 'showDescriptions', 'showStats',
   'pageTransition', 'cardAnimation', 'animationSpeed', 'animationEasing', 'animationDuration', 'glow', 'ambient', 'motion', 'contrast',
-  'sidebarOrder', 'topbarOrder', 'uiSidebarTip', 'uiProfileCard', 'uiTopbarSearch', 'uiBreadcrumb', 'uiNotifications', 'uiSidebarFoot', 'uiUpdateBanner', 'sidebarAutoHide', 'uiFont'
+  'sidebarOrder', 'topbarOrder', 'uiSidebarTip', 'uiProfileCard', 'uiTopbarSearch', 'uiBreadcrumb', 'uiNotifications', 'uiSidebarFoot', 'uiUpdateBanner', 'uiTooltips', 'sidebarAutoHide', 'uiFont'
 ];
 
 function readProfiles() {
@@ -336,6 +335,7 @@ let navigationHistory = ['home'];
 let navigationHistoryIndex = 0;
 let quickGameMethod = 'private';
 let editingQuickGameId = '';
+let addingQuickGameToFolder = '';
 let quickGameDialogReturnFocus = null;
 let quickFolderDialogReturnFocus = null;
 let editingQuickFolderId = '';
@@ -382,211 +382,17 @@ let catalogVisibleCount = CATALOG_PAGE_SIZE;
 
 // Catalog recommendations are a pseudo Discover sort built locally from the
 // games the user actually plays and keeps in favorites.
-const RECOMMENDED_SORT = { id: 'recommended', title: 'Рекомендации' };
-let recommendationState = { status: 'idle', items: [], signature: '', fetchedAt: 0, seeds: 0 };
+const RECOMMENDED_SORT = { id: 'recommended', title: 'For you' };
+let recommendationState = newRecommendationState();
 
 function catalogSorts() {
-  const base = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
-  if (base.some((sort) => sort.id === RECOMMENDED_SORT.id)) return base;
-  const list = [...base];
-  const after = list.findIndex((sort) => sort.id === 'top-revisited');
-  list.splice(after >= 0 ? after + 1 : list.length, 0, RECOMMENDED_SORT);
-  return list;
+  const available = new Map([...fallbackDiscoverySorts, ...discoverySorts].map(sort => [sort.id, sort]));
+  for (const sort of [RECOMMENDED_SORT, { id: 'top-rated', title: 'Top Rated' }, { id: 'gems', title: 'Hidden Gems' }]) {
+    available.set(sort.id, sort);
+  }
+  return [...catalogSortOrder.map(id => available.get(id)).filter(Boolean),
+    ...[...available.values()].filter(sort => !catalogSortOrder.includes(sort.id))];
 }
-
-function recommendationProfile() {
-  const gamesById = new Map(allGames().map(game => [String(game.id), game]));
-  const recent = new Map(uniqueRecentIds(recentGames).map((id, index) => [id, index]));
-  const favoriteIds = new Set([...favorites].map(String));
-  const knownIds = new Set([...favoriteIds, ...Object.keys(playStats), ...recent.keys()]);
-  const experiences = new Map();
-  const feedback = recommendationFeedback();
-  const excluded = new Set(feedback.hidden);
-  for (const id of knownIds) {
-    const game = gamesById.get(id);
-    excluded.add('place:' + id);
-    if (!game) continue;
-    const key = experienceKey(game);
-    excluded.add(key);
-    const seed = experiences.get(key) || { game, favorite: false, seconds: 0, launches: 0, recency: 0 };
-    const stats = playStats[id] || {};
-    seed.favorite ||= favoriteIds.has(id);
-    seed.seconds += Math.max(0, Number(stats.seconds) || 0);
-    seed.launches += Math.max(0, Number(stats.launches) || 0);
-    if (recent.has(id)) seed.recency = Math.max(seed.recency, 12 - recent.get(id));
-    experiences.set(key, seed);
-  }
-  for (const [id, game] of Object.entries(feedback.boosted)) {
-    const key = experienceKey(game);
-    if (feedback.hidden.includes(key) || feedback.hidden.includes('place:' + id)) continue;
-    excluded.add(key);
-    excluded.add('place:' + id);
-    const existing = experiences.get(key);
-    experiences.set(key, { game, favorite: false, seconds: 0, launches: 0, recency: 0, ...existing, feedback: true });
-  }
-  const ranked = [...experiences.values()].map(seed => ({
-    ...seed, weight: (seed.feedback ? 74 : 0) + (seed.favorite ? 45 : 0) + Math.min(50, 9 * Math.log1p(seed.seconds / 3600))
-      + Math.min(24, 5 * Math.log1p(seed.launches)) + seed.recency
-  })).sort((a,b) => b.weight - a.weight);
-  // Reserve representation for both signals even with a large favorites list.
-  const seeds = [...new Set([ranked.find(s => s.favorite), ranked.find(s => s.seconds || s.launches || s.recency), ranked.find(s => s.feedback), ...ranked].filter(Boolean))].slice(0, 6);
-  const signature = JSON.stringify([seeds.map(s => [experienceKey(s.game), s.game.title, Math.round(s.weight)]), [...excluded].sort()]);
-  return { seeds, excluded, signature };
-}
-
-function recommendationTitle(game) {
-  return String(game.title || '').replace(/\[[^\]]*\]/g, ' ').replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/\s+/g, ' ').trim() || String(game.title || '');
-}
-
-function rankRecommendations(profile, lists) {
-  const candidates = new Map();
-  function candidate(game) {
-    if (!game?.id || profile.excluded.has('place:' + game.id)) return null;
-    const key = experienceKey(game);
-    if (profile.excluded.has(key)) return null;
-    if (!candidates.has(key)) candidates.set(key, { game, score: 0, contributions: new Map() });
-    return candidates.get(key);
-  }
-  const credit = (row, index, points) => {
-    row.score += points;
-    row.contributions.set(index, (row.contributions.get(index) || 0) + points);
-  };
-  lists.forEach((list, index) => {
-    const seen = new Set();
-    list.forEach((game, position) => {
-      const row = candidate(game);
-      if (!row || seen.has(row)) return;
-      seen.add(row);
-      credit(row, index, profile.seeds[index].weight / (1 + position / 5));
-    });
-  });
-  for (const game of allGames()) candidate(game);
-  const interests = profile.seeds.map(({ game, weight }) => ({
-    genre: game.genreKey || inferGenreKey(game), creator: String(game.creator || '').trim().toLowerCase(),
-    words: recommendationTitle(game).toLowerCase().split(' ').filter(word => word.length > 2), weight
-  }));
-  for (const row of candidates.values()) {
-    const game = row.game;
-    const genre = game.genreKey || inferGenreKey(game);
-    const words = new Set(recommendationTitle(game).toLowerCase().split(' '));
-    interests.forEach((interest, index) => {
-      if (genre !== 'other' && genre === interest.genre) credit(row, index, interest.weight * .35);
-      if (interest.creator && String(game.creator || '').trim().toLowerCase() === interest.creator) credit(row, index, interest.weight * .6);
-      if (interest.words.some(word => words.has(word))) credit(row, index, interest.weight * .35);
-    });
-  }
-  return [...candidates.values()].filter(row => row.score > 0)
-    .sort((a,b) => b.score - a.score || (Number(b.game.playerCount) || 0) - (Number(a.game.playerCount) || 0))
-    .map(row => {
-      const [index] = [...row.contributions].sort((a,b) => b[1] - a[1])[0];
-      const seed = profile.seeds[index];
-      return { ...row.game, recommendationReason: { title: seed.game.title,
-        signal: seed.feedback ? 'feedback' : seed.favorite ? 'favorite' : 'played' } };
-    });
-}
-
-function recommendationSources(seeds) {
-  const sources = new Map();
-  function add(query, index, primary = false) {
-    query = query.trim().slice(0, 90);
-    const key = query.toLowerCase();
-    if (!key || sources.has(key)) return;
-    sources.set(key, { query, index, primary, sessionId: createSearchSessionId(), token: null, used: new Set() });
-  }
-  seeds.forEach(({game}, i) => add(recommendationTitle(game), i, true));
-  seeds.forEach(({game}, i) => {
-    const title = recommendationTitle(game);
-    const genre = GENRE_SEARCH_BASE[game.genreKey || inferGenreKey(game)] || '';
-    const topic = title.split(' ').find(word => word.length > 2 && !/^(the|new|update|simulator)$/i.test(word));
-    if (topic) add(topic, i);
-    if (genre && topic) add(topic + ' ' + genre, i);
-    if (genre) add(genre, i);
-  });
-  return [...sources.values()];
-}
-
-let recommendationRequestId = 0;
-async function loadRecommendations(force = false, append = false) {
-  const profile = recommendationProfile();
-  const { seeds, signature } = profile;
-  const category = activeCategory;
-  const countMatching = items => category === 'all' ? items.length : items.filter(game => game.genreKey === category).length;
-  const previous = recommendationState;
-  append = append && previous.signature === signature;
-  if (!force && previous.signature === signature) {
-    if (previous.status === 'loading' || previous.loadingMore) return;
-    if (!append && Date.now() - previous.fetchedAt < 600000) return;
-    if (append && countMatching(previous.items) > previous.visible) {
-      previous.visible += CATALOG_PAGE_SIZE;
-      renderPage();
-      return;
-    }
-  }
-  const requestId = ++recommendationRequestId;
-  const state = append ? previous : { status: 'loading', items: [], signature, seeds: seeds.length,
-    sources: recommendationSources(seeds), visible: CATALOG_PAGE_SIZE, fetchedAt: Date.now() };
-  recommendationState = state;
-  state.loadingMore = append;
-  state.failed = false;
-  state.rateLimited = false;
-  if (currentView === 'catalog') renderPage();
-  const lists = seeds.map(() => []);
-  const target = append ? countMatching(previous.items) + CATALOG_PAGE_SIZE : CATALOG_PAGE_SIZE;
-  const previousItems = state.items;
-  const before = new Set(previousItems.map(experienceKey));
-  const blocked = new Set();
-  // Rotate across the user's interests. Limit each click to a few network
-  // requests even when Roblox returns multiple duplicate-only pages.
-  for (let round = 0; round < 3; round++) {
-    const ready = state.sources.filter(source => !blocked.has(source));
-    const primary = ready.filter(source => source.primary);
-    if (!append && state.items.length && !primary.length) break;
-    const batch = (!append && primary.length ? primary : ready).slice(0, 2);
-    if (!batch.length) break;
-    const pages = await Promise.allSettled(batch.map(source => window.vortexDesktop.searchGames({
-      query: source.query, sessionId: source.sessionId, pageToken: source.token
-    })));
-    if (requestId !== recommendationRequestId) return;
-    for (const [i, source] of batch.entries()) {
-      const result = pages[i];
-      state.sources.splice(state.sources.indexOf(source), 1);
-      if (result.status === 'rejected' || !Array.isArray(result.value?.items)) {
-        const reason = String(result.reason || '');
-        if (source.token && /Roblox returned (400|404|410)\b/.test(reason)) continue;
-        if (/\b429\b/.test(reason)) state.rateLimited = true;
-        blocked.add(source);
-        state.sources.push(source);
-        continue;
-      }
-      const page = result.value;
-      lists[source.index].push(...page.items.filter(game => game?.id).map(game => normalizeDiscoveredGame(game, source.query)));
-      const next = page.nextPageToken;
-      if (next && !source.used.has(next)) {
-        source.used.add(next);
-        source.token = next;
-        state.sources.push(source);
-      }
-    }
-    const fresh = rankRecommendations(profile, lists).filter(game => !before.has(experienceKey(game)));
-    state.items = [...previousItems, ...fresh];
-    if (state.rateLimited || countMatching(state.items) >= target) break;
-  }
-  if (requestId !== recommendationRequestId) return;
-  if (!state.items.length && seeds.length) state.items = rankRecommendations(profile, lists);
-  if (state.items.length) {
-    const index = new Map(dynamicGames.map(game => [String(game.id), game]));
-    for (const game of state.items) index.set(String(game.id), { ...index.get(String(game.id)), ...game, id: String(game.id) });
-    dynamicGames = [...index.values()].slice(-1200);
-    try { localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames)); } catch { /* memory cache is still available */ }
-  }
-  state.visible = target;
-  state.failed = blocked.size > 0;
-  state.status = state.items.length || state.sources.length && !state.failed ? 'success' : state.failed ? 'error' : 'empty';
-  state.fetchedAt = Date.now();
-  state.loadingMore = false;
-  if (currentView === 'catalog') renderPage();
-}
-
 
 const pageContent = document.getElementById('page-content');
 const searchInput = document.getElementById('global-search');
@@ -656,7 +462,7 @@ function savePreferences() {
 function renderColorTuner(name, color, label) {
   return `<div class="color-field" data-color-field="${name}">
     <span class="color-field-label">${label}</span>
-    <button class="color-trigger" type="button" data-color-open="${name}" data-color-current="${color}" aria-haspopup="dialog" aria-expanded="false" aria-label="${escapeHtml(label)}">
+    <button class="color-trigger control-button" type="button" data-color-open="${name}" data-color-current="${color}" aria-haspopup="dialog" aria-expanded="false" aria-label="${escapeHtml(label)}">
       <span class="color-swatch" style="--sample-color:${color}"></span>
       <span class="color-trigger-code" data-color-code="${name}">${color.toUpperCase()}</span>
       <span class="color-trigger-chevron">${icon('chevronDown', 12)}</span>
@@ -750,7 +556,7 @@ function createColorPopover() {
     <label class="color-hue-row"><span>${t('settings.colorHue')}</span><input type="range" min="0" max="360" step="1" data-color-hue /></label>
     <div class="color-popover-foot">
       <label class="color-hex-field"><span>#</span><input type="text" maxlength="6" spellcheck="false" autocomplete="off" data-color-pop-hex /></label>
-      <div class="color-presets" role="group" aria-label="${t('settings.accent.title')}">${palettes.map((palette) => `<button type="button" class="color-preset" data-color-preset="${palette.color}" style="--preset:${palette.color}" title="${escapeHtml(t(`palette.${palette.key}`))}" aria-label="${escapeHtml(t(`palette.${palette.key}`))}"></button>`).join('')}</div>
+      <div class="color-presets" role="group" aria-label="${t('settings.accent.title')}">${palettes.map((palette) => `<button type="button" class="color-preset" data-color-preset="${palette.color}" style="--preset:${palette.color}" data-tooltip="${escapeHtml(t(`palette.${palette.key}`))}" aria-label="${escapeHtml(t(`palette.${palette.key}`))}"></button>`).join('')}</div>
     </div>`;
   document.body.appendChild(el);
 
@@ -887,7 +693,8 @@ function cleanQuickLaunchItems(items, depth = 0) {
     if (item.type === 'folder' && depth === 0) {
       const games = cleanQuickLaunchItems(item.games, depth + 1).filter((entry) => entry?.type === 'game');
       const color = /^#[0-9a-f]{6}$/i.test(String(item.color || '')) ? String(item.color).toLowerCase() : '#a68bff';
-      return games.length > 1 ? { type: 'folder', id, title: String(item.title || '').trim().slice(0, 48), color, games } : (games[0] || null);
+      return { type: 'folder', id, title: String(item.title || '').trim().slice(0, 48), color, games,
+        showInTray: item.showInTray !== false, server: ['ping', 'small'].includes(item.server) ? item.server : 'default' };
     }
     if (item.type !== 'game') return null;
     const method = ['private', 'share', 'public', 'instance', 'access'].includes(item.method) ? item.method : 'public';
@@ -988,12 +795,13 @@ function applyPreferences() {
   window.vortexDesktop?.setDiskCacheEnabled?.(preferences.diskCache);
   if (!Array.isArray(preferences.sidebarOrder)) preferences.sidebarOrder = [];
   const legacyOrder = preferences.sidebarOrder.filter((key) => NAV_KEYS.includes(key));
-  preferences.sidebarOrder = [...new Set(legacyOrder.filter((key) => NAV_ITEMS.find((item) => item.key === key)?.group === 'menu'))];
+  preferences.sidebarOrder = [...new Set(legacyOrder.map(key => libraryTabs.some(tab => tab.id === key) ? 'library' : key)
+    .filter((key) => NAV_ITEMS.find((item) => item.key === key)?.group === 'menu'))];
   if (!Array.isArray(preferences.topbarOrder)) preferences.topbarOrder = [];
   const savedTopbar = preferences.topbarOrder.filter((key) => NAV_ITEMS.find((item) => item.key === key)?.group === 'topbar');
   preferences.topbarOrder = [...new Set([...(savedTopbar.length ? savedTopbar : legacyOrder.filter((key) => NAV_ITEMS.find((item) => item.key === key)?.group === 'topbar')), ...NAV_ITEMS.filter((item) => item.group === 'topbar').map((item) => item.key)])];
   preferences.quickLaunchItems = cleanQuickLaunchItems(preferences.quickLaunchItems);
-  for (const flag of ['uiSidebarTip', 'uiProfileCard', 'uiTopbarSearch', 'uiBreadcrumb', 'uiNotifications', 'uiSidebarFoot', 'uiUpdateBanner']) {
+  for (const flag of ['uiSidebarTip', 'uiProfileCard', 'uiTopbarSearch', 'uiBreadcrumb', 'uiNotifications', 'uiSidebarFoot', 'uiUpdateBanner', 'uiTooltips']) {
     preferences[flag] = preferences[flag] !== false;
   }
   if (!['dark', 'light', 'oled'].includes(preferences.theme)) preferences.theme = 'dark';
@@ -1027,6 +835,8 @@ function applyPreferences() {
   if (!Array.isArray(preferences.homeWidgetHidden)) preferences.homeWidgetHidden = [];
   if (!Array.isArray(preferences.homeWidgetCollapsed)) preferences.homeWidgetCollapsed = [];
   if (!['grid', 'list'].includes(preferences.catalogView)) preferences.catalogView = 'grid';
+  // Older installs shared the catalog setting. Keep their starting home layout.
+  if (!['grid', 'list'].includes(preferences.homeGameView)) preferences.homeGameView = preferences.catalogView;
   if (!['all', 'adventure', 'horror', 'roleplay', 'fashion', 'parkour', 'action', 'simulator', 'survival'].includes(preferences.catalogGenre)) preferences.catalogGenre = 'all';
   preferences.animationDuration = Math.max(0.5, Math.min(2, Number(preferences.animationDuration) || 1));
   if (!['smooth', 'spring', 'linear'].includes(preferences.animationEasing)) preferences.animationEasing = 'smooth';
@@ -1156,6 +966,7 @@ function applyPreferences() {
   root.setProperty('--speed', { slow: 1.6, normal: 1, fast: 0.55 }[preferences.animationSpeed] || 1);
   // Interface parts the user can switch off in Settings → Interface.
   document.body.classList.toggle('ui-no-sidebar-tip', !preferences.uiSidebarTip);
+  window.vortexOverlays.enableTooltips(preferences.uiTooltips);
   document.body.classList.toggle('ui-no-profile', !preferences.uiProfileCard);
   document.body.classList.toggle('ui-no-sidebar-foot', !preferences.uiSidebarFoot);
   document.body.classList.toggle('ui-no-topbar-search', !preferences.uiTopbarSearch);
@@ -1195,7 +1006,10 @@ function allGames() {
   return [...games, ...custom, ...dynamic, ...paid];
 }
 
-function getGame(id) { return allGames().find((game) => String(game.id) === String(id)); }
+function getGame(id) {
+  const key = String(id);
+  return allGames().find(game => String(game.id) === key) || recommendationState.items.find(game => String(game.id) === key);
+}
 
 function experienceKey(game) {
   return Number(game?.universeId) > 0 ? 'universe:' + game.universeId : 'place:' + game?.id;
@@ -1237,7 +1051,7 @@ function localizeGame(game) {
 function renderVerifiedCreatorBadge(game) {
   if (!game.creator || game.creatorVerified !== true) return '';
   const label = escapeHtml(t('game.verifiedCreator'));
-  return `<span class="verified-badge" role="img" aria-label="${label}" title="${label}">${icon('verified', 15)}</span>`;
+  return `<span class="verified-badge" role="img" aria-label="${label}" data-tooltip="${label}">${icon('verified', 15)}</span>`;
 }
 
 function formatCount(value) {
@@ -1315,9 +1129,11 @@ function openGameDetails(id) {
   const game = getGame(id) || openGameTabs.find(tab => tab.id === String(id))?.game
     || genreResults.find((item) => String(item.id) === String(id))
     || searchResults.find((item) => String(item.id) === String(id))
-    || recommendationState.items.find((item) => String(item.id) === String(id))
-    || paidGames.find((item) => String(item.id) === String(id));
+    || (currentView === 'catalog' ? catalogFriendGames().find(item => String(item.id) === String(id)) : null)
+    || paidGames.find((item) => String(item.id) === String(id))
+    || (libraryTabs.some(tab => tab.id === currentView) && gameIdPattern.test(String(id)) ? libraryGame(id) : null);
   if (!game) return;
+  const fromCatalog = currentView === 'catalog';
   rememberGameTab(game);
   const requestId = ++detailRequestId;
   detailBadgeCount = 3;
@@ -1331,6 +1147,7 @@ function openGameDetails(id) {
   pushNavigationHistory('game-detail');
   currentView = 'game-detail';
   renderPage();
+  if (fromCatalog) document.querySelector('.main-area').scrollTop = 0;
   const cacheKey = String(game.universeId || game.id);
   const cached = readDetailCache(cacheKey);
   if (cached) {
@@ -1401,7 +1218,7 @@ async function refreshGameOnline() {
   }
 }
 
-function renderGameCard(game) {
+function renderGameCard(game, options) {
   game = localizeGame(game);
   const isFavorite = favorites.has(game.id);
   const id = escapeHtml(game.id);
@@ -1417,18 +1234,18 @@ function renderGameCard(game) {
   const expandedDescription = expandedDescriptions.has(String(game.id));
   const canExpandDescription = description.length > 100;
   const reason = showRecommendationReason(game);
-  return `<article class="game-card${reason ? ' is-recommendation' : ''}" style="--game-color: var(--accent)" data-game="${id}" data-universe-id="${escapeHtml(game.universeId || '')}">
+  return `<article class="game-card${reason ? ' is-recommendation' : ''}" style="--game-color: var(--accent)" data-game="${id}" data-universe-id="${escapeHtml(game.universeId || '')}" ${options?.draggable ? `data-library-favorite-drag="${id}"` : ''}>
     <div class="game-cover art-${art} ${thumbnail ? 'has-thumbnail' : ''}">
       <button class="game-cover-action" type="button" data-action="open-details" data-id="${id}" aria-label="${t('card.openDetails', { title: escapeHtml(game.title) })}"></button>
       ${thumbnail ? `<img class="game-thumbnail" src="${escapeHtml(thumbnail)}" alt="" loading="${preferences.lazyImages ? 'lazy' : 'eager'}" decoding="async" />` : ''}
       <span class="cover-shine"></span>
       ${cardUnavailable}
-      <button class="favorite-button ${isFavorite ? 'is-favorite' : ''}" data-action="favorite" data-id="${id}" aria-label="${isFavorite ? t('card.favoriteRemove') : t('card.favoriteAdd')}" aria-pressed="${isFavorite}">${icon('heart', 15)}</button>
+      <button class="favorite-button ${isFavorite ? 'is-favorite' : ''}" data-action="favorite" data-id="${id}" aria-label="${isFavorite ? t('card.favoriteRemove') : t('card.favoriteAdd')}" aria-pressed="${isFavorite}">${icon('star', 15)}</button>
     </div>
     <div class="game-info">
       <div class="game-card-copy">
       <h3 class="game-title-row"><button class="game-title" type="button" data-action="open-details" data-id="${id}">${escapeHtml(game.title)}</button>${cardVerified}</h3>
-      ${preferences.cardShowDescription ? `<p class="game-description ${expandedDescription ? 'expanded' : ''}" title="${escapeHtml(description)}">${escapeHtml(description)}</p>
+      ${preferences.cardShowDescription ? `<p class="game-description ${expandedDescription ? 'expanded' : ''}" data-tooltip="${escapeHtml(description)}">${escapeHtml(description)}</p>
       ${canExpandDescription ? `<button class="description-more" data-action="toggle-description" data-id="${id}" aria-expanded="${expandedDescription}">${t(expandedDescription ? 'card.readLess' : 'card.readMore')}</button>` : ''}` : ''}
       ${preferences.cardShowLikes ? liveStats : ''}
       </div>
@@ -1438,7 +1255,7 @@ function renderGameCard(game) {
   </article>`;
 }
 
-function renderGrid(list, emptyTitle, emptyText, emptyAction = 'catalog') {
+function renderGrid(list, emptyTitle, emptyText, emptyAction = 'catalog', view = preferences.catalogView) {
   if (!list.length) {
     const actionLabel = emptyAction === 'settings' ? t('home.empty.action') : t('empty.openCatalog');
     return `<div class="empty-state"><div class="empty-icon">${icon(emptyAction === 'favorites' ? 'heart' : 'search', 20)}</div><h2>${emptyTitle}</h2><p>${emptyText}</p><button class="ghost-button" data-nav="${emptyAction}">${actionLabel} ${icon('arrow', 13)}</button></div>`;
@@ -1452,10 +1269,10 @@ function renderGrid(list, emptyTitle, emptyText, emptyAction = 'catalog') {
       groups.get(genre).push(game);
     }
     const sections = [...groups.entries()].sort((a, b) => b[1].length - a[1].length)
-      .map(([genre, games]) => `<section class="catalog-genre-section"><div class="catalog-genre-head"><h2>${escapeHtml(genre)}</h2><span>${games.length}</span></div><div class="game-grid ${preferences.catalogView === 'list' ? 'catalog-list-view' : ''}">${games.map(renderGameCard).join('')}</div></section>`).join('');
+      .map(([genre, games]) => `<section class="catalog-genre-section"><div class="catalog-genre-head"><h2>${escapeHtml(genre)}</h2><span>${games.length}</span></div><div class="game-grid ${view === 'list' ? 'catalog-list-view' : ''}">${games.map(renderGameCard).join('')}</div></section>`).join('');
     return `<div class="catalog-genre-groups">${sections}</div>`;
   }
-  return `<div class="game-grid ${preferences.catalogView === 'list' ? 'catalog-list-view' : ''}">${list.map(renderGameCard).join('')}</div>`;
+  return `<div class="game-grid ${view === 'list' ? 'catalog-list-view' : ''}">${list.map(renderGameCard).join('')}</div>`;
 }
 
 function pageHeading(eyebrow, title, description, action = '') {
@@ -1497,10 +1314,10 @@ function renderPlayStats(limit = 3) {
 // Order/visibility/collapsed state live in preferences; the drag machinery from
 // the sidebar (data-ui-order + ui-row) is reused for the widget list.
 const HOME_WIDGETS = [
-  { key: 'hero', titleKey: 'settings.home.hero', bodyKey: 'settings.home.heroHint', icon: 'sparkle' },
-  { key: 'playstats', titleKey: 'home.widgets.playstats', bodyKey: 'home.widgets.playstatsBody', icon: 'clock' },
-  { key: 'favorites', titleKey: 'home.widgets.favorites', bodyKey: 'home.widgets.favoritesBody', icon: 'heart' },
-  { key: 'recent', titleKey: 'home.widgets.recent', bodyKey: 'home.widgets.recentBody', icon: 'clock' },
+  { key: 'hero', titleKey: 'settings.home.hero', bodyKey: 'settings.home.heroHint', icon: 'image' },
+  { key: 'playstats', titleKey: 'home.widgets.playstats', bodyKey: 'home.widgets.playstatsBody', icon: 'chartBars' },
+  { key: 'favorites', titleKey: 'home.widgets.favorites', bodyKey: 'home.widgets.favoritesBody', icon: 'star' },
+  { key: 'recent', titleKey: 'home.widgets.recent', bodyKey: 'home.widgets.recentBody', icon: 'history' },
   { key: 'picks', titleKey: 'settings.home.recommendations', bodyKey: 'settings.home.recommendationsHint', icon: 'grid' }
 ];
 
@@ -1574,7 +1391,7 @@ function renderHome() {
   const widgetBodies = {
     hero: preferences.homeShowHero && featured ? renderShelfBanner(featured) : '',
     picks: customGames.length ? `<section class="section-block home-widget" data-home-widget="picks">${renderWidgetHeading('picks', t('home.section.title'), t('home.section.subtitle'))}
-      ${renderGrid(picks, t('home.picks.emptyTitle'), t('home.picks.emptyBody'), 'settings')}</section>` : '',
+      ${renderGrid(picks, t('home.picks.emptyTitle'), t('home.picks.emptyBody'), 'settings', preferences.homeGameView)}</section>` : '',
     playstats: renderPlayStats(),
     favorites: homeWidgetVisible('favorites') ? renderHomeFavoritesPreview() : '',
     recent: homeWidgetVisible('recent') ? renderHomeRecentPreview() : ''
@@ -1606,8 +1423,9 @@ function renderWidgetHeading(key, title, subtitle = '') {
   const shownTitle = custom || title;
   return `<div class="home-widget-head" data-home-widget-head="${key}" style="--section-scale: ${preferences.homeSectionScale || 1}">
     <div class="home-widget-copy"><h2>${escapeHtml(shownTitle)}</h2>${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}</div>
-    <button class="home-widget-collapse" data-widget-collapse="${key}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(shownTitle)}">${icon(collapsed ? 'arrow' : 'navDown', 14)}</button>
-    <button class="icon-button widget-hide" data-widget-visible-toggle="${key}" aria-label="${escapeHtml(t('home.hideWidget', { title: shownTitle }))}" title="${escapeHtml(t('home.hideWidget', { title: shownTitle }))}">${icon('eye', 15)}</button>
+    ${key === 'picks' ? renderGameViewSwitch('homeGameView', 'settings.home.gameView', 'home-game-view') : ''}
+    <button class="home-widget-collapse" data-widget-collapse="${key}" aria-expanded="${!collapsed}" aria-label="${escapeHtml(shownTitle)}">${icon(collapsed ? 'chevronRight' : 'chevronDown', 14)}</button>
+    <button class="icon-button widget-hide" data-widget-visible-toggle="${key}" aria-label="${escapeHtml(t('home.hideWidget', { title: shownTitle }))}" data-tooltip="${escapeHtml(t('home.hideWidget', { title: shownTitle }))}">${icon('eyeOff', 15)}</button>
     <span class="home-widget-grip" data-widget-drag="${key}" aria-hidden="true">${icon('grip', 13)}</span>
   </div>`;
 }
@@ -1635,7 +1453,7 @@ function renderHomeStripCard(game) {
   const thumbnail = safeThumbnail(game.thumbnail);
   // Playtime first; genre or creator as fallback — never an action-style hint.
   const sub = renderPlaytimeBadge(game.id) || `<span class="strip-no-playtime">${t('stats.noData')}</span>`;
-  return `<button class="home-strip-card" data-action="play" data-id="${escapeHtml(String(game.id))}" title="${escapeHtml(game.title)}">
+  return `<button class="home-strip-card" data-action="play" data-id="${escapeHtml(String(game.id))}" data-tooltip="${escapeHtml(game.title)}">
     <span class="home-strip-art ${thumbnail ? 'has-thumbnail' : ''}">${thumbnail ? `<img src="${escapeHtml(thumbnail)}" alt="" loading="lazy" />` : ''}</span>
     <span class="home-strip-copy"><strong>${escapeHtml(game.title)}</strong><small>${sub}</small></span><span class="strip-play" aria-hidden="true">${icon('play', 15)}</span>
   </button>`;
@@ -1669,7 +1487,7 @@ let genreLoadingMore = false;
 let activeGenreRequestId = 0;
 let genreTermIndex = 0;
 
-function isGenreSearchActive() { return !searchQuery && activeCategory !== 'all'; }
+function isGenreSearchActive() { return catalogGenreExplore && !searchQuery && activeCategory !== 'all'; }
 
 async function fetchGenreGames(append = false) {
   const genre = activeCategory;
@@ -1747,43 +1565,24 @@ async function fetchGenreGames(append = false) {
 }
 
 function filterGames() {
+  if (isRecommendationsView()) return recommendationVisibleItems();
   const query = searchQuery.trim().toLocaleLowerCase(preferences.language);
-  if (!query && activeDiscoverySort === RECOMMENDED_SORT.id && activeAccess !== 'paid') {
-    return recommendationState.items.filter((game) => activeCategory === 'all' || game.genreKey === activeCategory);
-  }
-  if (isGenreSearchActive()) {
-    // Results were fetched from Roblox using the selected genre query.
-    // Do not re-filter by our local genre classifier; that used to hide most
-    // valid API hits, making a 10-game batch appear as only 1–3 cards.
-    let list = [...genreResults];
-    if (sortMode === 'alpha') list = list.slice().sort((first, second) => first.title.localeCompare(second.title, preferences.language));
-    if (sortMode === 'recent') list = list.slice().sort((first, second) => new Date(second.updated || 0) - new Date(first.updated || 0));
-    if (sortMode === 'visits') list = list.slice().sort((first, second) => (Number(second.visits) || 0) - (Number(first.visits) || 0));
-    if (sortMode === 'players') list = list.slice().sort((first, second) => (second.playerCount || 0) - (first.playerCount || 0));
-    if (sortMode === 'likes') list = list.slice().sort((first, second) => {
-      const score = (game) => (Number(game.upVotes) + Number(game.downVotes)) ? Number(game.upVotes) / (Number(game.upVotes) + Number(game.downVotes)) : 0;
-      return score(second) - score(first);
-    });
-    return list;
-  }
-  const accumulated = discoveryCatalog.__accumulated?.items;
-  const discovered = Array.isArray(accumulated) && accumulated.length ? accumulated : discoveryCatalog[activeDiscoverySort]?.items;
-  let sourceGames = searchQuery ? searchResults : currentView === 'catalog' && Array.isArray(discovered) ? [...discovered, ...games.filter((game) => !discovered.some((item) => String(item.id) === String(game.id)))] : games;
-  let list = sourceGames.filter((game) => {
+  const source = query ? searchResults : isGenreSearchActive() ? genreResults : discoveryCatalog[activeDiscoverySort]?.items || games;
+  const list = filterCatalogFriends(source.filter(game => {
     const localized = localizeGame(game);
-    const matchesQuery = !query || String(game.id).includes(query) || `${game.title} ${localized.genre} ${localized.description} ${game.search || ''}`.toLocaleLowerCase(preferences.language).includes(query);
-    const matchesCategory = activeCategory === 'all' || game.genreKey === activeCategory;
-    return matchesQuery && matchesCategory;
-  });
-  if (sortMode === 'alpha') list = list.slice().sort((first, second) => first.title.localeCompare(second.title, preferences.language));
-  if (sortMode === 'updated') list = list.slice().sort((first, second) => new Date(second.updated || 0) - new Date(first.updated || 0));
-  if (sortMode === 'visits') list = list.slice().sort((first, second) => (Number(second.visits) || 0) - (Number(first.visits) || 0));
-  if (sortMode === 'players') list = list.slice().sort((first, second) => (second.playerCount || 0) - (first.playerCount || 0));
-  if (sortMode === 'likes') list = list.slice().sort((first, second) => {
-    const score = (game) => (Number(game.upVotes) + Number(game.downVotes)) ? Number(game.upVotes) / (Number(game.upVotes) + Number(game.downVotes)) : 0;
-    return score(second) - score(first);
-  });
-  return list;
+    const matchesQuery = !query || String(game.id).includes(query) ||
+      [localized.title, localized.genre, localized.description, game.search].join(' ').toLocaleLowerCase(preferences.language).includes(query);
+    const matchesAccess = !query || activeAccess !== 'paid' || gameIsPaid(game);
+    return matchesQuery && matchesAccess && (isGenreSearchActive() || activeCategory === 'all' || game.genreKey === activeCategory);
+  }));
+  const compare = {
+    alpha: (a, b) => a.title.localeCompare(b.title, preferences.language),
+    updated: (a, b) => new Date(b.updated || 0) - new Date(a.updated || 0),
+    visits: (a, b) => (Number(b.visits) || 0) - (Number(a.visits) || 0),
+    players: (a, b) => (Number(b.playerCount) || 0) - (Number(a.playerCount) || 0),
+    likes: (a, b) => (catalogLikeRatio(b) ?? -1) - (catalogLikeRatio(a) ?? -1)
+  }[sortMode];
+  return compare ? list.sort(compare) : list;
 }
 
 function discoverySortLabel(sort) {
@@ -1794,32 +1593,40 @@ function discoverySortLabel(sort) {
 
 function renderCustomSortSelect(isLiveSearch) {
   const options = [
-    { value: 'default', label: t(isLiveSearch ? 'sort.relevance' : 'sort.curated') },
-    { value: 'players', label: t('sort.players') },
-    { value: 'likes', label: t('sort.likes') },
-    { value: 'updated', label: t('sort.updated') },
-    { value: 'visits', label: t('sort.visits') },
-    { value: 'alpha', label: t('sort.alpha') }
+    { value: 'default', glyph: isLiveSearch ? 'crosshair' : 'sortOrder', label: t(isLiveSearch ? 'sort.relevance' : 'sort.curated') },
+    { value: 'players', glyph: 'users', label: t('sort.players') },
+    { value: 'likes', glyph: 'thumb', label: t('sort.likes') },
+    { value: 'updated', glyph: 'calendar', label: t('sort.updated') },
+    { value: 'visits', glyph: 'eye', label: t('sort.visits') },
+    { value: 'alpha', glyph: 'sortAlpha', label: t('sort.alpha') }
   ];
-  const selected = options.find((option) => option.value === sortMode) || options[0];
-  return `<div class="custom-select" data-custom-select>
-    <button class="custom-select-trigger" type="button" data-sort-toggle aria-haspopup="listbox" aria-expanded="false" aria-label="${t('search.sort')}"><span>${escapeHtml(selected.label)}</span>${icon('chevronDown', 13)}</button>
-    <div class="custom-select-menu" role="listbox" aria-label="${t('search.sort')}" hidden>${options.map((option) => `<button class="custom-select-option" type="button" role="option" aria-selected="${sortMode === option.value}" data-sort-value="${option.value}">${escapeHtml(option.label)}</button>`).join('')}</div>
-  </div>`;
+  return renderVortexDropdown({ label: t('search.sort'), value: sortMode, kind: 'catalog-sort', className: 'vortex-dropdown-pill',
+    options: options.map(({ value, glyph, label: text }) => ({ value, glyph, text, action: `data-sort-value="${value}"` })) });
 }
 
 function renderGenreFilters() {
-  const genres = ['all', 'adventure', 'horror', 'roleplay', 'fashion', 'parkour', 'action', 'simulator', 'survival'];
-  return `<div class="catalog-filter-group"><span class="catalog-filter-label">${t('search.genre')}</span><div class="filter-row genre-filter-row"><button class="filter-chip ${activeCategory === 'all' ? 'active' : ''}" data-category="all">${t('catalog.anyGenre')}</button>${genres.slice(1).map((genre) => `<button class="filter-chip ${activeCategory === genre ? 'active' : ''}" data-category="${genre}">${t(`genre.${genre}`)}</button>`).join('')}</div></div>`;
+  const genres = ['all', ...Object.keys(GENRE_SEARCH_BASE)];
+  const label = genre => t(genre === 'all' ? 'chart.allGenres' : 'genre.' + genre);
+  return renderVortexDropdown({ label: t('search.genre'), prefix: t('search.genre'), value: activeCategory, kind: 'catalog-genre', className: 'vortex-dropdown-pill',
+    options: genres.map(genre => ({ value: genre, text: label(genre), action: `data-category="${genre}"` })) });
 }
 
-// Access filter sits beside genres, not inside them.
 function renderAccessFilters() {
   const options = [['all', t('catalog.accessAll')], ['paid', t('catalog.accessPaid')]];
   return `<div class="catalog-filter-group"><span class="catalog-filter-label">${t('catalog.access')}</span><div class="filter-row access-filter-row">${options.map(([value, label]) => `<button class="filter-chip ${activeAccess === value ? 'active' : ''}" data-access="${value}">${value === 'paid' ? icon('coin', 12) : ''}${label}</button>`).join('')}</div></div>`;
 }
 function renderCatalogViewToggle() {
-  return `<div class="catalog-view-toggle" role="group" aria-label="${t('catalog.view')}"><button class="icon-button ${preferences.catalogView === 'grid' ? 'active' : ''}" data-catalog-view="grid" title="${t('catalog.gridView')}">${icon('grid', 14)}</button><button class="icon-button ${preferences.catalogView === 'list' ? 'active' : ''}" data-catalog-view="list" title="${t('catalog.listView')}">${icon('list', 14)}</button></div>`;
+  return renderGameViewSwitch('catalogView', 'catalog.view', 'catalog-view-toggle');
+}
+
+function renderGameViewSwitch(pref, label, className = '', withLabels = false) {
+  return `<div class="game-view-switch ${className}" role="group" aria-label="${t(label)}">${['list', 'grid'].map(view => {
+    const text = t('catalog.' + view + 'View');
+    const active = preferences[pref] === view;
+    return `<button type="button" class="game-view-option ${active ? 'active' : ''}" data-pref="${pref}" data-value="${view}"
+      ${className === 'catalog-view-toggle' ? `data-catalog-view="${view}"` : ''} data-tooltip="${text}" aria-pressed="${active}" aria-label="${text}">
+      ${icon(view, 14)}${withLabels ? `<span>${text}</span>` : ''}</button>`;
+  }).join('')}</div>`;
 }
 
 // ---- Dedicated search tab ----
@@ -1883,102 +1690,7 @@ function submitSearchPage(value) {
   }
 }
 
-function renderCatalog() {
-  // Entering the paid view kicks off the first scan (guarded by status).
-  const link = robloxSearchLink(searchQuery) || (preferences.streamMode && searchQuery === t('tools.streamLink') ? inboundRobloxLink : null);
-  if (link) return pageHeading('', t('page.catalog.title'), '') + renderRobloxSearchLink(link);
-  if (looksLikeRobloxLink(searchQuery)) return pageHeading('', t('page.catalog.title'), '') + `<p class="catalog-disclaimer">${t('tools.badLink')}</p>`;
-  if (activeAccess === 'paid' && paidStatus === 'idle') window.setTimeout(() => loadPaidGames(), 0);
-  if (!pauseBackgroundRefresh() && activeAccess !== 'paid' && activeDiscoverySort === RECOMMENDED_SORT.id && (recommendationState.status === 'idle' || recommendationProfile().signature !== recommendationState.signature || (recommendationState.status !== 'loading' && Date.now() - recommendationState.fetchedAt >= 600000))) window.setTimeout(() => loadRecommendations(), 0);
-  const list = filterGames();
-  const availableSorts = catalogSorts();
-  const selectedSort = availableSorts.find((sort) => sort.id === activeDiscoverySort) || availableSorts[0];
-  const queryLabel = searchQuery ? t('search.queryLabel', { query: escapeHtml(searchQuery) }) : t('page.catalog.description');
-  const isLiveSearch = searchQuery.length >= 2;
-  const isPlaceId = /^\d{5,20}$/.test(searchQuery.trim());
-  const controls = isLiveSearch
-    ? `<div class="live-search-caption"><span class="live-search-dot"></span>${isPlaceId ? t('search.placeId') : t('search.live')}</div>${renderCustomSortSelect(true)}${renderGenreFilters()}${renderAccessFilters()}${renderCatalogViewToggle()}`
-    : `<div class="filter-row discovery-sort-row" role="tablist" aria-label="${t('page.catalog.title')}">${availableSorts.map((sort) => `<button class="filter-chip ${activeDiscoverySort === sort.id ? 'active' : ''}" role="tab" aria-selected="${activeDiscoverySort === sort.id}" data-discovery-sort="${escapeHtml(sort.id)}">${escapeHtml(discoverySortLabel(sort))}</button>`).join('')}</div>${renderCustomSortSelect(false)}${renderGenreFilters()}${renderAccessFilters()}${renderCatalogViewToggle()}`;
-  let resultsBody = '';
-  if (searchQuery.length === 1) {
-    resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('search', 20)}</div><h2>${t('search.shortTitle')}</h2><p>${t('search.shortBody')}</p></div>`;
-  } else if (isLiveSearch && searchStatus === 'loading') {
-    resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${isPlaceId ? t('search.placeIdLoading') : t('search.loading')}</strong><small>${t('search.loadingNote')}</small></div>`;
-  } else if (isLiveSearch && searchStatus === 'error') {
-    resultsBody = `<p class="catalog-disclaimer"><strong>${t('search.errorTitle')}</strong> ${t('search.errorBody')}</p>${renderGrid(list, t('search.noMatches'), t('search.tryAnother'))}`;
-  } else if (isLiveSearch && searchStatus === 'success') {
-    resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list, t('search.noResults'), t('search.tryShorter'))}${isLoadingMore ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : searchPageToken ? `<button class="ghost-button load-more-button" data-action="load-more">${t('search.loadMore')} ${icon('arrow', 13)}</button>` : ''}`;
-  } else if (activeAccess === 'paid' && !searchQuery) {
-    // Paid experiences: a section inside the catalog, not a new page and not a genre.
-    // Every "show more" runs another scan, so the list keeps growing.
-    if (paidStatus === 'loading') {
-      resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.paidLoading')}</strong><small>${t('catalog.paidLoadingNote')}</small></div>`;
-    } else if (paidStatus === 'error') {
-      resultsBody = `<p class="catalog-disclaimer"><strong>${t('catalog.errorTitle')}</strong> ${t('catalog.paidError')}</p>`;
-    } else if (!paidGames.length) {
-      resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('coin', 20)}</div><h2>${t('catalog.paidEmptyTitle')}</h2><p>${t('catalog.paidEmptyBody')}</p></div>`;
-    } else {
-      const visible = paidGames.slice(0, paidVisibleCount);
-      const hidden = paidGames.length - visible.length;
-      const loadMore = paidStatus === 'loading-more'
-        ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('catalog.paidScanning')}</div>`
-        : paidExhausted && !hidden
-          ? `<p class="load-more-end">${t('catalog.paidEnd')}</p>`
-          : `<button class="ghost-button load-more-button" data-action="paid-more">${t('catalog.loadMore')} ${icon('arrow', 13)}</button>`;
-      resultsBody = `<p class="result-note">${t('catalog.shown', { shown: String(visible.length), total: String(paidGames.length) })}</p>${renderGrid(visible, t('empty.noResults'), t('empty.filterHint'))}${loadMore}`;
-    }
-  } else if (!searchQuery && activeDiscoverySort === RECOMMENDED_SORT.id) {
-    if (recommendationState.status === 'loading' || recommendationState.status === 'idle') {
-      resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.recommendedLoading')}</strong><small>${t('catalog.recommendedLoadingNote')}</small></div>`;
-    } else if (recommendationState.status === 'empty') {
-      resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('sparkle', 20)}</div><h2>${t('catalog.recommendedEmptyTitle')}</h2><p>${t('catalog.recommendedEmptyBody')}</p><button class="ghost-button" data-nav="catalog">${t('catalog.recommendedOpenCatalog')}</button></div>`;
-    } else if (recommendationState.status === 'error') {
-      resultsBody = `<div class="empty-state"><div class="empty-icon">${icon('refreshCw', 20)}</div><h2>${t('catalog.recommendedError')}</h2><p>${t(recommendationState.rateLimited ? 'catalog.recommendedBusy' : 'catalog.recommendedErrorBody')}</p><button class="ghost-button" data-action="refresh-recommendations">${icon('refreshCw', 13)} ${t('catalog.recommendedRefresh')}</button></div>`;
-    } else {
-      const note = `<p class="result-note">${t('catalog.recommendedNote', { count: String(list.length), seeds: String(recommendationState.seeds) })}</p>`;
-      const refresh = `<button class="ghost-button recommendation-refresh" data-action="refresh-recommendations">${icon('refreshCw', 13)} ${t('catalog.recommendedRefresh')}</button>`;
-      const visible = list.slice(0, recommendationState.visible);
-      const throttled = recommendationState.rateLimited && list.length <= visible.length
-        ? `<p class="load-more-end" role="status">${t('catalog.recommendedBusy')}</p>` : '';
-      const footer = recommendationState.loadingMore
-        ? `<div role="status" class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>`
-        : list.length > visible.length || recommendationState.sources.length
-          ? `${throttled}<button class="ghost-button load-more-button" data-action="more-recommendations">${t(recommendationState.failed && list.length <= visible.length ? 'catalog.recommendedRetry' : 'catalog.loadMore')} ${icon('arrow', 13)}</button>`
-          : `<p class="load-more-end">${t('catalog.recommendedEnd')}</p>`;
-      resultsBody = `<div class="recommendation-head">${note}${refresh}</div>${renderGrid(visible, t('catalog.recommendedEmptyTitle'), t('catalog.recommendedEmptyBody'))}${footer}`;
-    }
-  } else if (isGenreSearchActive()) {
-    if (genreStatus === 'loading') {
-      resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.loading')}</strong><small>${t('catalog.loadingNote')}</small></div>`;
-    } else if (genreStatus === 'error') {
-      resultsBody = `<p class="catalog-disclaimer"><strong>${t('catalog.errorTitle')}</strong> ${t('catalog.errorBody')}</p>${renderGrid(list, t('empty.noResults'), t('empty.filterHint'))}`;
-    } else {
-      // The term generator is endless: there is always another phrasing.
-      const loadMoreGenre = genreLoadingMore ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : `<button class="ghost-button load-more-button" data-action="load-more-genre">${t('search.loadMore')} ${icon('arrow', 13)}</button>`;
-      resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list, t('empty.noResults'), t('empty.filterHint'))}${loadMoreGenre}`;
-    }
-  } else if (!searchQuery && (discoveryStatus === 'loading' || discoveryStatus === 'loading-more')) {
-    if (discoveryStatus === 'loading-more' && list.length) {
-      const sortsForMore = catalogSorts();
-      const hasNextSort = sortsForMore.length > 1;
-      const loadMore = hasNextSort ? `<div class="load-more-status"><span class="loading-spinner small"></span>${t('search.loadingMore')}</div>` : '';
-      resultsBody = `<p class="result-note">${formatResultCount(list.length)}</p>${renderGrid(list.slice(0, catalogVisibleCount), t('empty.noResults'), t('empty.filterHint'))}${loadMore}`;
-    } else {
-      resultsBody = `<div class="search-loading"><span class="loading-spinner"></span><strong>${t('catalog.loading')}</strong><small>${t('catalog.loadingNote')}</small></div>`;
-    }
-  } else {
-    const cachedItems = discoveryCatalog[activeDiscoverySort]?.items || [];
-    const offlineNote = discoveryStatus === 'error' ? `<p class="catalog-disclaimer"><strong>${t('catalog.errorTitle')}</strong> ${t('catalog.errorBody')}</p>` : '';
-    const sortsForMore = catalogSorts();
-    const hasNextSort = sortsForMore.length > 1;
-    const loadMore = `<button class="ghost-button load-more-button" data-action="load-more">${t('catalog.loadMore')} ${icon('arrow', 13)}</button>`;
-    const note = cachedItems.length ? `<p class="result-note">${formatResultCount(list.length)} · ${escapeHtml(discoverySortLabel(selectedSort))}</p>` : '';
-    resultsBody = `${offlineNote}${note}${renderGrid(list.slice(0, catalogVisibleCount), t('empty.noResults'), t('empty.filterHint'))}${loadMore}`;
-  }
-  return `${pageHeading(searchQuery ? t('page.search.eyebrow') : t('page.catalog.eyebrow'), searchQuery ? t('page.search.title') : t('page.catalog.title'), queryLabel, `<div class="launcher-tool-actions"><button class="ghost-button" data-launcher-action="surprise">${icon('sparkle', 14)} ${t('tools.surpriseTitle')}</button><button class="ghost-button" data-catalog-customize>${icon('sliders')} ${t('catalog.customize')}</button></div>`)}
-    <div class="catalog-controls">${controls}</div>${resultsBody}
-    ${isLiveSearch ? '' : discoveryStatus === 'loading' ? '' : `<p class="catalog-disclaimer"><strong>${t('catalog.disclaimerTitle')}</strong> ${t('catalog.disclaimer')}</p>`}`;
-}
+
 
 let favoritesVisibleCount = 24;
 // Paid results are a separate list because Roblox has no paid catalog; it is
@@ -2050,23 +1762,6 @@ async function loadPaidGames(force = false) {
   await scanPaidGames(false);
 }
 
-function collectionTabs(active) {
-  return `<nav class="collection-tabs" aria-label="${t('sidebar.menu')}">${['favorites', 'recent'].map(key =>
-    `<button class="filter-chip" data-nav="${key}" ${key === active ? 'aria-current="page"' : ''}>${t(`nav.${key}`)}</button>`).join('')}</nav>`;
-}
-
-function renderFavorites() {
-  const list = allGames().filter((game) => favorites.has(game.id));
-  const visible = list.slice(0, favoritesVisibleCount);
-  const more = list.length > visible.length
-    ? `<div class="load-more-row"><button class="ghost-button" data-action="favorites-more">${t('catalog.showMore', { count: String(Math.min(24, list.length - visible.length)) })}</button></div>`
-    : '';
-  return `${pageHeading(t('page.favorites.eyebrow'), t('page.favorites.title'), t('page.favorites.description'), list.length > 24 ? `<span class="heading-count">${t('catalog.shown', { shown: String(visible.length), total: String(list.length) })}</span>` : '')}
-    ${collectionTabs('favorites')}
-    <div class="launcher-tool-actions collection-toolbar"><button class="ghost-button" data-launcher-action="collection-export">${icon('share', 14)} ${t('tools.collection')}</button><button class="ghost-button" data-launcher-action="collection-import">${icon('fileUp', 14)} ${t('tools.openCollection')}</button></div>
-    ${renderGrid(visible, t('empty.favorites.title'), t('empty.favorites.body'), 'catalog')}${more}`;
-}
-
 let friendsCache = { at: 0, data: null };const FRIENDS_TTL = 30 * 1000;
 let friendsLoading = false;
 let friendsAutoDetectStarted = false;
@@ -2098,7 +1793,7 @@ async function autoDetectRobloxAccountOnce(force = false) {
 // hover (avatar, game, join) in a floating preview panel.
 function renderFriends() {
   const username = String(preferences.robloxUsername || '').trim();
-  const refreshAction = `<button class="ghost-button icon-only-button friends-refresh" data-action="refresh-friends" ${friendsLoading ? 'disabled' : ''} aria-label="${t('friends.refresh')}" title="${t('friends.refresh')}">${icon('refreshCw', 15)}</button>`;
+  const refreshAction = `<button class="ghost-button icon-only-button friends-refresh" data-action="refresh-friends" ${friendsLoading ? 'disabled' : ''} aria-label="${t('friends.refresh')}" data-tooltip="${t('friends.refresh')}">${icon('refreshCw', 15)}</button>`;
   const heading = pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'), refreshAction);
   if (!username) {
     autoDetectRobloxAccountOnce();
@@ -2134,7 +1829,7 @@ function renderFriends() {
     return `<article class="friend-card ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" data-friend-name="${escapeHtml(name)}" data-friend-avatar="${escapeHtml(friend.avatar || '')}" data-game-name="${escapeHtml(gameName)}" data-game-thumb="${escapeHtml(friend.presence === 'playing' ? friend.gameThumbnail || '' : '')}" tabindex="0">
       <span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="eager" decoding="async" />` : escapeHtml(name[0].toLocaleUpperCase())}</span>
       <span class="friend-copy"><strong>${escapeHtml(name)}</strong><small>${friend.presence === 'playing' ? escapeHtml(gameName) : friend.presence === 'online' ? t('friends.online') : t('friends.offline')}</small></span>
-      ${friendPinControls(friend, pins)}${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}">${icon('play', 12)}</button>` : ''}
+      ${friendPinControls(friend, pins)}${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" data-tooltip="${t('friends.join')}">${icon('play', 12)}</button>` : ''}
     </article>`;
   };
   const section = (titleKey, list) => !list.length ? '' : `<p class="friends-group-title">${t(titleKey)} · ${list.length}</p>
@@ -2169,7 +1864,7 @@ async function loadFriends(username, force = false) {
     }
   } finally {
     friendsLoading = false;
-    if (currentView === 'friends' || isCurrentGamePage(detailGame?.id, 'overview') ||
+    if (currentView === 'friends' || shouldRefreshCatalogFriends() || isCurrentGamePage(detailGame?.id, 'overview') ||
         isCurrentGamePage(detailGame?.id, 'friends') || isCurrentGamePage(detailGame?.id, 'servers')) renderPage();
     renderFriendsDrawer();
   }
@@ -2209,7 +1904,7 @@ function renderFriendsDrawer() {
   const row = (friend) => {
     const name = friend.displayName || friend.name || t('friends.unknown');
     const status = friend.presence === 'playing' ? friend.gameName || t('friends.inGame') : friend.presence === 'online' ? t('friends.online') : t('friends.offline');
-    return `<div class="friends-drawer-row ${friend.presence}"><span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="lazy" decoding="async" />` : escapeHtml(name[0].toLocaleUpperCase())}<i></i></span><span class="friend-copy"><strong>${escapeHtml(name)}</strong><small>${escapeHtml(status)}</small></span>${friendPinControls(friend, pins)}${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" title="${t('friends.join')}" aria-label="${t('friends.join')}">${icon('play', 12)}</button>` : ''}</div>`;
+    return `<div class="friends-drawer-row ${friend.presence}"><span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="lazy" decoding="async" />` : escapeHtml(name[0].toLocaleUpperCase())}<i></i></span><span class="friend-copy"><strong>${escapeHtml(name)}</strong><small>${escapeHtml(status)}</small></span>${friendPinControls(friend, pins)}${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" data-tooltip="${t('friends.join')}" aria-label="${t('friends.join')}">${icon('play', 12)}</button>` : ''}</div>`;
   };
   const groupMarkup = groups.filter(([, list]) => list.length).map(([title, list]) => `<section class="friends-drawer-group"><h3>${t(title)}<span>${list.length}</span></h3>${list.map(row).join('')}</section>`).join('');
   content.innerHTML = `${data.livePresence ? '' : `<p class="friends-presence-note">${icon('bell', 12)} ${t('friends.presenceOff')}</p>`}${friends.length ? groupMarkup : `<div class="friends-drawer-empty compact"><span class="friends-drawer-empty-icon">${icon('users', 18)}</span><strong>${t('friends.empty.title')}</strong><p>${t('friends.empty.body')}</p></div>`}<button class="text-button friends-drawer-all" data-action="friends-drawer-view-all">${t('activity.viewAllFriends')} ${icon('arrow', 12)}</button>`;
@@ -2276,80 +1971,6 @@ function notifyFriendsInFavorites(friends) {
 
 // ---- Endless loading for the default (genreless) catalog view ----
 // Phase 1: Discover categories (5 of them, append mode).
-// Phase 2: general omni-search with rotating popular queries.
-const GENERAL_SEARCH_QUERIES = ['popular', 'roblox', 'games', 'new', 'fun', 'top', 'best', 'free', 'pvp', 'tycoon', 'obby', 'simulator', 'adventure', 'roleplay', 'action', 'survival', 'horror', 'parkour', 'boss', 'anime'];
-let generalSearchIndex = 0;
-let generalSearchToken = null;
-let generalLoadingMore = false;
-let generalRequestId = 0;
-
-function markDiscoverySortUsed(sortId) {
-  const acc = discoveryCatalog.__accumulated || { savedAt: Date.now(), items: [] };
-  acc.usedSorts = [...new Set([...(acc.usedSorts || []), String(sortId)])];
-  discoveryCatalog = { ...discoveryCatalog, __accumulated: acc };
-}
-
-function allDiscoverySortsUsed() {
-  const sorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
-  const used = discoveryCatalog.__accumulated?.usedSorts || [];
-  return sorts.every((sort) => used.includes(sort.id));
-}
-
-async function startGeneralSearchFallback() {
-  const acc = discoveryCatalog.__accumulated || { savedAt: Date.now(), items: [] };
-  acc.searchFallbackStarted = true;
-  discoveryCatalog = { ...discoveryCatalog, __accumulated: acc };
-  await appendGeneralSearch();
-}
-
-async function appendGeneralSearch() {
-  const requestId = ++generalRequestId;
-  generalLoadingMore = true;
-  discoveryStatus = 'loading-more';
-  renderPage();
-  try {
-    if (!window.vortexDesktop?.searchGames) throw new Error('desktop only');
-    const query = GENERAL_SEARCH_QUERIES[generalSearchIndex % GENERAL_SEARCH_QUERIES.length];
-    const response = await window.vortexDesktop.searchGames({
-      query,
-      pageToken: generalSearchToken
-    });
-    if (requestId !== generalRequestId) return;
-    const received = (response.items || []).map((game) => normalizeDiscoveredGame(game, query));
-    const acc = discoveryCatalog.__accumulated || { savedAt: Date.now(), items: [] };
-    const knownIds = new Set(acc.items.map((game) => String(game.id)));
-    const newItems = received.filter((game) => !knownIds.has(String(game.id)));
-    if (!newItems.length && !response.nextPageToken) {
-      // This query is exhausted: rotate to the next one and retry once.
-      generalSearchIndex += 1;
-      generalSearchToken = null;
-      generalLoadingMore = false;
-      if (generalSearchIndex < GENERAL_SEARCH_QUERIES.length * 3) { appendGeneralSearch(); return; }
-    }
-    acc.items = [...acc.items, ...newItems];
-    discoveryCatalog = { ...discoveryCatalog, __accumulated: acc };
-    generalSearchToken = response.nextPageToken || null;
-    if (!generalSearchToken) { generalSearchIndex += 1; generalSearchToken = null; }
-    generalLoadingMore = false;
-    discoveryStatus = 'success';
-    renderPage();
-  } catch {
-    if (requestId !== generalRequestId) return;
-    generalLoadingMore = false;
-    discoveryStatus = 'error';
-    renderPage();
-  }
-}
-
-// Loading is strictly manual: the "Показать ещё" button is the only trigger.
-// No scroll listeners — the page never refreshes on its own.
-function renderRecent() {
-  const list = uniqueRecentIds(recentGames).map(getGame).filter(Boolean);
-  return `${pageHeading(t('page.recent.eyebrow'), t('page.recent.title'), t('page.recent.description'))}
-    ${collectionTabs('recent')}
-    ${renderGrid(list, t('empty.recent.title'), t('empty.recent.body'), 'catalog')}`;
-}
-
 function activityDateKey(timestamp = Date.now()) {
   const date = new Date(timestamp);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -2442,16 +2063,15 @@ function renderActivity() {
     const progress = Math.min(100, Math.round(Number(seconds) / threshold * 100));
     return `<div class="activity-game-row"><span class="activity-game-icon">${game?.thumbnail ? `<img src="${escapeHtml(safeThumbnail(game.thumbnail))}" alt="" />` : icon('gamepad', 16)}</span><span class="activity-game-copy"><strong>${escapeHtml(title)}</strong><small>${formatActivityMinutes(seconds)} / ${ACTIVITY_GAME_MINUTES}${t('time.minutes')}</small></span><span class="activity-game-progress"><i style="--progress:${progress}%"></i></span><span class="activity-game-check ${Number(seconds) >= threshold ? 'is-complete' : ''}">${Number(seconds) >= threshold ? icon('check', 13) : `${progress}%`}</span></div>`;
   }).join('') : `<div class="activity-empty-note">${icon('gamepad', 16)}<span>${t('activity.emptyGames')}</span></div>`;
-  return `${pageHeading(t('page.activity.eyebrow'), t('page.activity.title'), t('page.activity.description'))}
+  return `
     ${activityData.legacyTime ? `<p class="activity-clock-note">${icon('history', 15)} ${t('activity.clock.repaired')}</p>` : ''}
     <section class="activity-hero"><div class="activity-hero-copy"><span class="activity-eyebrow">${icon('sparkle', 13)} ${t('activity.today')}</span><h2>${completed ? t('activity.goalComplete') : t('activity.goalTitle')}</h2><p>${t('activity.goalBody', { games: ACTIVITY_DAILY_GAMES, minutes: ACTIVITY_GAME_MINUTES })}</p><div class="activity-goal-track"><i style="--progress:${Math.min(100, Math.round(qualified.length / ACTIVITY_DAILY_GAMES * 100))}%"></i></div><small>${t('activity.gamesProgress', { done: Math.min(ACTIVITY_DAILY_GAMES, qualified.length), total: ACTIVITY_DAILY_GAMES })}</small></div>${renderStreak(currentStreak)}</section>
     ${activityRecoveryAvailable() ? `<section class="activity-recovery"><span>${icon('refreshCw', 16)} ${t('activity.recoveryHint')}</span><button class="ghost-button" data-action="restore-activity-streak">${t('activity.recoveryAction')}</button></section>` : ''}
     <div class="activity-overview">
       <section class="settings-card" id="activity-calendar">${activityCalendarContent(today)}</section>
-      <section class="settings-card" id="activity-summary">${activitySummaryContent(today)}</section>
+      <section class="settings-card" id="activity-summary">${activitySummaryContent()}</section>
     </div>
-    <div class="activity-dashboard-grid">${renderSessionJournal()}<section class="settings-card activity-daily-card"><div class="settings-card-head"><div><h2>${t('activity.dailyTitle')}</h2><p>${t('activity.dailyBody')}</p></div>${icon('crosshair', 18)}</div><div class="activity-game-list">${gameRows}</div></section></div>
-    ${renderAchievements(metrics)}`;
+    <section class="settings-card activity-daily-card"><div class="settings-card-head"><div><h2>${t('activity.dailyTitle')}</h2><p>${t('activity.dailyBody')}</p></div>${icon('crosshair', 18)}</div><div class="activity-game-list">${gameRows}</div></section>`;
 }
 
 const PLANS_STAGE_LABELS = { research: 'plans.filter.research', design: 'plans.filter.design', dev: 'plans.filter.dev', idea: 'plans.filter.idea' };
@@ -2486,13 +2106,14 @@ async function loadRoadmap() {
   } catch { /* The bundled site/plans.json remains available when offline. */ }
 }
 
+const settingsTabsList = [
+  ['home', 'board'], ['accent', 'palette'], ['cards', 'cards'], ['effects', 'wand'],
+  ['interface', 'panels'], ['general', 'slidersHorizontal'], ['integrations', 'plug'],
+  ['tray', 'tray'], ['data', 'database'], ['version', 'package']
+];
+
 function settingsTabs() {
-  const tabs = [
-    ['home', 'home'], ['accent', 'palette'], ['cards', 'layout'], ['effects', 'motion'],
-    ['interface', 'monitor'], ['general', 'settings'], ['integrations', 'sparkles'],
-    ['tray', 'tray'], ['data', 'database'], ['version', 'refreshCw']
-  ];
-  return `<nav class="settings-tabs" aria-label="${t('settings.tabNavigation')}">${tabs.map(([key, iconName]) => `<button class="settings-tab ${preferences.settingsTab === key ? 'active' : ''}" data-settings-tab="${key}" ${preferences.settingsTab === key ? 'aria-current="page"' : ''}><span>${icon(iconName)}</span>${t(`settings.tab.${key}`)}</button>`).join('')}</nav>`;
+  return `<nav class="settings-tabs" aria-label="${t('settings.tabNavigation')}">${settingsTabsList.map(([key, glyph]) => `<button class="settings-tab ${preferences.settingsTab === key ? 'active' : ''}" data-settings-tab="${key}" ${preferences.settingsTab === key ? 'aria-current="page"' : ''}><span class="settings-tab-glyph">${icon(glyph, 14)}</span>${t(`settings.tab.${key}`)}</button>`).join('')}</nav>`;
 }
 
 function renderHomeSettings() {
@@ -2510,31 +2131,32 @@ function renderHomeSettings() {
         ${badge(t('settings.home.forBanner'), 'banner-pick', featuredId === id)}
         ${badge(t('settings.home.forPicks'), 'picks-pick', picksIds.has(id))}
       </span>
-      <button class="ghost-button custom-game-remove" data-remove-custom="${escapeHtml(id)}" aria-label="${t('settings.home.remove')}">${icon('close', 12)}</button>
+      <button class="control-button control-button-icon control-button-quiet custom-game-remove" data-remove-custom="${escapeHtml(id)}" aria-label="${t('settings.home.remove')}">${icon('trash', 14)}</button>
     </div>`;
   };
   const customList = customGames.length
     ? `<div class="home-game-options home-game-options-list">${customGames.map(optionRow).join('')}</div>`
     : `<p class="catalog-disclaimer">${t('settings.home.customEmpty')}</p>`;
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.home.title')}</h2><p>${t('settings.home.body')}</p></div>${icon('home', 18)}</div>
-      <label class="home-greeting-field"><span>${t('settings.home.greeting')}</span><input type="text" maxlength="48" value="${escapeHtml(preferences.homeGreeting)}" placeholder="${t('settings.home.greetingHint')}" data-home-greeting /></label>
+      <label class="home-greeting-field"><span>${t('settings.home.greeting')}</span><input class="control-field" type="text" maxlength="48" value="${escapeHtml(preferences.homeGreeting)}" placeholder="${t('settings.home.greetingHint')}" data-home-greeting /></label>
       <div class="setting-line home-featured-head"><div class="setting-label"><strong>${t('settings.home.customTitle')}</strong><small>${t('settings.home.customBody')}</small></div></div>
       <div class="custom-game-form">
         <span class="game-search-field">
           <span class="game-search-icon">${icon('search', 14)}</span>
-          <input type="text" maxlength="100" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="game-search-results" placeholder="${t('settings.home.searchHint')}" data-game-search />
+          <input class="control-field" type="text" maxlength="100" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="game-search-results" aria-label="${t('settings.home.searchHint')}" placeholder="${t('settings.home.searchHint')}" data-game-search />
           <div class="game-search-results" id="game-search-results" role="listbox" hidden></div>
         </span>
-        <button class="primary-button" data-add-custom>${icon('plus', 14)} ${t('settings.home.add')}</button>
+        <button class="control-button control-button-primary" data-add-custom>${icon('gamePlus', 15)} ${t('settings.home.add')}</button>
       </div>
       <p class="custom-game-status" data-custom-status></p>
       ${customList}
       <div class="setting-line home-setting-line"><div class="setting-label"><strong>${t('settings.home.gameCount')}</strong></div><div class="segmented">${[4, 6, 8].map((count) => `<button class="segment ${Number(preferences.homeGameCount) === count ? 'active' : ''}" data-pref="homeGameCount" data-value="${count}" data-preview="homeCount:${count}" data-preview-label="${escapeHtml(t('settings.home.gameCount'))}">${count}</button>`).join('')}</div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.gameView')}</strong><small>${t('settings.home.gameViewHint')}</small></div>${renderGameViewSwitch('homeGameView', 'settings.home.gameView', '', true)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.layout')}</strong><small>${t('settings.home.layoutBody')}</small></div><div class="segmented">${[['balanced', t('settings.home.layoutBalanced')], ['spotlight', t('settings.home.layoutSpotlight')], ['library', t('settings.home.layoutLibrary')]].map(([value, label]) => `<button class="segment ${preferences.homeLayout === value ? 'active' : ''}" data-pref="homeLayout" data-value="${value}" ${previewAttr('homeLayout', value, label)}>${label}</button>`).join('')}</div></div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.home.sections')}</h2><p>${t('settings.home.sectionsBody')}</p></div>${icon('layout', 18)}</div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.home.sections')}</h2><p>${t('settings.home.sectionsBody')}</p></div>${icon('board', 18)}</div>
       <p class="ui-section-title">${t('home.widgets.orderTitle')}</p>
-      <div class="ui-list home-widget-list" data-ui-order data-home-widget-config>
+      <div class="ui-list home-widget-list" role="list" data-ui-order data-home-widget-config>
         ${homeWidgetOrder().map((key, index) => {
           const widget = HOME_WIDGETS.find((w) => w.key === key);
           if (!widget) return '';
@@ -2544,19 +2166,19 @@ function renderHomeSettings() {
             <span class="ui-row-copy"><strong>${t(widget.titleKey)}</strong><small>${t(widget.bodyKey)}</small></span>
             <button class="ui-row-handle" data-widget-move="${key}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="${t('settings.ui.moveUp')}">${icon('navUp', 12)}</button>
             <button class="ui-row-handle" data-widget-move="${key}" data-direction="1" ${index === homeWidgetOrder().length - 1 ? 'disabled' : ''} aria-label="${t('settings.ui.moveDown')}">${icon('navDown', 12)}</button>
-            <button class="toggle" role="switch" aria-checked="${homeWidgetVisible(key)}" data-widget-visible-toggle="${key}" aria-label="${t('home.widgets.visibility')}" title="${t('home.widgets.visibility')}"></button>
+            <button class="toggle" role="switch" aria-checked="${homeWidgetVisible(key)}" data-widget-visible-toggle="${key}" aria-label="${t('home.widgets.visibility')}" data-tooltip="${t('home.widgets.visibility')}"></button>
           </div>`;
         }).join('')}
       </div>
-      <button class="text-button theme-reset" data-action="reset-home-widgets">${t('home.widgets.reset')}</button>
+      <button class="control-button control-button-quiet" data-action="reset-home-widgets">${icon('rotate', 14)} ${t('home.widgets.reset')}</button>
       <p class="catalog-disclaimer">${t('settings.home.hint')}</p>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.home.textTitle')}</h2><p>${t('settings.home.textBody')}</p></div>${icon('tag', 18)}</div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.home.textTitle')}</h2><p>${t('settings.home.textBody')}</p></div>${icon('textSize', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.home.textScale')}</strong><small>${t('settings.home.textScaleHint')}</small></div><label class="range-control"><input type="range" min="0.8" max="1.6" step="0.05" value="${preferences.homeSectionScale || 1}" data-home-section-scale /><span class="range-value" data-home-section-scale-value>${Math.round((preferences.homeSectionScale || 1) * 100)}%</span></label></div>
       <div class="section-title-fields">
-        ${HOME_WIDGETS.filter((widget) => widget.key !== 'hero').map((widget) => `<label class="home-greeting-field section-title-field"><span>${t(widget.titleKey)}</span><input type="text" maxlength="36" value="${escapeHtml((preferences.homeSectionTitles && preferences.homeSectionTitles[widget.key]) || '')}" placeholder="${t(widget.titleKey)}" data-widget-title="${widget.key}" /></label>`).join('')}
+        ${HOME_WIDGETS.filter((widget) => widget.key !== 'hero').map((widget) => `<label class="home-greeting-field section-title-field"><span>${t(widget.titleKey)}</span><input class="control-field" type="text" maxlength="36" value="${escapeHtml((preferences.homeSectionTitles && preferences.homeSectionTitles[widget.key]) || '')}" placeholder="${t(widget.titleKey)}" data-widget-title="${widget.key}" /></label>`).join('')}
       </div>
-      <button class="text-button theme-reset" data-action="reset-section-titles">${t('settings.home.resetTitles')}</button>
+      <button class="control-button control-button-quiet" data-action="reset-section-titles">${icon('rotate', 14)} ${t('settings.home.resetTitles')}</button>
     </section>`;
 }
 
@@ -2811,12 +2433,16 @@ function renderAccentSettings() {
       <div class="theme-color-tuners">${renderColorTuner('themeText', displayText, t('settings.themeText'))}${renderColorTuner('themeMuted', displayMuted, t('settings.themeMuted'))}${renderColorTuner('themeLine', displayLine, t('settings.themeLine'))}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.theme.glass')}</strong><small>${t('settings.theme.glassHint')}</small></div><label class="range-control"><input type="range" min="0" max="100" value="${preferences.glassStrength}" data-glass-strength /><span class="range-value" data-glass-strength-value>${preferences.glassStrength}%</span></label></div>
        <div class="setting-line"><div class="setting-label"><strong>${t('settings.theme.schedule')}</strong><small>${t('settings.theme.scheduleHint')}</small></div><div class="segmented">${[['manual',t('settings.theme.scheduleManual')],['system',t('settings.theme.scheduleSystem')],['clock',t('settings.theme.scheduleClock')]].map(([v,l])=>`<button class="segment ${preferences.themeSchedule===v?'active':''}" data-pref="themeSchedule" data-value="${v}">${l}</button>`).join('')}</div></div>
-       <div class="theme-io"><button class="ghost-button" data-action="export-theme">${t('settings.themeExport')}</button><button class="ghost-button" data-action="import-theme">${t('settings.themeImport')}</button><input type="file" accept=".json,application/json" data-theme-file hidden /></div>
-      <button class="text-button theme-reset" data-action="reset-theme-colors">${t('settings.themeReset')}</button>
+      <div class="theme-io">
+        <button class="control-button" data-action="export-theme">${icon('fileDown', 14)} ${t('settings.themeExport')}</button>
+        <button class="control-button" data-action="import-theme">${icon('fileUp', 14)} ${t('settings.themeImport')}</button>
+        <input type="file" accept=".json,application/json" data-theme-file hidden />
+        <button class="control-button control-button-quiet" data-action="reset-theme-colors">${icon('rotate', 14)} ${t('settings.themeReset')}</button>
+      </div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.accent.title')}</h2><p>${t('settings.accent.body')}</p></div>${icon('palette', 18)}</div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.accent.title')}</h2><p>${t('settings.accent.body')}</p></div>${icon('drop', 18)}</div>
       ${renderAccentWindowPreview()}
-      <div class="palette-row">${palettes.map((palette) => `<button class="palette-option ${preferences.accent.toLowerCase() === palette.color ? 'active' : ''}" aria-pressed="${preferences.accent.toLowerCase() === palette.color}" title="${escapeHtml(t(`palette.${palette.key}`))}" aria-label="${escapeHtml(t(`palette.${palette.key}`))}" data-accent="${palette.color}" ${previewAttr('accent', palette.color, t(`palette.${palette.key}`))}><span class="palette-swatch" style="background:${palette.color};color:${palette.color}"></span></button>`).join('')}</div>
+      <div class="palette-row">${palettes.map((palette) => `<button class="palette-option ${preferences.accent.toLowerCase() === palette.color ? 'active' : ''}" aria-pressed="${preferences.accent.toLowerCase() === palette.color}" data-tooltip="${escapeHtml(t(`palette.${palette.key}`))}" aria-label="${escapeHtml(t(`palette.${palette.key}`))}" data-accent="${palette.color}" ${previewAttr('accent', palette.color, t(`palette.${palette.key}`))}><span class="palette-swatch" style="background:${palette.color};color:${palette.color}"></span></button>`).join('')}</div>
       ${renderColorTuner('accent', preferences.accent, t('settings.customColor'))}
       <div class="setting-line accent-mode-line"><div class="setting-label"><strong>${t('settings.accentMode')}</strong></div><div class="segmented"><button class="segment ${preferences.accentMode === 'solid' ? 'active' : ''}" data-pref="accentMode" data-value="solid">${t('settings.solid')}</button><button class="segment ${preferences.accentMode === 'gradient' ? 'active' : ''}" data-pref="accentMode" data-value="gradient">${t('settings.gradient')}</button></div></div>
       ${preferences.accentMode === 'gradient' ? `<div class="gradient-options">${renderColorTuner('accentSecondary', preferences.accentSecondary, t('settings.gradientEnd'))}<label class="gradient-angle"><span>${t('settings.gradientAngle')}</span><input type="range" min="0" max="360" value="${preferences.gradientAngle}" data-setting="gradientAngle" /><output id="gradient-angle-value">${preferences.gradientAngle}°</output></label><div class="gradient-preview" aria-hidden="true"></div></div>` : ''}
@@ -2828,10 +2454,10 @@ function renderWallpaperCard() {
   // Native components throughout: setting-line rows, range-control sliders,
   // button.toggle switches — identical to every other settings section.
   const hasWallpaper = Boolean(preferences.themeWallpaper);
-  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.wallpaper.title')}</h2><p>${t('settings.wallpaper.body')}</p></div>${icon('palette', 18)}</div>
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.wallpaper.title')}</h2><p>${t('settings.wallpaper.body')}</p></div>${icon('image', 18)}</div>
       <input type="file" accept="image/*" data-wallpaper-file hidden />
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.pick')}</strong><small>${hasWallpaper ? t('settings.wallpaper.removeHint') : t('settings.wallpaper.pickHint')}</small></div>
-        <span class="data-actions"><button class="ghost-button" data-action="pick-wallpaper">${icon('upload', 13)} ${t('settings.wallpaper.pick')}</button>${hasWallpaper ? ` <button class="ghost-button" data-action="remove-wallpaper">${icon('close', 13)} ${t('settings.wallpaper.remove')}</button>` : ''}</span></div>
+        <span class="data-actions wallpaper-actions"><button class="control-button" data-action="pick-wallpaper">${icon('upload', 14)} ${t('settings.wallpaper.pick')}</button>${hasWallpaper ? `<button class="control-button control-button-quiet" data-action="remove-wallpaper">${icon('close', 14)} ${t('settings.wallpaper.remove')}</button>` : ''}</span></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.blur')}</strong><small>${t('settings.wallpaper.blurHint')}</small></div><label class="range-control"><input type="range" min="0" max="40" value="${preferences.themeWallpaperBlur}" data-wallpaper-blur ${hasWallpaper ? '' : 'disabled'} /><span class="range-value" data-wallpaper-blur-value>${preferences.themeWallpaperBlur}px</span></label></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.dim')}</strong><small>${t('settings.wallpaper.dimHint')}</small></div><label class="range-control"><input type="range" min="0" max="90" value="${preferences.themeWallpaperDim}" data-wallpaper-dim ${hasWallpaper ? '' : 'disabled'} /><span class="range-value" data-wallpaper-dim-value>${preferences.themeWallpaperDim}%</span></label></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.wallpaper.grain')}</strong><small>${t('settings.wallpaper.grainHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.themeGrain}" data-wallpaper-grain-toggle aria-label="${t('settings.wallpaper.grain')}"></button></div>
@@ -2854,15 +2480,15 @@ function renderCardSettings() {
       ${cardFlag('cardShowPlaytime', 'settings.cardTuning.playtime', 'settings.cardTuning.playtimeHint')}
       ${cardFlag('cardShowGenre', 'settings.cardTuning.genre', 'settings.cardTuning.genreHint')}
   </section>
-  <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.catalog.title')}</h2><p>${t('settings.catalog.body')}</p></div>${icon('layout', 18)}</div>
+  <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.catalog.title')}</h2><p>${t('settings.catalog.body')}</p></div>${icon('catalog', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.catalog.groupByGenre')}</strong><small>${t('settings.catalog.groupByGenreBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.catalogGroupByGenre}" data-toggle="catalogGroupByGenre" aria-label="${t('settings.catalog.groupByGenre')}"></button></div>
-      <div class="setting-line"><div class="setting-label"><strong>${t('settings.catalog.defaultView')}</strong><small>${t('settings.catalog.defaultViewBody')}</small></div><div class="segmented"><button class="segment ${preferences.catalogView === 'grid' ? 'active' : ''}" data-pref="catalogView" data-value="grid" ${previewAttr('catalogView','grid',t('catalog.gridView'))}>${t('catalog.gridView')}</button><button class="segment ${preferences.catalogView === 'list' ? 'active' : ''}" data-pref="catalogView" data-value="list" ${previewAttr('catalogView','list',t('catalog.listView'))}>${t('catalog.listView')}</button></div></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.catalog.defaultView')}</strong><small>${t('settings.catalog.defaultViewBody')}</small></div>${renderGameViewSwitch('catalogView', 'settings.catalog.defaultView', '', true)}</div>
   </section>
   </div><div class="settings-column">${renderCardPreviewSettings()}</div>`;
 }
 
 function renderCardPreviewSettings() {
-  return `<section class="settings-card settings-preview-card"><div class="settings-card-head"><div><h2>${t('settings.cardPreview.title')}</h2><p>${t('settings.cardPreview.body')}</p></div>${icon('gamepad', 18)}</div>
+  return `<section class="settings-card settings-preview-card"><div class="settings-card-head"><div><h2>${t('settings.cardPreview.title')}</h2><p>${t('settings.cardPreview.body')}</p></div>${icon('eye', 18)}</div>
       <div class="card-tuning-preview">
         <article class="game-card preview-card" style="--game-color: var(--accent)">
           <div class="game-cover art-live"><span class="cover-shine"></span></div>
@@ -2975,7 +2601,7 @@ function previewMarkup(type, value, label, detail = '') {
     const art = {
       hero: '<span class="sample-hero"><b></b><i></i></span>',
       playstats: '<span class="sample-bars"><i></i><i></i><i></i></span>',
-      favorites: '<span class="sample-favorites">' + [0,1,2].map(() => '<i>' + icon('heart', 11) + '</i>').join('') + '</span>',
+      favorites: '<span class="sample-favorites">' + [0,1,2].map(() => '<i>' + icon('star', 11) + '</i>').join('') + '</span>',
       recent: '<span class="sample-recent">' + icon('clock', 15) + '<i></i><i></i></span>',
       picks: '<span class="sample-picks">' + '<i></i>'.repeat(6) + '</span>'
     };
@@ -3047,7 +2673,7 @@ function hideHoverPreview() {
 }
 
 function showHoverPreview(target) {
-  if (!target?.isConnected) return;
+  if (!preferences.uiTooltips || !target?.isConnected) return;
   window.clearTimeout(previewHideTimer);
   const [type, value = '', detail = ''] = String(target.dataset.preview || '').split(':');
   const label = target.dataset.previewLabel || target.textContent.trim();
@@ -3138,30 +2764,29 @@ function renderEffectSettings() {
 function renderInterfaceSettings() {
   const navGroup = (group, titleKey) => {
     const order = navOrder(group);
-    const horizontal = group === 'topbar';
     const rows = order.map((key, index) => {
       const item = NAV_ITEMS.find((entry) => entry.key === key);
       if (!item) return '';
       return `<div class="ui-row" data-ui-row="${key}" data-ui-drag="${key}" role="listitem" tabindex="0" aria-roledescription="${t('settings.ui.dragHint')}">
         <span class="ui-row-grip" aria-hidden="true">${icon('grip', 14)}</span>
         <span class="ui-row-icon" data-icon="${item.icon}"></span>
-        <span class="ui-row-copy"><strong>${t(`nav.${item.key}`)}</strong><small>${t(titleKey)}</small></span>
-        <button class="ui-row-handle" data-ui-move="${key}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="${t(horizontal ? 'settings.ui.moveLeft' : 'settings.ui.moveUp')}">${icon(horizontal ? 'arrowLeft' : 'navUp', 12)}</button>
-        <button class="ui-row-handle" data-ui-move="${key}" data-direction="1" ${index === order.length - 1 ? 'disabled' : ''} aria-label="${t(horizontal ? 'settings.ui.moveRight' : 'settings.ui.moveDown')}">${icon(horizontal ? 'arrow' : 'navDown', 12)}</button>
+        <span class="ui-row-copy"><strong>${t(`nav.${item.key}`)}</strong></span>
+        <button class="ui-row-handle" data-ui-move="${key}" data-direction="-1" ${index === 0 ? 'disabled' : ''} aria-label="${t('settings.ui.moveUp')}">${icon('navUp', 12)}</button>
+        <button class="ui-row-handle" data-ui-move="${key}" data-direction="1" ${index === order.length - 1 ? 'disabled' : ''} aria-label="${t('settings.ui.moveDown')}">${icon('navDown', 12)}</button>
       </div>`;
     }).join('');
-    return `<p class="ui-section-title">${t(titleKey)}</p><div class="ui-list ${horizontal ? 'ui-list-horizontal' : ''}" data-ui-order data-nav-order-group="${group}">${rows}</div>`;
+    return `<section class="nav-order-group"><h3 class="ui-section-title">${t(titleKey)}</h3>
+      <div class="ui-list" role="list" aria-label="${t(titleKey)}" data-ui-order data-nav-order-group="${group}">${rows}</div></section>`;
   };
   const partToggle = (pref, titleKey, bodyKey) => `<div class="setting-line"><div class="setting-label"><strong>${t(titleKey)}</strong><small>${t(bodyKey)}</small></div><button class="toggle" role="switch" aria-checked="${preferences[pref]}" data-toggle="${pref}" data-preview="uiPart:${pref}:${preferences[pref] ? 'off' : 'on'}" data-preview-label="${escapeHtml(t(titleKey))}" aria-label="${t(titleKey)}"></button></div>`;
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.language.title')}</h2><p>${t('settings.language.body')}</p></div>${icon('message', 18)}</div>
       <div class="segmented language-segmented"><button class="segment ${preferences.language === 'ru' ? 'active' : ''}" data-pref="language" data-value="ru">${t('settings.language.ru')}</button><button class="segment ${preferences.language === 'en' ? 'active' : ''}" data-pref="language" data-value="en">${t('settings.language.en')}</button></div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.ui.navTitle')}</h2><p>${t('settings.ui.navBody')}</p></div>${icon('layout', 18)}</div>
-      ${navGroup('topbar', 'settings.ui.group.topbar')}
-      ${navGroup('menu', 'settings.ui.group.menu')}
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.ui.navTitle')}</h2><p>${t('settings.ui.navBody')}</p></div>${icon('panels', 18)}</div>
+      <div class="nav-order-columns">${navGroup('topbar', 'settings.ui.group.topbar')}${navGroup('menu', 'settings.ui.group.menu')}</div>
       <p class="catalog-disclaimer">${t('settings.ui.bottomFixed')}</p>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.ui.partsTitle')}</h2><p>${t('settings.ui.partsBody')}</p></div>${icon('sliders', 18)}</div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.ui.partsTitle')}</h2><p>${t('settings.ui.partsBody')}</p></div>${icon('slidersHorizontal', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.ui.font')}</strong><small>${t('settings.ui.fontHint')}</small></div><div class="segmented">${[['modern',t('settings.ui.fontModern')],['classic',t('settings.ui.fontClassic')]].map(([v,l])=>`<button class="segment ${preferences.uiFont===v?'active':''}" data-pref="uiFont" data-value="${v}" ${previewAttr('uiFont',v,l)}>${l}</button>`).join('')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.ui.autoHide')}</strong><small>${t('settings.ui.autoHideHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.sidebarAutoHide}" data-pref-toggle="sidebarAutoHide" data-preview="uiPart:sidebarAutoHide:${preferences.sidebarAutoHide ? 'off' : 'on'}" data-preview-label="${escapeHtml(t('settings.ui.autoHide'))}" aria-label="${t('settings.ui.autoHide')}"></button></div>
 
@@ -3171,14 +2796,16 @@ function renderInterfaceSettings() {
       ${partToggle('uiBreadcrumb', 'settings.ui.breadcrumb', 'settings.ui.breadcrumbBody')}
       ${partToggle('uiNotifications', 'settings.ui.notifications', 'settings.ui.notificationsBody')}
       <p class="ui-section-title">${t('settings.ui.other')}</p>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.ui.tooltips')}</strong><small>${t('settings.ui.tooltipsBody')}</small></div>
+        <button class="toggle" type="button" role="switch" aria-checked="${preferences.uiTooltips}" data-toggle="uiTooltips" aria-label="${t('settings.ui.tooltips')}"></button></div>
       ${partToggle('uiUpdateBanner', 'settings.ui.updateBanner', 'settings.ui.updateBannerBody')}
       <button class="text-button theme-reset" data-action="reset-interface">${t('settings.ui.reset')}</button>
     </section>
 
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.hotkeys.title')}</h2><p>${t('settings.hotkeys.body')}</p></div>${icon('keyboard', 18)}</div>
-      <div class="hotkey-list">${HOTKEY_ACTIONS.map((action) => `<div class="hotkey-row"><span>${t(action.label)}</span><button class="hotkey-recorder" data-record-hotkey="${action.id}" aria-label="${t('settings.hotkeys.record')}">${formatHotkey(hotkeyCombo(action.id))}</button></div>`).join('')}</div>
-      <div class="data-actions"><button class="ghost-button" data-action="reset-hotkeys">${icon('refreshCw', 13)} ${t('settings.hotkeys.reset')}</button></div>
-      <p class="catalog-disclaimer">${t('settings.hotkeys.hint')}</p>
+      <div class="hotkey-list">${HOTKEY_ACTIONS.map((action) => `<div class="hotkey-row"><span id="hotkey-label-${action.id}">${t(action.label)}</span><button class="hotkey-recorder" id="hotkey-key-${action.id}" data-record-hotkey="${action.id}" aria-labelledby="hotkey-label-${action.id} hotkey-key-${action.id}">${formatHotkey(hotkeyCombo(action.id))}</button></div>`).join('')}</div>
+      <div class="settings-action-line"><p class="catalog-disclaimer">${t('settings.hotkeys.hint')}</p>
+        <button class="control-button control-button-quiet" data-action="reset-hotkeys">${icon('rotate', 14)} ${t('settings.hotkeys.reset')}</button></div>
     </section>`;
 }
 
@@ -3230,7 +2857,6 @@ function startUiDrag(event, row) {
   uiDrag = {
     row,
     list,
-    horizontal: list.classList.contains('ui-list-horizontal'),
     started: false,
     pointerId: event.pointerId,
     pointerX: event.clientX,
@@ -3255,10 +2881,7 @@ document.addEventListener('pointermove', (event) => {
   let anchor = null;
   for (const item of rows) {
     const rect = item.getBoundingClientRect();
-    const before = uiDrag.horizontal
-      ? event.clientX < rect.left + rect.width / 2
-      : event.clientY < rect.top + rect.height / 2;
-    if (before) { anchor = item; break; }
+    if (event.clientY < rect.top + rect.height / 2) { anchor = item; break; }
   }
   if (anchor) {
     if (uiDrag.row.nextElementSibling !== anchor) uiDrag.list.insertBefore(uiDrag.row, anchor);
@@ -3375,17 +2998,17 @@ function renderUpdateSettings() {
   const checking = status === 'checking';
   const downloading = status === 'downloading';
   const installReady = status === 'downloaded';
-  const downloadingButton = downloading ? `<button class="ghost-button update-download-button" disabled>${icon('download', 13)} ${t('updates.downloading', { percent: progress })}</button>` : '';
-  const primaryUpdateAction = status === 'available' ? `<button class="primary-button" data-action="download-update">${icon('download', 13)} ${t('updates.downloadNow')}</button>`
-    : installReady ? `<button class="primary-button" data-action="install-update">${icon('check', 13)} ${t('updates.installNow')}</button>`
+  const downloadingButton = downloading ? `<button class="control-button update-download-button" disabled>${icon('download', 13)} ${t('updates.downloading', { percent: progress })}</button>` : '';
+  const primaryUpdateAction = status === 'available' ? `<button class="control-button control-button-primary" data-action="download-update">${icon('download', 13)} ${t('updates.downloadNow')}</button>`
+    : installReady ? `<button class="control-button control-button-primary" data-action="install-update">${icon('check', 13)} ${t('updates.installNow')}</button>`
       : downloadingButton;
-  return `<section class="settings-card update-settings-card" id="update-settings-card" data-update-status="${escapeHtml(status)}"><div class="settings-card-head"><div><h2>${t('updates.settingsTitle')}</h2><p>${t('updates.settingsBody')}</p></div>${icon('download', 18)}</div>
+  return `<section class="settings-card update-settings-card" id="update-settings-card" data-update-status="${escapeHtml(status)}"><div class="settings-card-head"><div><h2>${t('updates.settingsTitle')}</h2><p>${t('updates.settingsBody')}</p></div>${icon('package', 18)}</div>
     <div class="update-settings-preview"><div class="update-preview-art" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="update-preview-copy"><strong>${escapeHtml(version ? `Vortex ${version}` : t('updates.settingsTitle'))}</strong><small>${statusMessage}</small><span class="update-settings-progress"><i style="--progress:${visualProgress}%"></i></span></div></div>
-    <div class="update-settings-meta">
+    <div class="settings-action-line"><div class="update-settings-meta">
       <span><small>${t('updates.currentVersionLabel')}</small><strong>${escapeHtml(state.currentVersion || '—')}</strong></span>
       <span><small>${t('updates.lastCheckLabel')}</small><strong>${lastUpdateCheckAt ? escapeHtml(new Date(lastUpdateCheckAt).toLocaleString(preferences.language === 'en' ? 'en-US' : 'ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })) : '—'}</strong></span>
     </div>
-    <div class="update-settings-actions">${primaryUpdateAction}<button class="ghost-button update-retry-button" data-action="retry-update" ${checking || downloading || status === 'applying' ? 'disabled' : ''}>${icon('rotate', 13)} ${checking ? t('updates.checkingShort') : t('updates.checkNow')}</button>${status === 'available' && state.releaseUrl ? `<button class="subtle-button" data-action="open-update-release">${t('updates.openRelease')}</button>` : ''}</div>
+    <div class="update-settings-actions">${primaryUpdateAction}<button class="control-button update-retry-button" data-action="retry-update" ${checking || downloading || status === 'applying' ? 'disabled' : ''}>${icon('rotate', 13)} ${checking ? t('updates.checkingShort') : t('updates.checkNow')}</button>${status === 'available' && state.releaseUrl ? `<button class="control-button control-button-quiet" data-action="open-update-release">${t('updates.openRelease')}</button>` : ''}</div></div>
   </section>`;
 }
 
@@ -3396,12 +3019,12 @@ function renderAnnouncementSettings() {
       : announcementSource === 'builtin' ? t('notifications.local')
         : '—';
   return `<section class="settings-card" id="announcement-settings-card"><div class="settings-card-head"><div><h2>${t('notifications.settingsTitle')}</h2><p>${t('notifications.settingsBody')}</p></div>${icon('bell', 18)}</div>
-    <div class="update-settings-meta">
+    <div class="settings-action-line"><div class="update-settings-meta">
       <span><small>${t('notifications.totalLabel')}</small><strong>${announcementItems.length}</strong></span>
       <span><small>${t('notifications.unreadLabel')}</small><strong>${unread}</strong></span>
       <span><small>${t('notifications.sourceLabel')}</small><strong>${escapeHtml(sourceLabel)}</strong></span>
     </div>
-    <button class="ghost-button" data-action="refresh-announcements">${icon('rotate', 13)} ${t('notifications.refresh')}</button>
+    <button class="control-button" data-action="refresh-announcements">${icon('rotate', 13)} ${t('notifications.refresh')}</button></div>
   </section>`;
 }
 
@@ -3490,30 +3113,34 @@ async function checkApiStatus() {
 function renderGeneralSettings() {
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.friends.title')}</h2><p>${t('settings.friends.body')}</p></div>${icon('users', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.friends.username')}</strong><small>${t('settings.friends.usernameHint')}</small></div>
-        <span class="roblox-username-field"><input type="text" maxlength="20" autocomplete="off" placeholder="Roblox" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username /><button class="ghost-button" data-detect-username>${t('friends.detect')}</button><button class="primary-button" data-save-username>${t('common.save')}</button></span></div>
+        <span class="roblox-username-field"><input class="control-field" type="text" maxlength="20" autocomplete="off" placeholder="Roblox" aria-label="${t('settings.friends.username')}" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username />
+          <button class="control-button" data-detect-username>${icon('userScan', 15)} ${t('friends.detect')}</button>
+          <button class="control-button control-button-primary" data-save-username>${icon('userCheck', 15)} ${t('common.save')}</button></span></div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.history.title')}</h2><p>${t('settings.history.body')}</p></div>${icon('history', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.history.title')}</strong><small>${t('settings.history.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.saveHistory}" data-toggle="saveHistory" aria-label="${t('settings.history.title')}"></button></div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.profiles.title')}</h2><p>${t('settings.profiles.body')}</p></div>${icon('palette', 18)}</div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.profiles.title')}</h2><p>${t('settings.profiles.body')}</p></div>${icon('profileStack', 18)}</div>
       <div class="profile-actions">
-        <input type="text" maxlength="32" placeholder="${t('settings.profiles.namePlaceholder')}" data-profile-name />
-        <button class="primary-button" data-action="save-profile">${icon('check', 13)} ${t('settings.profiles.save')}</button>
-        <button class="ghost-button" data-action="export-profiles">${icon('fileDown', 13)} ${t('settings.profiles.export')}</button>
-        <button class="ghost-button" data-action="import-profiles">${icon('fileUp', 13)} ${t('settings.profiles.import')}</button>
-        <input type="file" accept=".json,application/json" data-profiles-file hidden />
+        <div class="profile-editor"><input class="control-field" type="text" maxlength="32" aria-label="${t('settings.profiles.namePlaceholder')}" placeholder="${t('settings.profiles.namePlaceholder')}" data-profile-name />
+          <button class="control-button control-button-primary" data-action="save-profile">${icon('saveProfile', 15)} ${t('settings.profiles.save')}</button></div>
+        <div class="data-actions">
+          <button class="control-button" data-action="export-profiles">${icon('fileDown', 14)} ${t('settings.profiles.export')}</button>
+          <button class="control-button" data-action="import-profiles">${icon('fileUp', 14)} ${t('settings.profiles.import')}</button>
+          <input type="file" accept=".json,application/json" data-profiles-file hidden />
+        </div>
       </div>
       <div class="profile-list">${Object.keys(readProfiles()).length ? Object.entries(readProfiles()).map(([name, profile]) => `
         <div class="profile-row">
           <span class="profile-copy"><strong>${escapeHtml(name)}</strong><small>${new Date(profile.savedAt || Date.now()).toLocaleDateString(preferences.language)}</small></span>
-          <button class="primary-button" data-apply-profile="${escapeHtml(name)}">${t('settings.profiles.apply')}</button>
-          <button class="ghost-button" data-overwrite-profile="${escapeHtml(name)}">${t('settings.profiles.overwrite')}</button>
-          <button class="ghost-button" data-remove-profile="${escapeHtml(name)}" aria-label="${t('settings.profiles.remove')}">${icon('close', 12)}</button>
+          <button class="control-button" data-apply-profile="${escapeHtml(name)}">${icon('check', 14)} ${t('settings.profiles.apply')}</button>
+          <button class="control-button control-button-quiet" data-overwrite-profile="${escapeHtml(name)}">${t('settings.profiles.overwrite')}</button>
+          <button class="control-button control-button-icon control-button-quiet" data-remove-profile="${escapeHtml(name)}" aria-label="${t('settings.profiles.remove')}">${icon('close', 14)}</button>
         </div>`).join('') : `<p class="catalog-disclaimer">${t('settings.profiles.empty')}</p>`}
       </div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.reset.title')}</h2><p>${t('settings.reset.body')}</p></div>${icon('slidersHorizontal', 18)}</div>
-      <button class="ghost-button" data-action="reset-appearance">${icon('motion', 13)} ${t('settings.resetButton')}</button>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.reset.title')}</h2><p>${t('settings.reset.body')}</p></div>${icon('rotate', 18)}</div>
+      <button class="control-button control-button-quiet" data-action="reset-appearance">${icon('rotate', 14)} ${t('settings.resetButton')}</button>
     </section>`;
 }
 
@@ -3538,7 +3165,7 @@ function renderTraySettings() {
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.scale')}</strong><small>${t('settings.tray.scaleBody')}</small></div><div class="segmented tray-scale-segmented">${[['compact', t('settings.tray.compact')], ['normal', t('settings.tray.normal')], ['large', t('settings.tray.large')]].map(([value, label]) => `<button class="segment ${preferences.trayScale === value ? 'active' : ''}" data-pref="trayScale" data-value="${value}">${label}</button>`).join('')}</div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.miniPlayer')}</strong><small>${t('settings.tray.miniPlayerBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.trayMiniPlayer}" data-toggle="trayMiniPlayer" aria-label="${t('settings.tray.miniPlayer')}"></button></div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.limitsTitle')}</h2><p>${t('settings.tray.limitsBody')}</p></div>${icon('tray', 18)}</div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.tray.limitsTitle')}</h2><p>${t('settings.tray.limitsBody')}</p></div>${icon('list', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.tray.favoriteLimit')}</strong><small>${t('settings.tray.limitHint')}</small></div>
         <div class="tray-limit-control">
           <label class="range-control"><input type="range" min="1" max="20" step="1" value="${preferences.trayFavoritesLimit}" data-tray-limit="trayFavoritesLimit" ${preferences.trayFavoritesUnlimited ? 'disabled' : ''} /><span class="range-value" data-tray-limit-value="trayFavoritesLimit">${preferences.trayFavoritesUnlimited ? '∞' : preferences.trayFavoritesLimit}</span></label>
@@ -3555,9 +3182,10 @@ function renderTraySettings() {
 }
 
 function renderIntegrationSettings() {
-  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.integrations.title')}</h2><p>${t('settings.integrations.body')}</p></div>${icon('sparkles', 18)}</div>
+  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.integrations.title')}</h2><p>${t('settings.integrations.body')}</p></div>${icon('discord', 18)}</div>
       <div class="setting-line discord-id-line"><div class="setting-label"><strong>${t('settings.integrations.discordClientId')}</strong><small>${t('settings.integrations.discordClientIdHint')}</small></div>
-        <span class="discord-id-field"><input type="text" inputmode="numeric" autocomplete="off" maxlength="22" placeholder="1536230039870505020" value="${escapeHtml(preferences.discordClientId || '')}" data-discord-client-id /><button class="ghost-button" data-action="save-discord-client">${icon('check', 13)} ${t('settings.integrations.discordSaveId')}</button></span></div>
+        <span class="discord-id-field"><input class="control-field" type="text" inputmode="numeric" autocomplete="off" maxlength="22" placeholder="1536230039870505020" aria-label="${t('settings.integrations.discordClientId')}" value="${escapeHtml(preferences.discordClientId || '')}" data-discord-client-id />
+          <button class="control-button control-button-primary" data-action="save-discord-client">${icon('idCard', 15)} ${t('settings.integrations.discordSaveId')}</button></span></div>
       <button class="discord-help-toggle" type="button" data-action="toggle-discord-help" aria-expanded="${discordHelpOpen}" aria-controls="discord-help-panel">${icon('chevronDown', 13)}<span>${t('settings.integrations.discordWhere')}</span></button>
       <div class="discord-help-panel ${discordHelpOpen ? 'is-open' : ''}" id="discord-help-panel">
         <div class="discord-help-inner">
@@ -3572,15 +3200,15 @@ function renderIntegrationSettings() {
       <p class="catalog-disclaimer discord-status" data-discord-status>${discordStatusText()}</p>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.integrations.friendAlerts')}</strong><small>${t('settings.integrations.friendAlertsBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.friendFavoriteAlerts}" data-toggle="friendFavoriteAlerts" aria-label="${t('settings.integrations.friendAlerts')}"></button></div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.presence.title')}</h2><p>${t('settings.presence.body')}</p></div>${icon('bell', 18)}</div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.presence.title')}</h2><p>${t('settings.presence.body')}</p></div>${icon('lock', 18)}</div>
       <div class="presence-form">
-        <label class="presence-label">${t('settings.presence.cookie')}</label>
-        <textarea rows="2" autocomplete="off" spellcheck="false" placeholder=".ROBLOSECURITY" data-presence-cookie></textarea>
+        <label class="presence-label" for="presence-cookie-input">${t('settings.presence.cookie')}</label>
+        <textarea class="control-field" id="presence-cookie-input" rows="2" autocomplete="off" spellcheck="false" placeholder=".ROBLOSECURITY" data-presence-cookie></textarea>
         <small class="presence-cookie-meter" data-presence-meter data-hint="${t('settings.presence.cookieHint')}"></small>
         <span class="presence-cookie-error" data-presence-error></span>
         <span class="presence-actions">
-          <button class="primary-button" data-save-presence>${t('common.save')}</button>
-          <button class="ghost-button" data-remove-presence>${t('settings.presence.disable')}</button>
+          <button class="control-button control-button-primary" data-save-presence>${icon('lock', 14)} ${t('common.save')}</button>
+          <button class="control-button control-button-quiet" data-remove-presence>${icon('close', 14)} ${t('settings.presence.disable')}</button>
         </span>
         <p class="presence-warning">${t('settings.presence.hint')}</p>
       </div>
@@ -3591,31 +3219,31 @@ function renderIntegrationSettings() {
 // Data tab: caches, size limits and the Roblox API health probe.
 function renderDataSettings() {
   return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.cache.title')}</h2><p>${t('settings.cache.body')}</p></div>${icon('database', 18)}</div>
-      <div class="update-settings-meta">
+      <div class="settings-action-line settings-action-line-cache"><div class="update-settings-meta">
         <span><small>${t('settings.cache.details')}</small><strong data-cache-size>${formatBytes(cacheFootprintBytes())}</strong></span>
         <span><small>${t('settings.cache.onlineHistory')}</small><strong data-history-size>${formatBytes(onlineHistoryBytes())}</strong></span>
       </div>
       <div class="data-actions">
-        <button class="ghost-button" data-action="clear-cache">${icon('trash', 13)} ${t('settings.cacheClear')}</button>
-        <button class="ghost-button" data-action="clear-api-cache">${icon('refreshCw', 13)} ${t('settings.cache.clearApi')}</button>
-        <button class="ghost-button" data-action="clear-history-cache">${icon('history', 13)} ${t('settings.cache.clearHistory')}</button>
-      </div>
+        <button class="control-button" data-action="clear-cache">${icon('trash', 14)} ${t('settings.cacheClear')}</button>
+        <button class="control-button" data-action="clear-api-cache">${icon('refreshCw', 14)} ${t('settings.cache.clearApi')}</button>
+        <button class="control-button" data-action="clear-history-cache">${icon('history', 14)} ${t('settings.cache.clearHistory')}</button>
+      </div></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cache.diskCache')}</strong><small>${t('settings.cache.diskCacheBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.diskCache}" data-toggle="diskCache" aria-label="${t('settings.cache.diskCache')}"></button></div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.cache.lazyImages')}</strong><small>${t('settings.cache.lazyImagesBody')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.lazyImages}" data-toggle="lazyImages" aria-label="${t('settings.cache.lazyImages')}"></button></div>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.api.title')}</h2><p>${t('settings.api.body')}</p></div>${icon('activity', 18)}</div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.api.title')}</h2><p>${t('settings.api.body')}</p></div>${icon('code', 18)}</div>
       <div class="api-status-list" data-api-status>${renderApiStatusPlaceholder()}</div>
-      <button class="ghost-button" data-action="check-api-status">${icon('refreshCw', 13)} ${t('settings.api.check')}</button>
+      <button class="control-button" data-action="check-api-status">${icon('pulse', 14)} ${t('settings.api.check')}</button>
     </section>
-    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.data.title')}</h2><p>${t('settings.data.body')}</p></div>${icon('fileDown', 18)}</div>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.data.title')}</h2><p>${t('settings.data.body')}</p></div>${icon('share', 18)}</div>
       <div class="data-actions">
-        <button class="ghost-button" data-action="export-data">${icon('fileDown', 13)} ${t('settings.data.export')}</button>
-        <button class="ghost-button" data-action="import-data">${icon('fileUp', 13)} ${t('settings.data.import')}</button>
+        <button class="control-button" data-action="export-data">${icon('fileDown', 14)} ${t('settings.data.export')}</button>
+        <button class="control-button" data-action="import-data">${icon('fileUp', 14)} ${t('settings.data.import')}</button>
       </div>
     </section>`;
 }
 
-const viewNames = { home: 'nav.home', catalog: 'nav.catalog', search: 'nav.search', favorites: 'nav.favorites', recent: 'nav.recent', activity: 'nav.activity', friends: 'nav.friends', plans: 'nav.plans', settings: 'nav.settings' };
+const viewNames = { home: 'nav.home', catalog: 'nav.catalog', search: 'nav.search', library: 'nav.library', friends: 'nav.friends', plans: 'nav.plans', settings: 'nav.settings' };
 
 function quickGameAvatarMarkup(item) {
   const thumbnail = safeThumbnail(item.thumbnail);
@@ -3627,13 +3255,13 @@ function quickGameRowMarkup(item, nested = false) {
   const restricted = preferences.streamMode && privateItem;
   const title = restricted ? t('tools.privateShortcut') : item.title || t('quick.untitled');
   return `<div class="quick-launch-row" data-quick-id="${escapeHtml(item.id)}" ${nested ? 'data-quick-nested="true"' : `data-quick-drop-game="${escapeHtml(item.id)}"`}>
-      <button class="quick-launch-button" type="button" data-quick-launch="${escapeHtml(item.id)}" title="${escapeHtml(title)}" aria-label="${t('quick.launchNamed', { title: escapeHtml(title) })}">${quickGameAvatarMarkup(restricted ? {} : item)}<span class="quick-launch-copy"><strong>${escapeHtml(title)}</strong>${item.hotkey ? `<small>${escapeHtml(formatHotkey(item.hotkey))}</small>` : ''}</span></button>
+      <button class="quick-launch-button" type="button" data-quick-launch="${escapeHtml(item.id)}" data-tooltip="${escapeHtml(title)}" aria-label="${t('quick.launchNamed', { title: escapeHtml(title) })}">${quickGameAvatarMarkup(restricted ? {} : item)}<span class="quick-launch-copy"><strong>${escapeHtml(title)}</strong>${item.hotkey ? `<small>${escapeHtml(formatHotkey(item.hotkey))}</small>` : ''}</span></button>
       <span class="quick-launch-tools">
-        <button ${restricted || ['access','instance'].includes(item.method) ? 'hidden' : ''} class="quick-launch-tool" type="button" data-quick-edit="${escapeHtml(item.id)}" aria-label="${t('quick.edit')}" title="${t('quick.edit')}">${icon('edit', 12)}</button>
-        <button class="quick-launch-tool ${item.hotkey ? 'has-hotkey' : ''}" type="button" data-quick-hotkey="${escapeHtml(item.id)}" aria-label="${item.hotkey ? t('quick.clearHotkey') : t('quick.setHotkey')}" title="${item.hotkey ? t('quick.clearHotkey') : t('quick.setHotkey')}">${icon('keyboard', 12)}</button>
-        <button ${restricted || ['access','instance'].includes(item.method) ? 'hidden' : ''} class="quick-launch-tool" type="button" data-quick-share="${escapeHtml(item.id)}" aria-label="${t('quick.share')}" title="${t('quick.share')}">${icon('share', 12)}</button>
-        <button ${restricted ? 'hidden' : ''} class="quick-launch-tool" type="button" data-launcher-action="shortcut" data-quick="true" data-id="${escapeHtml(item.id)}" aria-label="${t('tools.shortcut')}" title="${t('tools.shortcut')}">${icon('windowMaximize', 12)}</button>
-        <button class="quick-launch-tool remove" type="button" data-quick-remove="${escapeHtml(item.id)}" data-i18n-aria="quick.remove" aria-label="${t('quick.remove')}" title="${t('quick.remove')}">${icon('close', 12)}</button>
+        <button ${restricted || ['access','instance'].includes(item.method) ? 'hidden' : ''} class="quick-launch-tool" type="button" data-quick-edit="${escapeHtml(item.id)}" aria-label="${t('quick.edit')}" data-tooltip="${t('quick.edit')}">${icon('edit', 12)}</button>
+        <button class="quick-launch-tool ${item.hotkey ? 'has-hotkey' : ''}" type="button" data-quick-hotkey="${escapeHtml(item.id)}" aria-label="${item.hotkey ? t('quick.clearHotkey') : t('quick.setHotkey')}" data-tooltip="${item.hotkey ? t('quick.clearHotkey') : t('quick.setHotkey')}">${icon('keyboard', 12)}</button>
+        <button ${restricted || ['access','instance'].includes(item.method) ? 'hidden' : ''} class="quick-launch-tool" type="button" data-quick-share="${escapeHtml(item.id)}" aria-label="${t('quick.share')}" data-tooltip="${t('quick.share')}">${icon('share', 12)}</button>
+        <button ${restricted ? 'hidden' : ''} class="quick-launch-tool" type="button" data-launcher-action="shortcut" data-quick="true" data-id="${escapeHtml(item.id)}" aria-label="${t('tools.shortcut')}" data-tooltip="${t('tools.shortcut')}">${icon('windowMaximize', 12)}</button>
+        <button class="quick-launch-tool remove" type="button" data-quick-remove="${escapeHtml(item.id)}" data-i18n-aria="quick.remove" aria-label="${t('quick.remove')}" data-tooltip="${t('quick.remove')}">${icon('close', 12)}</button>
       </span>
     </div>`;
 }
@@ -3648,12 +3276,12 @@ function quickFolderMarkup(folder) {
   }).join('');
   return `<div class="quick-folder" data-quick-folder="${escapeHtml(folder.id)}" aria-expanded="${open}" style="--folder-color:${escapeHtml(color)}">
       <div class="quick-launch-row" data-quick-drop-folder="${escapeHtml(folder.id)}">
-        <button class="quick-launch-button" type="button" data-quick-folder-toggle="${escapeHtml(folder.id)}" aria-expanded="${open}" title="${escapeHtml(folderTitle)}" aria-label="${escapeHtml(folderTitle)}">
+        <button class="quick-launch-button" type="button" data-quick-folder-toggle="${escapeHtml(folder.id)}" aria-expanded="${open}" data-tooltip="${escapeHtml(folderTitle)}" aria-label="${escapeHtml(folderTitle)}">
           <span class="quick-folder-chevron">${icon('chevronLeft', 11)}</span><span class="quick-folder-stack">${previews}</span><span class="quick-launch-copy"><strong>${escapeHtml(folderTitle)}</strong></span>
         </button>
         <span class="quick-folder-tools">
-          ${preferences.streamMode ? '' : `<button class="quick-folder-tool" type="button" data-launcher-action="folder-export" data-id="${escapeHtml(folder.id)}" aria-label="${t('tools.shareFolder')}" title="${t('tools.shareFolder')}">${icon('share', 12)}</button>`}
-          <button class="quick-folder-tool" type="button" data-quick-folder-edit="${escapeHtml(folder.id)}" aria-label="${t('quick.folderEdit')}" title="${t('quick.folderEdit')}">${icon('edit', 12)}</button><button class="quick-launch-remove" type="button" data-quick-remove="${escapeHtml(folder.id)}" aria-label="${t('quick.remove')}" title="${t('quick.remove')}">${icon('close', 12)}</button></span>
+          ${preferences.streamMode ? '' : `<button class="quick-folder-tool" type="button" data-launcher-action="folder-export" data-id="${escapeHtml(folder.id)}" aria-label="${t('tools.shareFolder')}" data-tooltip="${t('tools.shareFolder')}">${icon('share', 12)}</button>`}
+          <button class="quick-folder-tool" type="button" data-quick-folder-edit="${escapeHtml(folder.id)}" aria-label="${t('quick.folderEdit')}" data-tooltip="${t('quick.folderEdit')}">${icon('edit', 12)}</button><button class="quick-launch-remove" type="button" data-quick-remove="${escapeHtml(folder.id)}" aria-label="${t('quick.remove')}" data-tooltip="${t('quick.remove')}">${icon('close', 12)}</button></span>
       </div>
       <div class="quick-folder-children" ${open ? '' : 'hidden'}>${folder.games.map((game) => quickGameRowMarkup(game, true)).join('')}</div>
     </div>`;
@@ -3716,6 +3344,8 @@ function navigateHistory(direction) {
     currentView = 'game-detail';
     renderPage();
     updateNavigationHistoryControls();
+  } else if (currentView === 'game-detail' && catalogReturn?.view === view) {
+    returnToSavedCatalog({ track: false });
   } else setView(view, { track: false });
 }
 
@@ -3735,8 +3365,9 @@ function renderSidebar() {
 }
 
 function updateSidebar() {
-  const activeView = ['game-detail', 'search'].includes(currentView) ? 'catalog' : currentView;
+  const activeView = ['game-detail', 'search'].includes(currentView) ? 'catalog' : libraryTabs.some(tab => tab.id === currentView) ? 'library' : currentView;
   document.querySelectorAll('[data-nav]').forEach((button) => {
+    if (button.closest('.library-tabs')) return;
     const isActive = button.dataset.nav === activeView;
     button.classList.toggle('active', isActive);
     if (isActive) button.setAttribute('aria-current', 'page');
@@ -3751,38 +3382,45 @@ function updateSidebarCollapse() {
   const collapsed = document.body.classList.contains('sidebar-compact');
   const label = t(collapsed ? 'sidebar.expand' : 'sidebar.collapse');
   button.setAttribute('aria-label', label);
-  button.setAttribute('title', label);
+  button.dataset.tooltip = label;
   button.setAttribute('aria-expanded', String(!collapsed));
 }
 
 function renderPage() {
+  window.vortexOverlays.closeTooltip();
+  window.vortexOverlays.closeMenu();
   playtimeSummary = null;
   hideHoverPreview();
+  hideFriendPreview();
   applyPreferences();
+  searchInput.placeholder = t(currentView === 'catalog' ? 'chart.searchPlaceholder' : 'search.placeholder');
   reportRecentGamesToTray();
   document.body.classList.toggle('sidebar-compact', readStored('vortex.sidebarCompact', window.innerWidth <= 940));
   updateSidebarCollapse();
   updateSidebar();
   updateNavigationHistoryControls();
   renderUpdateBanner();
-  const pages = { home: renderHome, catalog: renderCatalog, 'game-detail': renderGameDetail, favorites: renderFavorites, recent: renderRecent, activity: renderActivity, friends: renderFriends, plans: renderPlans, settings: renderSettings };
+  const pages = { home: renderHome, catalog: renderCatalog, 'game-detail': renderGameDetail, library: renderLibrary,
+    favorites: renderLibrary, recent: renderLibrary, quick: renderLibrary, activity: renderLibrary, friends: renderFriends, plans: renderPlans, settings: renderSettings };
   const viewKey = currentView === 'settings' ? 'settings/' + preferences.settingsTab
     : currentView === 'catalog' ? ['catalog', activeDiscoverySort, activeCategory, activeAccess].join('/')
     : currentView === 'game-detail' ? 'game/' + detailGame?.id
-    : currentView === 'plans' ? 'plans/' + roadmapStage : currentView;
+    : currentView === 'plans' ? 'plans/' + roadmapStage : currentView === 'activity' ? 'activity/' + libraryActivityPane : currentView;
   const sameView = pageContent.dataset.renderedView === viewKey;
   const gamePaneFocus = currentView === 'game-detail' && document.activeElement.matches?.('[role="tab"][data-game-pane]')
     ? document.activeElement.id : '';
   const activityControl = sameView && currentView === 'activity' ? document.activeElement?.dataset.activityControl : '';
-  const existing = sameView ? new Set([...pageContent.querySelectorAll('.game-grid [data-game]')].map(el => el.dataset.game)) : null;
+  const movingCards = '.game-grid [data-game], .catalog-tile[data-game]';
+  const existing = sameView ? new Set([...pageContent.querySelectorAll(movingCards)].map(el => el.dataset.game)) : null;
   pageContent.innerHTML = (pages[currentView] || renderHome)();
   renderGameTabs();
   if (gamePaneFocus) document.getElementById(gamePaneFocus)?.focus({ preventScroll: true });
   focusActivityControl(activityControl);
-  if (existing) for (const card of pageContent.querySelectorAll('.game-grid [data-game]')) {
+  if (existing) for (const card of pageContent.querySelectorAll(movingCards)) {
     card.classList.add(existing.has(card.dataset.game) ? 'motion-retained' : 'motion-added');
   }
   mountIcons(pageContent);
+  bindRecommendationScroll();
   if (currentView === 'plans') void loadRoadmap();
   if (currentView === 'settings') refreshDiscordStatus();
   if (preferences.discordPresence) applyDiscordPresence();
@@ -3859,7 +3497,8 @@ async function buildDataExport() {
       recentGames,
       playStats,
       activityData,
-      sessionHistory: await sessionJournal.recent(Infinity)
+      sessionHistory: await sessionJournal.recent(Infinity),
+      recentDetails: recentMetadata()
     }
   };
 }
@@ -3899,6 +3538,7 @@ async function applyDataImport(payload) {
   savePreferences();
   accountStorage.setItem('vortex.favorites', JSON.stringify([...favorites]));
   saveRecentGames(recentGames);
+  if (Array.isArray(data.recentGames)) saveRecentDetails(data.recentDetails || {});
   persistActivityData();
   savePlayStats();
   renderSidebar();
@@ -3959,7 +3599,7 @@ function syncBellIndicator() {
   if (!button) return;
   const count = unreadAnnouncements().length;
   button.classList.toggle('has-unread', count > 0);
-  button.title = count > 0 ? t('notifications.unread', { count }) : t('notifications.title');
+  button.dataset.tooltip = count > 0 ? t('notifications.unread', { count }) : t('notifications.title');
 }
 
 function formatAnnouncementDate(value) {
@@ -4164,6 +3804,7 @@ function trayStylePayload() {
   return {
     language: preferences.language,
     motion: preferences.motion,
+    tooltips: preferences.uiTooltips,
     animationSpeed: preferences.animationSpeed,
     trayScale: preferences.trayScale,
     corners: preferences.corners,
@@ -4195,7 +3836,7 @@ function reportRecentGamesToTray() {
       thumbnail: safeThumbnail(game.thumbnail) || '',
       lastPlayed: lastPlayedFor(game.id)
     }));
-  const quickLaunch = quickLaunchGames()
+  const quickLaunch = preferences.quickLaunchItems.flatMap(item => item.type === 'game' ? [item] : item.showInTray ? item.games : [])
     .map((item) => ({
       id: String(item.id),
       title: preferences.streamMode && item.method !== 'public' ? t('tools.privateShortcut') : String(item.title || ''),
@@ -4256,7 +3897,7 @@ function bankPlaySession(through = runtimeConfirmedAt) {
   writeJournalInterval(from, from + credited * 1000);
   const completed = completeDailyActivity();
   if (updateActivityAchievements() || completed) persistActivityData();
-  if (currentView === 'activity') renderPage();
+  if (currentView === 'activity' && libraryActivityPane === 'overview' && !pageContent.contains(document.activeElement)) renderPage();
 }
 
 function finishDetectedSession(through) {
@@ -4270,9 +3911,12 @@ function finishDetectedSession(through) {
   accountStorage.removeItem(PLAYTIME_SESSION_KEY);
 }
 
-function recordGameLaunch(game) {
+function recordGameLaunch(game, serverId = '') {
   pendingLaunch = { ...game, at: Date.now() };
-  if (preferences.saveHistory) saveRecentGames([game.id, ...recentGames]);
+  if (preferences.saveHistory) {
+    saveRecentGames([game.id, ...recentGames]);
+    saveRecentDetails({ ...recentMetadata(), [game.id]: { at: pendingLaunch.at, serverId } });
+  }
   reportRecentGamesToTray();
   window.setTimeout(pollRobloxRuntime, 750);
 }
@@ -4295,7 +3939,7 @@ async function openGame(id, gameId = '', accessCode = '') {
     showToast(t('toast.launchError'));
     return;
   }
-  recordGameLaunch(game);
+  recordGameLaunch(game, safeAccessCode ? '' : joinGameId);
   showToast(t('toast.opening', { game: game.title }));
   return true;
 }
@@ -4303,7 +3947,7 @@ async function openGame(id, gameId = '', accessCode = '') {
 // Roblox itself is the source of truth for "am I in a game right now". The
 // backend reads the newest Roblox log, so joins from the Roblox website or a
 // friend invite also start/stop a play session instead of being invisible.
-function startDetectedSession(id, key, start, joinedAt) {
+function startDetectedSession(id, key, start, joinedAt, serverId) {
   const known = getGame(id) || (String(pendingLaunch?.id) === id ? pendingLaunch : null);
   const stored = readStored(PLAYTIME_SESSION_KEY, null);
   playSessionStart = start;
@@ -4311,7 +3955,13 @@ function startDetectedSession(id, key, start, joinedAt) {
   runtimeSessionKey = key;
   nowPlayingSnapshot = { id, title: known?.title || t('activity.unknownGame'),
     thumbnail: safeThumbnail(known?.thumbnail) || '', startedAt: joinedAt || start };
-  if (preferences.saveHistory) saveRecentGames([id, ...recentGames]);
+  if (preferences.saveHistory) {
+    saveRecentGames([id, ...recentGames]);
+    const recent = recentMetadata()[id];
+    if (!recent || (joinedAt || start) >= recent.at) {
+      saveRecentDetails({ ...recentMetadata(), [id]: { at: joinedAt || start, serverId } });
+    }
+  }
   const entry = playStats[id] || { seconds: 0, launches: 0 };
   if (stored?.session !== key) {
     entry.launches = (Number(entry.launches) || 0) + 1;
@@ -4323,7 +3973,7 @@ function startDetectedSession(id, key, start, joinedAt) {
   accountStorage.setItem(PLAYTIME_SESSION_KEY, JSON.stringify({ session: key }));
   lastResolvedAttempt = 0;
   if (preferences.saveHistory) {
-    recordingSession = { key: joinedAt ? key : id + '/' + start, gameId: id, startedAt: Math.min(joinedAt || start, start), title: known?.title || '' };
+    recordingSession = { key: joinedAt ? key : id + '/' + start, gameId: id, startedAt: Math.min(joinedAt || start, start), title: known?.title || '', serverId, friends: [] };
     writeJournalInterval(start, start);
   }
 }
@@ -4355,7 +4005,7 @@ function observeRobloxRuntime(data) {
   const at = valid ? data.observedAt : Date.now();
   const awake = Number.isSafeInteger(data?.awakeMs) && data.awakeMs >= 0 ? data.awakeMs : null;
   const previous = runtimeSample;
-  const sample = { at, awake, unknown: !valid };
+  const sample = { at, awake, unknown: !valid, serverId: validSessionServer(data?.serverId) };
   const continuous = runtimeIntervalIsContinuous(previous, sample);
   const floor = continuous ? previous.at : at;
   if (!continuous) {
@@ -4371,19 +4021,33 @@ function observeRobloxRuntime(data) {
   const id = data.running && /^\d{1,20}$/.test(String(data.placeId)) ? String(data.placeId) : '';
   const joined = Number.isSafeInteger(data.startedAt) && data.startedAt > 0 && data.startedAt <= at ? data.startedAt : 0;
   const key = id ? id + '/' + joined : '';
+  const continuedSession = runtimeSessionKey === key;
   if (runtimeSessionKey !== key) {
     const ended = Number(data.endedAt) || 0;
     if (playSessionGameId) {
       const boundary = ended >= floor && ended <= at ? ended : id && joined >= floor ? Math.min(at, joined) : floor;
       finishDetectedSession(boundary);
     }
-    if (id) startDetectedSession(id, key, Math.min(at, Math.max(floor, joined)), joined);
+    if (id) startDetectedSession(id, key, Math.min(at, Math.max(floor, joined)), joined, validSessionServer(data.serverId));
     applyLauncherModes();
     reportRecentGamesToTray();
     if (['activity','recent','home'].includes(currentView)) renderPage();
   }
   if (id) {
     runtimeConfirmedAt = at;
+    const server = validSessionServer(data.serverId);
+    if (recordingSession && server) {
+      if (!recordingSession.serverId) {
+        recordingSession.serverId = server;
+        const recent = recentMetadata()[id];
+        if (recent && recent.at === (joined || recordingSession.startedAt)) {
+          saveRecentDetails({ ...recentMetadata(), [id]: { ...recent, serverId: server } });
+        }
+        writeJournalInterval(at, at);
+      }
+      observeLibraryFriends();
+    }
+    checkLibraryBreakReminder(continuous && continuedSession ? at - floor : 0);
     if (currentView === 'activity') {
       if (previous?.unknown) paintJournal();
       else tickJournalClock();
@@ -4490,14 +4154,17 @@ async function hydrateFeaturedGames() {
 }
 
 function inferGenreKey(game) {
-  const text = `${game.genre || ''} ${game.title || ''} ${game.description || ''}`.toLocaleLowerCase();
   const rules = [
-    ['horror', /horror|хоррор|ужас|страш|scary|doors/], ['roleplay', /role.?play|ролевая|ролев|rp\b|brookhaven/],
+    ['horror', /horror|хоррор|ужас|страш|scary|doors/], ['roleplay', /role.?play|ролевая|ролев|\brpg?\b|brookhaven/],
     ['fashion', /fashion|мод|dress to impress|одежд/], ['parkour', /parkour|паркур|obby|обби|tower of hell/],
-    ['action', /action|экшен|шутер|fps|бой|combat/], ['simulator', /simulator|симулятор|tycoon|pet sim/],
+    ['action', /action|экшен|шутер|fps|бой|combat|shooter|fighting/], ['simulator', /simulat|симулятор|tycoon|pet sim/],
     ['survival', /survival|выжив|escape|evade/], ['adventure', /adventure|приключ|quest|explore/]
   ];
-  return rules.find(([, pattern]) => pattern.test(text))?.[0] || 'other';
+  for (const value of [game.genre, `${game.title || ''} ${game.description || ''}`]) {
+    const hit = rules.find(([, pattern]) => pattern.test(String(value || '').toLocaleLowerCase()));
+    if (hit) return hit[0];
+  }
+  return 'other';
 }
 
 function normalizeDiscoveredGame(game, query = '') {
@@ -4518,77 +4185,7 @@ function normalizeDiscoveredGame(game, query = '') {
   };
 }
 
-async function loadDiscoveryCatalog(sortId = activeDiscoverySort, { force = false, append = false } = {}) {
-  if (sortId === RECOMMENDED_SORT.id) return loadRecommendations(force);
-  activeDiscoverySort = sortId;
-  localStorage.setItem('vortex.activeDiscoverySort', JSON.stringify(activeDiscoverySort));
-  const cached = discoveryCatalog[sortId];
-  if (!force && !append && cached?.savedAt && Date.now() - cached.savedAt < DISCOVERY_CACHE_TTL && Array.isArray(cached.items) && cached.items.length > 0) {
-    discoveryStatus = 'success';
-    renderPage();
-    return;
-  }
-  if (append && cached?.savedAt && Date.now() - cached.savedAt < DISCOVERY_CACHE_TTL && Array.isArray(cached.items) && cached.items.length > 0) {
-    // Cached next category: merge into the accumulated list without a request.
-    const previous = discoveryCatalog.__accumulated?.items || [];
-    const knownIds = new Set(previous.map((game) => String(game.id)));
-    const merged = [...previous, ...cached.items.filter((game) => !knownIds.has(String(game.id)))];
-    discoveryCatalog = { ...discoveryCatalog, __accumulated: { savedAt: Date.now(), items: merged, usedSorts: [...new Set([...(discoveryCatalog.__accumulated?.usedSorts || []), String(sortId)])] } };
-    activeDiscoverySort = sortId;
-    discoveryStatus = 'success';
-    renderPage();
-    return;
-  }
 
-  const requestId = ++discoveryRequestId;
-  discoveryStatus = append ? 'loading-more' : 'loading';
-  if (!append) catalogVisibleCount = CATALOG_PAGE_SIZE;
-  renderPage();
-  try {
-    if (!window.vortexDesktop?.discoverGames) throw new Error('Roblox Discover is available in the desktop app.');
-    const response = await window.vortexDesktop.discoverGames({ sortId, sessionId: discoverySessionId });
-    if (requestId !== discoveryRequestId) return;
-
-    discoverySessionId = response.sessionId || discoverySessionId;
-    discoverySorts = Array.isArray(response.sorts) && response.sorts.length ? response.sorts : fallbackDiscoverySorts;
-    activeDiscoverySort = response.selectedSortId || sortId;
-    const items = (response.items || []).map((game) => normalizeDiscoveredGame(game));
-    if (append) {
-      // Append mode: merge the new category's games into the shown list
-      // instead of replacing it, so the catalog only ever grows.
-      const previous = discoveryCatalog.__accumulated?.items || [];
-      const knownIds = new Set(previous.map((game) => String(game.id)));
-      const merged = [...previous, ...items.filter((game) => !knownIds.has(String(game.id)))];
-      discoveryCatalog = {
-        ...discoveryCatalog,
-        __accumulated: { savedAt: Date.now(), items: merged, usedSorts: [...new Set([...(discoveryCatalog.__accumulated?.usedSorts || []), String(activeDiscoverySort)])] },
-        [activeDiscoverySort]: { savedAt: Date.now(), items }
-      };
-    } else {
-      discoveryCatalog = {
-        ...discoveryCatalog,
-        __accumulated: { savedAt: Date.now(), items, usedSorts: [String(activeDiscoverySort)] },
-        [activeDiscoverySort]: { savedAt: Date.now(), items }
-      };
-    }
-
-    const knownIds = new Set(dynamicGames.map((game) => String(game.id)));
-    const newGames = items.filter((game) => !knownIds.has(game.id));
-    dynamicGames = [...dynamicGames, ...newGames].slice(-1200);
-    try {
-      localStorage.setItem('vortex.discoverySessionId', JSON.stringify(discoverySessionId));
-      localStorage.setItem('vortex.discoverySorts', JSON.stringify(discoverySorts));
-      localStorage.setItem('vortex.discoveryCatalog', JSON.stringify(discoveryCatalog));
-      localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames));
-    } catch { /* Live results stay available for this session if storage is full. */ }
-    discoveryStatus = 'success';
-    renderPage();
-  } catch {
-    if (requestId !== discoveryRequestId) return;
-    discoveryStatus = 'error';
-    renderPage();
-  }
-}
 
 function createSearchSessionId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
@@ -4680,9 +4277,12 @@ function scheduleLiveSearch(value) {
     value = t('tools.streamLink');
     searchInput.value = value;
   }
+  if (isRecommendationsView() && value) rememberRecommendationScroll();
   searchQuery = value;
+  if (currentView !== 'catalog') pushNavigationHistory('catalog');
   currentView = 'catalog';
   activeCategory = preferences.catalogGenre || 'all';
+  catalogGenreExplore = false;
   sortMode = 'default';
   searchStatus = value.trim().length >= 2 ? 'loading' : value.trim().length ? 'short' : 'idle';
   searchResults = [];
@@ -4735,20 +4335,24 @@ function setQuickGameDialogMode(isEditing) {
   const iconHost = document.querySelector('[data-quick-submit-icon]');
   const label = document.querySelector('[data-quick-submit-label]');
   if (title) title.textContent = t(isEditing ? 'quick.editDialogTitle' : 'quick.dialogTitle');
-  if (iconHost) iconHost.innerHTML = icon(isEditing ? 'check' : 'plus', 13);
+  if (iconHost) {
+    iconHost.dataset.icon = isEditing ? 'save' : 'gamePlus';
+    iconHost.innerHTML = icon(iconHost.dataset.icon, 14);
+  }
   if (label) label.textContent = t(isEditing ? 'quick.saveChanges' : 'quick.save');
 }
 
-function openQuickGameModal(editId = '') {
+function openQuickGameModal(editId = '', folderId = '') {
   const modal = document.getElementById('quick-game-modal');
   if (!modal || preferences.streamMode) return;
   quickGameDialogReturnFocus = document.activeElement;
   const item = editId ? findQuickLaunchGame(editId) : null;
   editingQuickGameId = item?.id || '';
+  addingQuickGameToFolder = folderId;
   document.getElementById('quick-game-error').hidden = true;
   const form = document.getElementById('quick-game-form');
   form?.reset();
-  quickGameMethod = item?.method || 'private';
+  quickGameMethod = item?.method || (folderId ? 'public' : 'private');
   setQuickGameDialogMode(Boolean(item));
   renderQuickGameFields();
   if (item && form) {
@@ -4771,6 +4375,7 @@ function closeQuickGameModal() {
   if (!modal || modal.hidden) return;
   modal.hidden = true;
   editingQuickGameId = '';
+  addingQuickGameToFolder = '';
   setQuickGameDialogMode(false);
   const returnFocus = quickGameDialogReturnFocus;
   quickGameDialogReturnFocus = null;
@@ -4843,6 +4448,7 @@ function persistQuickLaunchItems() {
   preferences.quickLaunchItems = cleanQuickLaunchItems(preferences.quickLaunchItems);
   savePreferences();
   renderQuickLaunchItems();
+  refreshLibraryQuick();
   void refreshQuickLaunchMetadata();
 }
 
@@ -4864,6 +4470,7 @@ async function refreshQuickLaunchMetadata() {
         preferences.quickLaunchItems = cleanQuickLaunchItems(preferences.quickLaunchItems);
         savePreferences();
         renderQuickLaunchItems();
+        refreshLibraryQuick();
       }
     } catch { /* Keep the saved shortcut; retry the next time the launcher starts. */ }
   }));
@@ -4920,7 +4527,7 @@ function importQuickLaunchCode(raw) {
 
 function startQuickLaunchHotkeyRecording(id, button) {
   button.classList.add('recording');
-  button.title = t('quick.pressHotkey');
+  button.dataset.tooltip = t('quick.pressHotkey');
   const finish = (event) => {
     event?.preventDefault();
     event?.stopPropagation();
@@ -4937,6 +4544,7 @@ function startQuickLaunchHotkeyRecording(id, button) {
       savePreferences();
     }
     renderQuickLaunchItems();
+    refreshLibraryQuick();
   };
   document.addEventListener('keydown', finish, true);
 }
@@ -4948,6 +4556,7 @@ async function submitQuickGameForm(event) {
   const field = (name) => String(form.elements.namedItem(name)?.value || '').trim();
   const preferredTitle = field('title').slice(0, 64);
   const existing = editingQuickGameId ? findQuickLaunchGame(editingQuickGameId) : null;
+  const folderId = addingQuickGameToFolder;
   const item = {
     ...(existing || {}),
     type: 'game', id: existing?.id || quickLaunchId(), method: quickGameMethod,
@@ -4986,7 +4595,14 @@ async function submitQuickGameForm(event) {
     }
     item.autoTitle = !preferredTitle;
     if (existing) replaceQuickLaunchGame(item);
-    else preferences.quickLaunchItems.push(item);
+    else {
+      const folder = preferences.quickLaunchItems.find(entry => entry.type === 'folder' && entry.id === folderId);
+      const destination = folder?.games || preferences.quickLaunchItems;
+      if (destination.length >= 80) {
+        error.textContent = t('tools.folderLimit'); error.hidden = false; return;
+      }
+      destination.push(item);
+    }
     persistQuickLaunchItems();
     closeQuickGameModal();
     showToast(t(existing ? 'quick.updated' : 'quick.added', { title: item.title }));
@@ -5011,7 +4627,6 @@ function removeQuickLaunchItem(id) {
       const childIndex = folder.games.findIndex((game) => game.id === id);
       if (childIndex >= 0) {
         folder.games.splice(childIndex, 1);
-        if (folder.games.length < 2) items.splice(i, 1, ...(folder.games || []));
         return true;
       }
     }
@@ -5034,7 +4649,6 @@ function organizeQuickLaunchDrop(sourceId, targetGameId = '', targetFolderId = '
       const childIndex = folder.games.findIndex((game) => game.id === sourceId);
       if (childIndex >= 0) {
         [source] = folder.games.splice(childIndex, 1);
-        if (folder.games.length < 2) list.splice(i, 1, ...folder.games);
         return true;
       }
     }
@@ -5051,7 +4665,7 @@ function organizeQuickLaunchDrop(sourceId, targetGameId = '', targetFolderId = '
     return;
   }
   const targetIndex = items.findIndex((item) => item.type === 'game' && item.id === targetGameId);
-  if (targetIndex < 0) { items.push(source); return; }
+  if (targetIndex < 0) { items.push(source); persistQuickLaunchItems(); return; }
   const [target] = items.splice(targetIndex, 1);
   const folder = { type: 'folder', id: quickLaunchId(), title: t('quick.folderDefault'), color: '#a68bff', games: [target, source] };
   items.splice(targetIndex, 0, folder);
@@ -5064,16 +4678,24 @@ async function launchQuickGame(id) {
   if (!item) return;
   try {
     if (!window.vortexDesktop?.launchQuickGame) throw new Error('Desktop launcher unavailable');
-    await window.vortexDesktop.launchQuickGame({
+    const folder = preferences.quickLaunchItems.find(entry => entry.type === 'folder' && entry.games.some(game => game.id === item.id));
+    if (item.method === 'public' && folder?.server && folder.server !== 'default') {
+      const server = await preferredPublicServer(item.placeId, folder.server);
+      if (!server || !await openGame(item.placeId, server.id)) {
+        if (!server) showToast(t('place.launchNoServer'));
+        return false;
+      }
+    } else await window.vortexDesktop.launchQuickGame({
       method: item.method, placeId: item.placeId, linkCode: item.linkCode, shareCode: item.shareCode, shareType: item.shareType,
       serverId: item.serverId, accessCode: item.accessCode
     });
     const launchedAt = Date.now();
-    item.lastPlayed = launchedAt;
+    updateQuickLaunchGame(id, entry => { entry.lastPlayed = launchedAt; });
     accountStorage.setItem('vortex.preferences', JSON.stringify(preferences));
-    if (item.placeId) {
+    if (item.placeId && !(item.method === 'public' && folder?.server && folder.server !== 'default')) {
       const game = getGame(item.placeId);
-      recordGameLaunch({ id: item.placeId, title: item.title || game?.title, thumbnail: item.thumbnail || game?.thumbnail });
+      recordGameLaunch({ id: item.placeId, title: item.title || game?.title, thumbnail: item.thumbnail || game?.thumbnail },
+        item.method === 'instance' ? item.serverId : '');
     } else {
       reportRecentGamesToTray();
     }
@@ -5166,6 +4788,9 @@ document.addEventListener('click', (event) => {
 }, true);
 
 function setView(view, { track = true } = {}) {
+  if (view === 'library') view = lastLibraryTab;
+  if (libraryTabs.some(tab => tab.id === view)) lastLibraryTab = view;
+  if (isRecommendationsView() && view !== currentView) rememberRecommendationScroll();
   if (view === 'activity' && view !== currentView) journalStatus = 'idle';
   if (track && view !== currentView) pushNavigationHistory(view);
   currentView = view;
@@ -5181,7 +4806,8 @@ function setView(view, { track = true } = {}) {
   renderPage();
   updateNavigationHistoryControls();
   if (view === 'catalog' && !searchQuery) {
-    loadDiscoveryCatalog(activeDiscoverySort);
+    if (isRecommendationsView()) restoreRecommendationScroll();
+    else loadDiscoveryCatalog(activeDiscoverySort, { preserveCount: true });
     if (isGenreSearchActive() && (genreStatus === 'idle' || !genreResults.length)) fetchGenreGames(false);
   }
   window.scrollTo({ top: 0, behavior: preferences.motion ? 'smooth' : 'auto' });
@@ -5216,33 +4842,13 @@ document.addEventListener('click', async (event) => {
     return;
   }
   if (!target.closest('.game-search-field')) closeGameSearch();
-  const sortToggle = target.closest('[data-sort-toggle]');
-  if (sortToggle) {
-    const select = sortToggle.closest('[data-custom-select]');
-    const menu = select.querySelector('.custom-select-menu');
-    const shouldOpen = menu.hidden;
-    document.querySelectorAll('[data-custom-select]').forEach((item) => {
-      item.querySelector('.custom-select-menu').hidden = true;
-      item.querySelector('[data-sort-toggle]').setAttribute('aria-expanded', 'false');
-    });
-    if (shouldOpen) {
-      menu.hidden = false;
-      sortToggle.setAttribute('aria-expanded', 'true');
-      menu.querySelector('.custom-select-option[aria-selected="true"]')?.focus();
-    }
-    return;
-  }
-
   const sortOption = target.closest('[data-sort-value]');
   if (sortOption) {
     sortMode = sortOption.dataset.sortValue;
     renderPage();
+    document.querySelector('[data-vortex-dropdown="catalog-sort"] button')?.focus({ preventScroll: true });
     return;
   }
-  document.querySelectorAll('[data-custom-select]').forEach((item) => {
-    item.querySelector('.custom-select-menu').hidden = true;
-    item.querySelector('[data-sort-toggle]').setAttribute('aria-expanded', 'false');
-  });
 
   const windowControl = target.closest('[data-window-control]');
   if (windowControl) {
@@ -5279,6 +4885,7 @@ document.addEventListener('click', async (event) => {
       updateQuickLaunchGame(item.id, (entry) => { entry.hotkey = null; });
       savePreferences();
       renderQuickLaunchItems();
+      refreshLibraryQuick();
     } else if (item) startQuickLaunchHotkeyRecording(item.id, quickHotkey);
     return;
   }
@@ -5302,7 +4909,12 @@ document.addEventListener('click', async (event) => {
   }
 
   const nav = target.closest('[data-nav]');
-  if (nav) { setView(nav.dataset.nav); return; }
+  if (nav) {
+    const libraryTab = nav.closest('.library-tabs');
+    setView(nav.dataset.nav);
+    if (libraryTab) focusLibraryControl('.library-tabs [aria-current="page"]');
+    return;
+  }
 
   const recorder = target.closest('[data-record-hotkey]');
   if (recorder) { startHotkeyRecording(recorder.dataset.recordHotkey, recorder); return; }
@@ -5392,7 +5004,6 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'paid-more') { showMorePaidGames(); return; }
     if (action.dataset.action === 'paid-rescan') { void loadPaidGames(true); return; }
     if (action.dataset.action === 'more-recommendations') { void loadRecommendations(false, true); return; }
-    if (action.dataset.action === 'refresh-recommendations') { void loadRecommendations(true); return; }
     if (action.dataset.action === 'reset-hotkeys') { preferences.hotkeys = {}; savePreferences(); showToast(t('settings.hotkeys.resetDone')); renderPage(); return; }
     if (action.dataset.action === 'check-api-status') { void checkApiStatus(); return; }
     if (action.dataset.action === 'clear-api-cache') { responseCacheLocal.clear(); localStorage.removeItem('vortex.detailCache'); showToast(t('settings.cache.apiCleared')); renderPage(); return; }
@@ -5457,22 +5068,10 @@ document.addEventListener('click', async (event) => {
       renderPage();
     }
     if (action.dataset.action === 'load-more' || action.dataset.action === 'load-more-genre') {
-      // One unified manual "load more": pick the right source and append.
       if (searchQuery.length >= 2) fetchLiveSearch(true);
       else if (isGenreSearchActive()) fetchGenreGames(true);
-      else {
-        const list = filterGames();
-        if (catalogVisibleCount < list.length) { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); }
-        else if (allDiscoverySortsUsed() || discoveryCatalog.__accumulated?.searchFallbackStarted) {
-          if (!generalLoadingMore) appendGeneralSearch();
-        } else {
-          // Fetch the next unused Discover category in append mode.
-          const sorts = discoverySorts.length ? discoverySorts : fallbackDiscoverySorts;
-          const unused = sorts.find((sort) => !(discoveryCatalog.__accumulated?.usedSorts || []).includes(sort.id));
-          if (unused) loadDiscoveryCatalog(unused.id, { append: true });
-          else if (!(discoveryCatalog.__accumulated?.searchFallbackStarted)) startGeneralSearchFallback();
-        }
-      }
+      else { catalogVisibleCount += CATALOG_PAGE_SIZE; renderPage(); }
+      return;
     }
     if (action.dataset.action === 'notifications') toggleAnnouncementsPanel();
     if (action.dataset.action === 'refresh-announcements') {
@@ -5522,6 +5121,7 @@ document.addEventListener('click', async (event) => {
       preferences.uiNotifications = true;
       preferences.uiSidebarFoot = true;
       preferences.uiUpdateBanner = true;
+      preferences.uiTooltips = true;
       savePreferences();
       renderSidebar();
       renderPage();
@@ -5649,12 +5249,14 @@ document.addEventListener('click', async (event) => {
     savePreferences();
     // Full reset of genre pagination when the user switches filters.
     genreResults = []; genrePageToken = null; genreStatus = 'idle'; genreLoadingMore = false; genreTermIndex = 0;
+    activeGenreRequestId += 1;
+    catalogGenreExplore = false;
     paidVisibleCount = PAID_PAGE_SIZE;
     paidExhausted = false;
-    if (activeAccess === 'paid') { void loadPaidGames(); renderPage(); return; }
-    if (activeDiscoverySort === RECOMMENDED_SORT.id && activeAccess !== 'paid') { renderPage(); return; }
-    if (isGenreSearchActive()) fetchGenreGames(false);
-    else renderPage();
+    if (activeAccess === 'paid') { void loadPaidGames(); renderPage(); document.querySelector('[data-vortex-dropdown="catalog-genre"] button')?.focus({ preventScroll: true }); return; }
+    if (isRecommendationsView()) recommendationState.retry = false;
+    renderPage();
+    document.querySelector('[data-vortex-dropdown="catalog-genre"] button')?.focus({ preventScroll: true });
     return;
   }
 
@@ -5675,21 +5277,11 @@ document.addEventListener('click', async (event) => {
   }
 
   const catalogCustomize = target.closest('[data-catalog-customize]');
-  if (catalogCustomize) { currentView = 'settings'; preferences.settingsTab = 'cards'; savePreferences(); renderPage(); return; }
+  if (catalogCustomize) { preferences.settingsTab = 'cards'; savePreferences(); setView('settings'); return; }
 
   const discoverySort = target.closest('[data-discovery-sort]');
   if (discoverySort) {
-    const sortId = discoverySort.dataset.discoverySort;
-    if (sortId === RECOMMENDED_SORT.id) {
-      discoveryRequestId++;
-      activeDiscoverySort = sortId;
-      localStorage.setItem('vortex.activeDiscoverySort', JSON.stringify(sortId));
-      catalogVisibleCount = CATALOG_PAGE_SIZE;
-      renderPage();
-      void loadRecommendations();
-      return;
-    }
-    loadDiscoveryCatalog(sortId);
+    selectCatalogCollection(discoverySort.dataset.discoverySort);
     return;
   }
 
@@ -6275,15 +5867,6 @@ document.addEventListener('keydown', (event) => {
     closeAnnouncementsPanel();
     return;
   }
-  const openMenu = document.querySelector('[data-custom-select] .custom-select-menu:not([hidden])');
-  if (event.key === 'Escape' && openMenu) {
-    event.preventDefault();
-    openMenu.hidden = true;
-    const trigger = openMenu.closest('[data-custom-select]').querySelector('[data-sort-toggle]');
-    trigger.setAttribute('aria-expanded', 'false');
-    trigger.focus();
-    return;
-  }
   // User-configurable shortcuts, driven by preferences.hotkeys.
   if (matchesHotkey(event, hotkeyCombo('search'))) {
     event.preventDefault();
@@ -6339,6 +5922,11 @@ document.addEventListener('keydown', (event) => {
     searchInput.focus();
     return;
   }
+  if (event.key === 'Escape' && paletteOpen()) {
+    event.preventDefault();
+    closeCommandPalette();
+    return;
+  }
   if (matchesHotkey(event, hotkeyCombo('back')) && currentView === 'game-detail') {
     event.preventDefault();
     if (navigationHistoryIndex > 0) navigateHistory(-1);
@@ -6350,74 +5938,116 @@ document.addEventListener('keydown', (event) => {
     scheduleLiveSearch('');
     searchInput.blur();
   }
-  if (event.key === 'Escape' && paletteOpen()) {
-    event.preventDefault();
-    closeCommandPalette();
-  }
 });
 
-// ---------- Command palette (Stage 5) ----------
-// Ctrl+K opens a palette that searches EVERYTHING: navigation views, settings
-// tabs, theme presets, accent colors, toggles and quick actions. Arrow keys
-// move, Enter runs, Escape closes. Typing filters by title and hint text.
-let paletteState = { open: false, index: 0, items: [] };
+// Ctrl+Shift+P opens the command palette. Ctrl+K still focuses game search.
+let paletteState = { open: false, index: 0, items: [], filtered: [], returnFocus: null };
 
 function paletteOpen() { return paletteState.open; }
 
 function paletteCommands() {
   const commands = [];
-  // Navigation
-  NAV_ITEMS.forEach((item) => commands.push({
-    icon: item.icon, title: t(`nav.${item.key}`), hint: t('palette.go'), run: () => setView(item.key)
-  }));
-  // Settings tabs
-  const tabs = [
-    ['home', 'settings.home.title', 'home'], ['cards', 'settings.cardTuning.title', 'grid'], ['effects', 'settings.effects.title', 'wand'],
-    ['interface', 'settings.ui.navTitle', 'monitor'], ['general', 'settings.language.title', 'message'], ['integrations', 'settings.integrations.title', 'sparkles'], ['tray', 'settings.tray.title', 'tray'], ['data', 'settings.cache.title', 'database'], ['version', 'updates.settingsTitle', 'refreshCw'], ['accent', 'settings.theme.title', 'palette']
-  ];
-  tabs.forEach(([tab, key, ic]) => commands.push({
-    icon: ic, title: t(key), hint: t('palette.openSettings'), run: () => { preferences.settingsTab = tab; savePreferences(); setView('settings'); }
-  }));
-  // Theme presets
-  [['dark', 'moon'], ['light', 'sun'], ['oled', 'contrast']].forEach(([theme, ic]) => commands.push({
-    icon: ic, title: t(`settings.${theme}`), hint: t('palette.theme'), run: () => { preferences.theme = theme; savePreferences(); applyPreferences(); renderPage(); }
-  }));
-  // Motion toggle
-  commands.push({ icon: 'motion', title: t('settings.motion.title'), hint: t('palette.toggle'), run: () => { preferences.motion = !preferences.motion; savePreferences(); applyPreferences(); renderPage(); showToast(`${t('settings.motion.title')}: ${t(preferences.motion ? 'palette.on' : 'palette.off')}`); } });
-  // Descriptions toggle (card element)
-  commands.push({ icon: 'grid', title: t('settings.cardTuning.description'), hint: t('palette.toggle'), run: () => { preferences.cardShowDescription = !preferences.cardShowDescription; savePreferences(); renderPage(); showToast(`${t('settings.cardTuning.description')}: ${t(preferences.cardShowDescription ? 'palette.on' : 'palette.off')}`); } });
-  // Playtime badge on cards
-  commands.push({ icon: 'clock', title: t('settings.cardTuning.playtime'), hint: t('palette.toggle'), run: () => { preferences.cardShowPlaytime = !preferences.cardShowPlaytime; savePreferences(); renderPage(); showToast(`${t('settings.cardTuning.playtime')}: ${t(preferences.cardShowPlaytime ? 'palette.on' : 'palette.off')}`); } });
-  // Like badges on cards
-  commands.push({ icon: 'thumb', title: t('settings.cardTuning.likes'), hint: t('palette.toggle'), run: () => { preferences.cardShowLikes = !preferences.cardShowLikes; savePreferences(); renderPage(); showToast(`${t('settings.cardTuning.likes')}: ${t(preferences.cardShowLikes ? 'palette.on' : 'palette.off')}`); } });
-  // Discord Rich Presence
-  commands.push({ icon: 'sparkle', title: t('settings.integrations.discord'), hint: t('palette.toggle'), run: () => { preferences.discordPresence = !preferences.discordPresence; savePreferences(); applyDiscordPresence(); renderPage(); showToast(`${t('settings.integrations.discord')}: ${t(preferences.discordPresence ? 'palette.on' : 'palette.off')}`); } });
-  // Friend alerts
-  commands.push({ icon: 'bell', title: t('settings.integrations.friendAlerts'), hint: t('palette.toggle'), run: () => { preferences.friendFavoriteAlerts = !preferences.friendFavoriteAlerts; savePreferences(); renderPage(); showToast(`${t('settings.integrations.friendAlerts')}: ${t(preferences.friendFavoriteAlerts ? 'palette.on' : 'palette.off')}`); } });
-  // Catalog view switch
-  commands.push({ icon: 'grid', title: t('catalog.gridView'), hint: t('palette.view'), run: () => { preferences.catalogView = 'grid'; savePreferences(); setView('catalog'); } });
-  commands.push({ icon: 'layout', title: t('catalog.listView'), hint: t('palette.view'), run: () => { preferences.catalogView = 'list'; savePreferences(); setView('catalog'); } });
-  // Cache sweep
-  commands.push({ icon: 'rotate', title: t('settings.cacheClear'), hint: t('palette.action'), run: () => { for (const key of Object.keys(localStorage)) if (key.startsWith(SEARCH_CACHE_PREFIX) || ['vortex.detailCache','vortex.featuredCache','vortex.discoveryCatalog'].includes(key)) localStorage.removeItem(key); showToast(t('settings.cache.cleared')); renderPage(); } });
-  // Update check
-  commands.push({ icon: 'download', title: t('updates.checkNow'), hint: t('palette.action'), run: () => { preferences.settingsTab = 'version'; savePreferences(); setView('settings'); window.vortexDesktop?.retryUpdateCheck?.(); } });
+  const go = t('palette.go');
+  const action = t('palette.action');
+  const settingsHint = t('palette.openSettings');
+  const add = (glyph, title, hint, run, aliases = '') => commands.push({ icon: glyph, title, hint, run, aliases });
+  const setting = (tab, selector = '') => {
+    preferences.settingsTab = tab;
+    savePreferences();
+    setView('settings');
+    if (selector) requestAnimationFrame(() => {
+      const target = pageContent.querySelector(selector);
+      (target?.closest('.settings-card') || target)?.scrollIntoView({ block: 'nearest' });
+      target?.focus({ preventScroll: true });
+    });
+  };
+  const toggle = (key, label, glyph, aliases = '', after = null) => {
+    add(glyph, t(label), t('palette.toggle'), () => {
+      preferences[key] = !preferences[key];
+      savePreferences();
+      renderPage();
+      after?.();
+      showToast(t(label) + ' · ' + t(preferences[key] ? 'palette.on' : 'palette.off'));
+    }, aliases);
+  };
+  for (const item of NAV_ITEMS) add(item.icon, t('nav.' + item.key), go, () => setView(item.key), item.key);
+  add('search', t('nav.search'), action, () => { searchInput.focus(); searchInput.select(); }, 'find games place id поиск игра');
+  for (const sort of catalogSorts()) {
+    add(catalogSortGlyphs[sort.id] || 'catalog', discoverySortLabel(sort), t('nav.catalog'), () => selectCatalogCollection(sort.id),
+      sort.id.replaceAll('-', ' ') + ' chart подборка');
+  }
+  add('die', t('tools.surpriseTitle'), t('nav.catalog'), () => void showSurprise(), 'random случайная игра');
+  add('friendFilter', t('chart.onlyFriends'), t('nav.catalog'), toggleCatalogFriends, 'friends filter фильтр');
+  add('crosshair', t('chart.recommendationSettings'), t('nav.catalog'), () => {
+    selectCatalogCollection(RECOMMENDED_SORT.id);
+    showRecommendationSettings();
+  }, 'hidden games interests скрытые игры интересы');
+  add('refreshCw', t('chart.refresh'), t('nav.catalog'), () => {
+    if (searchQuery || currentView !== 'catalog' || isRecommendationsView() || activeAccess === 'paid' || catalogGenreExplore) {
+      selectCatalogCollection(activeDiscoverySort === RECOMMENDED_SORT.id ? 'top-playing-now' : activeDiscoverySort);
+    } else void loadDiscoveryCatalog(activeDiscoverySort, { force: true, preserveCount: true });
+  }, 'refresh chart обновление');
+  for (const tab of libraryTabs) add(tab.icon, t(tab.label), t('nav.library'), () => setView(tab.id), tab.id);
+  add('history', t('activity.journal.title'), t('nav.activity'), () => showLibraryActivityPane('history'), 'sessions history журнал время');
+  for (const [tab, glyph] of settingsTabsList) {
+    add(glyph, t('palette.settingsCommand', { tab: t('settings.tab.' + tab) }), settingsHint, () => setting(tab), tab);
+  }
+  for (const [tab, glyph, label, selector, aliases] of [
+    ['home', 'layout', 'settings.home.sections', '[data-home-widget-config]', 'widgets блоки переставить'],
+    ['accent', 'image', 'settings.wallpaper.title', '[data-action=pick-wallpaper]', 'фон обои background wallpaper'],
+    ['interface', 'keyboard', 'settings.hotkeys.title', '[data-record-hotkey]', 'keyboard shortcuts клавиатура'],
+    ['general', 'profileStack', 'settings.profiles.title', '[data-profile-name]', 'профиль тема customization'],
+    ['integrations', 'lock', 'settings.presence.title', '[data-presence-cookie]', 'cookie roblosecurity статус друзья'],
+    ['data', 'share', 'settings.data.title', '[data-action=export-data]', 'import export backup резервная копия']
+  ]) add(glyph, t(label), settingsHint, () => setting(tab, selector), aliases);
+  for (const [view, key] of [['home', 'homeGameView'], ['catalog', 'catalogView']]) {
+    for (const layout of ['list', 'grid']) {
+      const glyph = view === 'home' ? (layout === 'list' ? 'homeList' : 'homeGrid') : layout;
+      add(glyph, t('palette.layoutCommand', { view: t('nav.' + view), layout: t('catalog.' + layout + 'View') }), t('palette.view'), () => {
+        preferences[key] = layout;
+        savePreferences();
+        if (view === 'catalog' && activeDiscoverySort === RECOMMENDED_SORT.id) selectCatalogCollection('top-playing-now');
+        else setView(view);
+      }, view + ' ' + layout + ' вид плитки');
+    }
+  }
+  for (const [theme, glyph] of [['dark', 'moon'], ['light', 'sun'], ['oled', 'contrast']]) {
+    add(glyph, t('settings.' + theme), t('palette.theme'), () => {
+      Object.assign(preferences, { theme, themeBackground: '', themeSurface: '', themeText: '', themeMuted: '', themeLine: '' });
+      savePreferences();
+      renderPage();
+    }, theme);
+  }
+  toggle('motion', 'settings.motion.title', 'motion', 'animations эффекты');
+  toggle('uiTooltips', 'settings.ui.tooltips', 'message', 'tooltip hints подсказки');
+  toggle('cardShowDescription', 'settings.cardTuning.description', 'textSize', 'description текст');
+  toggle('cardShowPlaytime', 'settings.cardTuning.playtime', 'clock', 'playtime часы');
+  toggle('cardShowLikes', 'settings.cardTuning.likes', 'thumb', 'likes оценка');
+  toggle('discordPresence', 'settings.integrations.discord', 'discord', 'discord activity', applyDiscordPresence);
+  toggle('friendFavoriteAlerts', 'settings.integrations.friendAlerts', 'bell', 'notifications уведомления');
+  toggle('gamingMode', 'tools.gaming', 'gamepad', 'performance производительность');
+  add('eyeOff', t('tools.stream'), t('palette.toggle'), () => setLauncherStreamMode(!preferences.streamMode), 'stream приватность');
+  add('pulse', t('settings.api.title'), action, () => { setting('data'); void checkApiStatus(); }, 'проверить соединение api network');
+  add('trash', t('settings.cacheClear'), action, () => { setting('data'); pageContent.querySelector('[data-action=clear-cache]')?.click(); }, 'clear cache очистка');
+  add('download', t('updates.checkNow'), action, () => { setting('version'); pageContent.querySelector('[data-action=retry-update]')?.click(); }, 'version update версия');
   return commands;
 }
 
 function openCommandPalette() {
-  paletteState = { open: true, index: 0, items: paletteCommands() };
+  paletteState = { open: true, index: 0, items: paletteCommands(), filtered: [], returnFocus: document.activeElement };
   let root = document.getElementById('command-palette');
   if (!root) {
     root = document.createElement('div');
     root.id = 'command-palette';
     root.innerHTML = `<div class="palette-backdrop" data-palette-close></div>
       <div class="palette-panel" role="dialog" aria-modal="true" aria-label="${t('palette.title')}">
-        <div class="palette-input-row"><span class="palette-input-icon"></span><input type="text" class="palette-input" placeholder="${t('palette.placeholder')}" autocomplete="off" spellcheck="false" /></div>
-        <div class="palette-list" role="listbox"></div>
+        <div class="palette-input-row"><span class="palette-input-icon">${icon('search', 17)}</span><input type="text" class="palette-input"
+          role="combobox" aria-autocomplete="list" aria-controls="palette-result-list" aria-expanded="true" autocomplete="off" spellcheck="false" /></div>
+        <div class="palette-list" id="palette-result-list" role="listbox"></div>
         <div class="palette-foot"><span>${t('palette.navigate')}</span><span>${t('palette.run')}</span><span>${t('palette.close')}</span></div>
       </div>`;
     document.body.appendChild(root);
-    root.querySelector('.palette-input').addEventListener('input', renderPaletteList);
+    root.querySelector('.palette-input').addEventListener('input', () => { paletteState.index = 0; renderPaletteList(); });
     root.querySelector('.palette-input').addEventListener('keydown', (event) => {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
@@ -6436,10 +6066,13 @@ function openCommandPalette() {
       if (row) runPaletteIndex(Number(row.dataset.paletteIndex));
     });
   }
+  root.querySelector('.palette-panel').setAttribute('aria-label', t('palette.title'));
   root.hidden = false;
-  renderPaletteList();
   const input = root.querySelector('.palette-input');
+  input.placeholder = t('palette.placeholder');
+  input.setAttribute('aria-label', t('palette.placeholder'));
   input.value = '';
+  renderPaletteList();
   input.focus();
 }
 
@@ -6447,24 +6080,34 @@ function closeCommandPalette() {
   const root = document.getElementById('command-palette');
   if (root) root.hidden = true;
   paletteState.open = false;
+  if (paletteState.returnFocus?.isConnected) paletteState.returnFocus.focus({ preventScroll: true });
 }
 
 function renderPaletteList() {
   const root = document.getElementById('command-palette');
   if (!root) return;
-  const query = root.querySelector('.palette-input').value.trim().toLocaleLowerCase(preferences.language);
-  paletteState.filtered = paletteState.items.filter((item) => {
-    const haystack = `${item.title} ${item.hint}`.toLocaleLowerCase(preferences.language);
-    return !query || haystack.includes(query);
-  });
+  const normalize = text => text.toLocaleLowerCase(preferences.language).replaceAll('ё', 'е').trim();
+  const query = normalize(root.querySelector('.palette-input').value);
+  const terms = query.split(/\s+/).filter(Boolean);
+  paletteState.filtered = terms.length ? paletteState.items.flatMap(item => {
+    const title = normalize(item.title);
+    const haystack = normalize(`${item.title} ${item.hint} ${item.aliases || ''}`);
+    if (!terms.every(word => haystack.includes(word))) return [];
+    const rank = (title === query ? 12 : title.startsWith(query) ? 8 : title.includes(query) ? 5 : 0)
+      + terms.filter(word => title.includes(word)).length;
+    return [{ item, rank }];
+  }).sort((a, b) => b.rank - a.rank).map(entry => entry.item) : paletteState.items;
   paletteState.index = Math.min(paletteState.index, Math.max(0, paletteState.filtered.length - 1));
   const list = root.querySelector('.palette-list');
   list.innerHTML = paletteState.filtered.map((item, index) => `
-    <button class="palette-row ${index === paletteState.index ? 'active' : ''}" data-palette-index="${index}" role="option" aria-selected="${index === paletteState.index}">
+    <button type="button" class="palette-row ${index === paletteState.index ? 'active' : ''}" id="palette-option-${index}"
+      tabindex="-1" data-palette-index="${index}" role="option" aria-selected="${index === paletteState.index}">
       <span class="palette-row-icon">${icon(item.icon, 14)}</span>
       <span class="palette-row-title">${escapeHtml(item.title)}</span>
       <span class="palette-row-hint">${escapeHtml(item.hint)}</span>
-    </button>`).join('') || `<p class="palette-empty">${t('palette.noResults')}</p>`;
+    </button>`).join('') || `<p class="palette-empty" role="status">${t('palette.noResults')}</p>`;
+  list.scrollTop = 0;
+  renderPaletteSelection();
 }
 
 function renderPaletteSelection() {
@@ -6475,13 +6118,19 @@ function renderPaletteSelection() {
     row.classList.toggle('active', active);
     row.setAttribute('aria-selected', String(active));
   });
-  root.querySelector('.palette-row.active')?.scrollIntoView({ block: 'nearest' });
+  const active = root.querySelector('.palette-row.active');
+  const input = root.querySelector('.palette-input');
+  if (active) {
+    input.setAttribute('aria-activedescendant', active.id);
+    active.scrollIntoView({ block: 'nearest' });
+  } else input.removeAttribute('aria-activedescendant');
 }
 
 function runPaletteIndex(index) {
   const item = paletteState.filtered && paletteState.filtered[index];
+  if (!item) return;
   closeCommandPalette();
-  if (item) item.run();
+  item.run();
 }
 
 // Classic scripts run before ES modules: wait for the module bundle to be
@@ -6492,7 +6141,7 @@ function runPaletteIndex(index) {
 let friendPreviewEl = null;
 let friendPreviewCard = null;
 function showFriendPreview(card) {
-  if (!card || card.classList.contains('offline')) {
+  if (!preferences.uiTooltips || !card || card.classList.contains('offline')) {
     hideFriendPreview();
     return;
   }
@@ -6528,7 +6177,7 @@ function showFriendPreview(card) {
   friendPreviewEl.style.top = top + 'px';
 }
 function hideFriendPreview() {
-  window.vortexMotion.dismiss(friendPreviewEl);
+  if (friendPreviewEl) window.vortexMotion.dismiss(friendPreviewEl);
   friendPreviewEl = null;
   friendPreviewCard = null;
 }
@@ -6592,7 +6241,11 @@ window.addEventListener('focus', () => loadAnnouncements());
 window.setInterval(() => {
   if (pauseBackgroundRefresh()) return;
   const username = String(preferences.robloxUsername || '').trim();
-  if (username && (Object.values(friendPins()).some(Boolean) || preferences.friendFavoriteAlerts)) void loadFriends(username);
+  if (username && (shouldRefreshCatalogFriends() || Object.values(friendPins()).some(Boolean) || preferences.friendFavoriteAlerts)) void loadFriends(username);
+  if (currentView === 'catalog' && !searchQuery && !isRecommendationsView() && !isGenreSearchActive() && activeAccess !== 'paid' &&
+      !document.hidden && discoveryStatus !== 'loading' && Date.now() - (discoveryCatalog[activeDiscoverySort]?.savedAt || 0) >= 30 * 60_000) {
+    void loadDiscoveryCatalog(activeDiscoverySort, { force: true, preserveCount: true });
+  }
 }, 60000);
 }
 

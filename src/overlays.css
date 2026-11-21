@@ -1,0 +1,101 @@
+.vortex-tooltip,
+.vortex-dropdown-panel {
+  position: fixed;
+  inset: auto;
+  z-index: 1000;
+  box-sizing: border-box;
+  margin: 0;
+  border: 1px solid var(--line-strong, var(--line));
+  border-radius: 9px;
+  background: var(--surface-2, #282731);
+  color: var(--text, #eceaf5);
+  box-shadow: 0 12px 28px rgb(0 0 0 / .3);
+  font-family: var(--font-ui, system-ui);
+}
+.vortex-tooltip {
+  z-index: 1001;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: min(180px, calc(100vh - 16px));
+  overflow: auto;
+  padding: 7px 10px;
+  font-size: .8rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.vortex-tooltip[inert] { pointer-events: none; }
+.vortex-tooltip[hidden], .vortex-dropdown-panel[hidden] { display: none; }
+
+.vortex-dropdown { display: inline-flex; min-width: 0; max-width: 100%; }
+.vortex-dropdown-trigger.control-button {
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 34px;
+  max-width: 100%;
+  padding: 0 10px;
+  gap: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+.vortex-dropdown-pill .vortex-dropdown-trigger { border-radius: 999px; }
+.vortex-dropdown-trigger:is(:hover, [aria-expanded="true"]) {
+  background: var(--accent-wash);
+  border-color: var(--accent-border);
+}
+.vortex-dropdown-prefix { flex: none; color: var(--muted); font-weight: 500; }
+.vortex-dropdown-value { display: inline-flex; align-items: center; gap: 7px; min-width: 0; max-width: min(240px, 46vw); }
+.vortex-dropdown-value > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vortex-dropdown-trigger svg { flex: none; }
+.vortex-dropdown-trigger > svg { margin-inline-start: auto; color: var(--muted); }
+.vortex-dropdown-trigger[aria-expanded="true"] > svg { rotate: 180deg; }
+.surprise-genre .vortex-dropdown, .surprise-genre .vortex-dropdown-trigger { width: 100%; }
+.vortex-dropdown-panel {
+  width: max-content;
+  max-width: min(380px, calc(100vw - 16px));
+  padding: 5px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.vortex-dropdown-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: .85rem;
+  text-align: start;
+  cursor: pointer;
+}
+.vortex-dropdown-option span { min-width: 0; overflow-wrap: anywhere; }
+.vortex-dropdown-option svg { flex: none; }
+.vortex-dropdown-check { display: flex; margin-inline-start: auto; padding-inline-start: 5px; visibility: hidden; }
+.vortex-dropdown-option[aria-selected="true"] { background: var(--accent-wash); color: var(--accent-text); }
+.vortex-dropdown-option[aria-selected="true"] .vortex-dropdown-check { visibility: visible; }
+.vortex-dropdown-option:is(:hover, :focus-visible):not(:disabled) { background: var(--surface-3); outline: 1px solid var(--accent-border); outline-offset: -1px; }
+.vortex-dropdown-option:disabled { opacity: .55; cursor: default; }
+.vortex-dropdown-trigger:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  body:not(.no-motion, .in-game-mode) :is(.vortex-tooltip, .vortex-dropdown-panel) {
+    --popup-offset: -4px;
+    opacity: 0;
+    translate: 0 var(--popup-offset);
+    transition: opacity var(--feedback-time, 150ms), translate var(--feedback-time, 150ms) var(--animation-easing, ease-out),
+      overlay var(--feedback-time, 150ms) allow-discrete, display var(--feedback-time, 150ms) allow-discrete;
+  }
+  body:not(.no-motion, .in-game-mode) :is(.vortex-tooltip, .vortex-dropdown-panel)[data-side="above"] { --popup-offset: 4px; }
+  body:not(.no-motion, .in-game-mode) :is(.vortex-tooltip, .vortex-dropdown-panel):is(:popover-open, :not([hidden], :popover-open):not([popover])) {
+    opacity: 1;
+    translate: 0 0;
+  }
+  body:not(.no-motion, .in-game-mode) .vortex-dropdown-trigger > svg { transition: rotate var(--feedback-time, 150ms) var(--animation-easing, ease-out); }
+  @starting-style {
+    body:not(.no-motion, .in-game-mode) :is(.vortex-tooltip, .vortex-dropdown-panel):popover-open { opacity: 0; translate: 0 var(--popup-offset); }
+  }
+}

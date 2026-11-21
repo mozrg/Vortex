@@ -29,13 +29,9 @@ function renderGameLaunch(game) {
     <h2>${t('place.launch')}</h2>
     <div class="setting-line">
       <div class="setting-label"><strong>${t('place.serverAtLaunch')}</strong><small>${t('place.serverAtLaunchHint')}</small></div>
-      <details class="surprise-select game-launch-select">
-        <summary aria-label="${t('place.serverAtLaunch')}"><span data-game-launch-label>${escapeHtml(choices.find(([key]) => key === server)?.[1] || choices[0][1])}</span>${icon('chevronDown', 14)}</summary>
-        <fieldset class="surprise-choices game-launch-choices" aria-label="${t('place.serverAtLaunch')}">
-          ${choices.map(([key, label, unavailable]) => `<label ${unavailable ? 'data-unavailable-server' : ''}><input type="radio" name="game-launch-server" data-game-launch="server"
-            value="${escapeHtml(key)}" ${key === server ? 'checked' : ''}><span>${escapeHtml(label)}</span></label>`).join('')}
-        </fieldset>
-      </details>
+      ${renderVortexDropdown({ label: t('place.serverAtLaunch'), value: server, kind: 'game-launch-server',
+        options: choices.map(([value, text, disabled]) => ({ value, text, disabled })),
+        input: `<input type="hidden" data-game-launch="server" data-vortex-field value="${escapeHtml(server)}">` })}
     </div>
     <div class="setting-line"><div class="setting-label"><strong>${t('place.hideLauncher')}</strong>
       <small>${t('place.hideLauncherHint')}</small></div>
@@ -59,6 +55,14 @@ function renderGameOther(game) {
   </section>`;
 }
 
+async function preferredPublicServer(id, mode) {
+  const payload = await window.vortexDesktop?.getPublicServers?.({ placeId: id, smallest: true }).catch(() => null);
+  const open = normalizeBrowserServers(payload?.servers).filter(row => row.playing < row.capacity);
+  return mode === 'ping'
+    ? open.filter(row => row.ping !== null).sort((a, b) => a.ping - b.ping)[0]
+    : open.sort((a, b) => a.playing - b.playing)[0];
+}
+
 async function detailLaunch(game, place = '', instance = '') {
   const id = String(game.id);
   const view = gamePageView(id);
@@ -76,10 +80,7 @@ async function detailLaunch(game, place = '', instance = '') {
     } else {
       let target;
       if (server === 'ping' || server === 'small') {
-        const payload = await window.vortexDesktop?.getPublicServers?.({ placeId: id, smallest: true }).catch(() => null);
-        const open = normalizeBrowserServers(payload?.servers).filter(row => row.playing < row.capacity);
-        if (server === 'ping') target = open.filter(row => row.ping !== null).sort((a, b) => a.ping - b.ping)[0];
-        else target = open.sort((a, b) => a.playing - b.playing)[0];
+        target = await preferredPublicServer(id, server);
         if (!target) {
           showToast(t('place.launchNoServer'));
           return;
@@ -203,14 +204,8 @@ document.addEventListener('click', event => {
       delete options[String(game.id)];
       preferences.gameLaunchOptions = options;
       savePreferences();
-      const menu = document.querySelector('.game-launch-select');
-      const normal = menu.querySelector('[data-game-launch="server"][value="default"]');
-      normal.checked = true;
-      menu.querySelector('[data-game-launch-label]').textContent = normal.nextElementSibling.textContent;
-      menu.open = false;
-      document.querySelector('[data-game-page-action="toggle-hide"]').setAttribute('aria-checked', 'false');
-      const obsolete = menu.querySelector('[data-unavailable-server]');
-      obsolete?.remove();
+      renderPage();
+      document.querySelector('[data-game-page-action="reset-launch"]')?.focus({ preventScroll: true });
       return;
     }
     case 'pin-place': void pinPastedLink({ method: 'public', placeId: String(game.id) }); return;
@@ -229,10 +224,6 @@ document.addEventListener('input', event => {
 document.addEventListener('change', event => {
   if (!event.target.matches?.('[data-game-launch="server"]') || !detailGame) return;
   writeGameLaunchOptions(detailGame, { server: event.target.value });
-  const menu = event.target.closest('.game-launch-select');
-  menu.querySelector('[data-game-launch-label]').textContent = event.target.nextElementSibling.textContent;
-  menu.open = false;
-  menu.querySelector('summary').focus({ preventScroll: true });
 });
 
 document.addEventListener('keydown', event => {

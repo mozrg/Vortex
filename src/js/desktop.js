@@ -86,6 +86,7 @@
 
     // Notifications
     notifyFriendPlaying: (payload) => invoke('notifications_friend_playing', payload),
+    notifyBreak: (title, body) => invoke('notifications_activity_break', { title, body }),
 
     // Tray
     reportRecentGames: (payload) => invoke('report_recent_games', { payload }),

@@ -36,6 +36,7 @@
     const scale = { compact: .82, normal: .9, large: 1 }[style.trayScale] || .9;
     root.style.setProperty('--tray-scale', String(scale));
     document.body.classList.toggle('no-motion', style.motion === false);
+    window.vortexOverlays.enableTooltips(style.tooltips !== false);
     root.style.setProperty('--speed', String(({ slow: 1.6, fast: .55 })[style.animationSpeed] || 1));
     root.style.colorScheme = style.theme === 'light' || style.lightTheme ? 'light' : 'dark';
     document.body.classList.toggle('tray-sharp', style.corners === 'sharp');
@@ -48,21 +49,21 @@
     $('[data-tray-action="quit"]')?.setAttribute('aria-label', state.language === 'en' ? 'Quit Vortex completely' : 'Закрыть Vortex полностью');
   }
 
-  const gamepadIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 11.5h11a4.5 4.5 0 0 1 4.3 5.9l-.5 1.5a2.4 2.4 0 0 1-3.8 1.1L14.8 17h-5.6l-2.7 3a2.4 2.4 0 0 1-3.8-1.1l-.5-1.5a4.5 4.5 0 0 1 4.3-5.9Z"/><path d="M8 8V4m-2 2h4m7 0h.01M19 8h.01"/></svg>';
-  const playIcon = '<span class="tray-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m8 5 12 7-12 7z"/></svg></span>';
+  const gamepadIcon = icon('gamepad', 16);
+  const playIcon = `<span class="tray-play" aria-hidden="true">${icon('play', 13)}</span>`;
 
   function gameRow(game, kind, index) {
     const title = escapeHtml(game.title || game.id || 'Roblox');
     const thumbnail = /^https:\/\/[a-z0-9.-]+\.rbxcdn\.com\//i.test(String(game.thumbnail || ''))
       ? `<img src="${escapeHtml(game.thumbnail)}" alt="" />`
       : gamepadIcon;
-    return `<button class="tray-game" type="button" data-tray-launch="${kind}" data-index="${index}" title="${escapeHtml(strings().launch)}: ${title}">
+    return `<button class="tray-game" type="button" data-tray-launch="${kind}" data-index="${index}" data-tooltip="${escapeHtml(strings().launch)}: ${title}">
       <span class="tray-game-art">${thumbnail}</span><span class="tray-game-copy"><strong>${title}</strong><small>${escapeHtml(timeAgo(game.lastPlayed))}</small></span>${playIcon}
     </button>`;
   }
 
-  function emptyRow(text) {
-    return `<div class="tray-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.9c0 4.2-8.8 10.2-8.8 10.2S3.2 13.1 3.2 8.9a4.2 4.2 0 0 1 7.5-2.6L12 7.8l1.3-1.5a4.2 4.2 0 0 1 7.5 2.6Z"/></svg><span>${escapeHtml(text)}</span></div>`;
+  function emptyRow(text, glyph) {
+    return `<div class="tray-empty">${icon(glyph, 15)}<span>${escapeHtml(text)}</span></div>`;
   }
 
   function render(data = {}) {
@@ -70,10 +71,10 @@
     state.quickLaunch = Array.isArray(data.quickLaunch) ? data.quickLaunch : [];
     $('#tray-favorites').innerHTML = state.favorites.length
       ? state.favorites.map((game, index) => gameRow(game, 'favorite', index)).join('')
-      : emptyRow(strings().emptyFavorites);
+      : emptyRow(strings().emptyFavorites, 'star');
     $('#tray-quick-launch').innerHTML = state.quickLaunch.length
       ? state.quickLaunch.map((game, index) => gameRow(game, 'quick', index)).join('')
-      : emptyRow(strings().emptyQuick);
+      : emptyRow(strings().emptyQuick, 'rocket');
     const favoriteLimit = Number(state.style.trayFavoriteLimit) === 0
       ? null
       : Number(state.style.trayFavoriteLimit) || 5;
@@ -205,6 +206,7 @@
     const shell = document.querySelector('.tray-shell');
     if (shell) new ResizeObserver(() => fitContent()).observe(shell);
   }
+  mountIcons();
   syncCollapsed();
   void refresh();
 })();

@@ -2,20 +2,31 @@
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 
   function inline(text) {
-    const code = [];
-    let output = escapeHtml(text).replace(/`([^`]+)`/g, (_, value) => {
-      const token = `\u0000${code.length}\u0000`;
-      code.push(`<code>${value}</code>`);
+    const spans = [];
+    const stash = (html) => {
+      const token = `\u0000${spans.length}\u0000`;
+      spans.push(html);
       return token;
+    };
+    const raw = text.replace(/\u0000/g, '').replace(/`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi, (_, code, label, href) => {
+      if (code !== undefined) return stash(`<code>${escapeHtml(code)}</code>`);
+      return stash(`<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`);
     });
-    output = output.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/gi, (_, label, href) => `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`);
-    output = output.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    return escapeHtml(raw).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/__(.+?)__/g, '<strong>$1</strong>')
       .replace(/~~(.+?)~~/g, '<del>$1</del>')
       .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>')
-      .replace(/(^|[^_])_([^_\n]+)_(?!_)/g, '$1<em>$2</em>');
-    return output.replace(/\u0000(\d+)\u0000/g, (_, index) => code[Number(index)] || '');
+      .replace(/(^|[^_])_([^_\n]+)_(?!_)/g, '$1<em>$2</em>')
+      .replace(/\u0000(\d+)\u0000/g, (_, index) => spans[Number(index)] || '');
   }
+
+  const inlineLines = (lines) => lines.map((line, index) => {
+    const text = line.trim();
+    return inline(index + 1 < lines.length && text.endsWith('\\') ? text.slice(0, -1) : text);
+  }).join('<br>');
+  const headingMarker = /^ {0,3}(#{1,6})\s+(.+)$/;
+  const fenceMarker = /^\s*(`{3,}|~{3,})/;
+  const ruleMarker = /^\s*(---+|\*\*\*+|___+)\s*$/;
 
   const listMarker = (line) => {
     const match = /^(\s*)([-+*]|\d+[.)])\s+(.*)$/.exec(line);
@@ -31,15 +42,19 @@
     while (index < lines.length) {
       const marker = listMarker(lines[index]);
       if (!marker || marker.indent !== indent || marker.ordered !== (tag === 'ol')) break;
-      let item = inline(marker.content);
+      const task = /^\[([ x])\]\s+(.*)$/i.exec(marker.content);
+      const contents = [task ? task[2] : marker.content];
       index += 1;
-      const nested = [];
-      const continuation = [];
+      const parts = [];
       while (index < lines.length) {
         const nextMarker = listMarker(lines[index]);
         if (nextMarker && nextMarker.indent > indent) {
           const parsed = parseList(lines, index, nextMarker.indent);
-          nested.push(parsed.html);
+          if (contents.length) {
+            parts.push(inlineLines(contents));
+            contents.length = 0;
+          }
+          parts.push(parsed.html);
           index = parsed.index;
           continue;
         }
@@ -54,37 +69,41 @@
         }
         const leading = (lines[index].match(/^\s*/) || [''])[0].replace(/\t/g, '  ').length;
         if (leading <= indent) break;
-        continuation.push(lines[index].trim());
+        contents.push(lines[index]);
         index += 1;
       }
-      if (continuation.length) item += `<br>${inline(continuation.join(' '))}`;
-      chunks.push(`<li>${item}${nested.join('')}</li>`);
+      const taskClass = task ? (task[1] === ' ' ? ' class="task"' : ' class="task done"') : '';
+      const taskMark = task ? `<span class="markdown-task-mark">${task[1] === ' ' ? '☐' : '☑'}</span> ` : '';
+      if (contents.length) parts.push(inlineLines(contents));
+      chunks.push(`<li${taskClass}>${taskMark}${parts.join('')}</li>`);
     }
     return { html: `<${tag}>${chunks.join('')}</${tag}>`, index };
   }
 
-  function renderMarkdown(markdown) {
+  function renderMarkdown(markdown, { headingOffset = 0 } = {}) {
     const lines = String(markdown ?? '').replace(/\r\n?/g, '\n').split('\n');
     const blocks = [];
     let index = 0;
     while (index < lines.length) {
       const line = lines[index];
       if (!line.trim()) { index += 1; continue; }
-      if (/^\s*```/.test(line)) {
+      const fence = fenceMarker.exec(line);
+      if (fence) {
         const code = [];
+        const endFence = new RegExp(`^\\s*${fence[1][0]}{${fence[1].length},}\\s*$`);
         index += 1;
-        while (index < lines.length && !/^\s*```/.test(lines[index])) code.push(lines[index++]);
+        while (index < lines.length && !endFence.test(lines[index])) code.push(lines[index++]);
         if (index < lines.length) index += 1;
         blocks.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
         continue;
       }
-      const heading = /^(#{1,3})\s+(.+)$/.exec(line);
-      if (heading) { const level = heading[1].length; blocks.push(`<h${level}>${inline(heading[2])}</h${level}>`); index += 1; continue; }
-      if (/^\s*(---+|\*\*\*+|___+)\s*$/.test(line)) { blocks.push('<hr>'); index += 1; continue; }
+      const heading = headingMarker.exec(line);
+      if (heading) { const level = Math.min(6, heading[1].length + headingOffset); blocks.push(`<h${level}>${inline(heading[2])}</h${level}>`); index += 1; continue; }
+      if (ruleMarker.test(line)) { blocks.push('<hr>'); index += 1; continue; }
       if (/^\s*>/.test(line)) {
         const quote = [];
         while (index < lines.length && /^\s*>/.test(lines[index])) quote.push(lines[index++].replace(/^\s*>\s?/, ''));
-        blocks.push(`<blockquote><p>${inline(quote.join(' '))}</p></blockquote>`);
+        blocks.push(`<blockquote><p>${inlineLines(quote)}</p></blockquote>`);
         continue;
       }
       const marker = listMarker(line);
@@ -94,24 +113,24 @@
         index = Math.max(parsed.index, index + 1);
         continue;
       }
-      const paragraph = [line.trim()];
+      const paragraph = [line];
       index += 1;
       while (index < lines.length && lines[index].trim()
-        && !/^(#{1,3})\s+/.test(lines[index])
-        && !/^\s*```/.test(lines[index])
+        && !headingMarker.test(lines[index])
+        && !fenceMarker.test(lines[index])
         && !/^\s*>/.test(lines[index])
         && !listMarker(lines[index])
-        && !/^\s*(---+|\*\*\*+|___+)\s*$/.test(lines[index])) {
-        paragraph.push(lines[index].trim());
+        && !ruleMarker.test(lines[index])) {
+        paragraph.push(lines[index]);
         index += 1;
       }
-      blocks.push(`<p>${inline(paragraph.join(' '))}</p>`);
+      blocks.push(`<p>${inlineLines(paragraph)}</p>`);
     }
     return blocks.join('');
   }
 
   window.VortexMarkdown = {
-    render(element, markdown) { if (element) element.innerHTML = renderMarkdown(markdown); },
+    render(element, markdown, options) { if (element) element.innerHTML = renderMarkdown(markdown, options); },
     toHtml: renderMarkdown
   };
 })();

@@ -112,6 +112,10 @@
       .markdown-body pre { padding: 9px 11px; border-radius: 8px; background: var(--bg); white-space: pre-wrap; }
       .markdown-body code { padding: 1px 4px; border-radius: 4px; background: var(--bg); font-family: var(--mono); font-size: .92em; }
       .markdown-body a { color: var(--accent-text); }
+      .markdown-body .task { list-style: none; }
+      .release-log-field summary { cursor: pointer; color: var(--text); font-weight: 600; }
+      .release-log-field > div { margin-top: 12px; }
+      .log-preview { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
 
       .list { display: grid; gap: 10px; max-height: 620px; overflow-y: auto; }
       .item { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg); }
@@ -123,7 +127,8 @@
       .tag.warning { background: rgba(251,191,36,.14); color: var(--warn); }
       .item-body { color: var(--muted); font-size: 12.5px; }
       .item-meta { color: var(--subtle); font: 11px var(--mono); overflow-wrap: anywhere; }
-      .item-actions { display: flex; gap: 8px; }
+      .item-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+      .item-actions a { color: var(--accent-text); font-size: 12px; }
       .empty { padding: 26px 20px; border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); color: var(--subtle); font-size: 13px; text-align: center; }
 
       .lock-badge { display: inline-flex; align-items: center; gap: 7px; color: var(--warn); font-size: 12px; font-weight: 500; }
@@ -195,8 +200,8 @@
           </div>
           <div class="field">
             <label for="body">Текст</label>
-            <textarea id="body" maxlength="6000" placeholder="# Заголовок — - пункт списка — **жирный текст**"></textarea>
-            <p class="hint">Поддерживается Markdown: заголовки <code>#</code>, маркированные и нумерованные списки, отступы для вложенных пунктов, **жирный текст**, *курсив*, `код` и ссылки.</p>
+            <textarea id="body" maxlength="6000" placeholder="Краткий текст уведомления"></textarea>
+            <p class="hint">Enter и Shift+Enter сохраняют переносы. Для оформления можно использовать Markdown, например <code>## Заголовок</code>, <code>- пункт</code> и <code>**жирный текст**</code>.</p>
           </div>
           <div class="field grid2">
             <div>
@@ -216,10 +221,26 @@
             <label for="url">Ссылка (необязательно)</label>
             <input type="text" id="url" placeholder="https://github.com/mozrg/Vortex/releases" />
           </div>
+          <details class="field release-log-field" id="release-log-field">
+            <summary>Лог обновления</summary>
+            <div class="field">
+              <label for="release-tag">Тег релиза GitHub (необязательно)</label>
+              <input type="text" id="release-tag" maxlength="80" placeholder="1.2.5" />
+              <p class="hint">Если оставить лог пустым, Vortex подставит описание релиза с GitHub.</p>
+            </div>
+            <div class="field">
+              <label for="update-log">Полный список изменений (необязательно)</label>
+              <textarea id="update-log" rows="9" maxlength="12000" placeholder="## Новое&#10;- Первое изменение&#10;&#10;## Исправления&#10;- Первое исправление"></textarea>
+            </div>
+          </details>
           <div class="preview">
             <span class="preview-label">Предпросмотр</span>
             <div class="preview-title" id="preview-title">Заголовок появится здесь</div>
             <div class="preview-body markdown-body" id="preview-body">И текст уведомления.</div>
+            <div class="log-preview hidden" id="log-preview">
+              <span class="preview-label">Предпросмотр лога обновления</span>
+              <div class="preview-body markdown-body" id="preview-log-body"></div>
+            </div>
           </div>
           <div class="actions">
             <button class="primary" id="publish">Опубликовать</button>
@@ -425,6 +446,16 @@
           remove.textContent = 'Удалить';
           remove.addEventListener('click', () => removeItem(item));
           actions.append(edit, remove);
+          if (item.updateLog?.trim() || item.releaseTag
+            || /^(?:Vortex\s+)?v?\d+\.\d+\.\d+(?:[-+][\da-z.+-]+)?$/i.test(item.title || '')
+            || /^https:\/\/github\.com\/mozrg\/Vortex\/releases\/tag\//i.test(item.url || '')) {
+            const logLink = document.createElement('a');
+            logLink.href = './updates.html?' + new URLSearchParams({ notice: item.id });
+            logLink.target = '_blank';
+            logLink.rel = 'noopener noreferrer';
+            logLink.textContent = 'Открыть лог ↗';
+            actions.prepend(logLink);
+          }
 
           row.append(head, body, meta, actions);
           list.appendChild(row);
@@ -449,13 +480,20 @@
         if (minVersion && !/^\d+\.\d+\.\d+$/.test(minVersion)) throw new Error('Мин. версия в формате 1.2.3.');
         const url = $('url').value.trim();
         if (url && !/^https?:\/\//i.test(url)) throw new Error('Ссылка должна начинаться с http:// или https://');
+        const releaseTag = $('release-tag').value.trim();
+        if (releaseTag && !/^v?\d+\.\d+\.\d+(?:[-+][\da-z.+-]+)?$/i.test(releaseTag)) {
+          throw new Error('Укажи тег релиза, например 1.2.5 или v1.2.5.');
+        }
+        const updateLog = $('update-log').value;
         return {
           id: editingId || newId(title),
           title,
           body,
           level: $('level').value,
           minVersion: minVersion || undefined,
-          url: url || undefined
+          url: url || undefined,
+          releaseTag: releaseTag || undefined,
+          updateLog: updateLog.trim() ? updateLog : undefined
         };
       }
 
@@ -467,6 +505,9 @@
         $('level').value = item.level || 'info';
         $('min-version').value = item.minVersion || '';
         $('url').value = item.url || '';
+        $('release-tag').value = item.releaseTag || '';
+        $('update-log').value = item.updateLog || '';
+        $('release-log-field').open = Boolean(item.releaseTag || item.updateLog);
         $('cancel-edit').classList.remove('hidden');
         updatePreview();
         $('title').focus();
@@ -481,13 +522,20 @@
         $('level').value = 'info';
         $('min-version').value = '';
         $('url').value = '';
+        $('release-tag').value = '';
+        $('update-log').value = '';
+        $('release-log-field').open = false;
         $('cancel-edit').classList.add('hidden');
         updatePreview();
       }
 
       function updatePreview() {
         $('preview-title').textContent = $('title').value.trim() || 'Заголовок появится здесь';
-        window.VortexMarkdown?.render($('preview-body'), $('body').value.trim() || 'И текст уведомления.');
+        const body = $('body').value;
+        window.VortexMarkdown?.render($('preview-body'), body.trim() ? body : 'И текст уведомления.', { headingOffset: 2 });
+        const log = $('update-log').value;
+        $('log-preview').classList.toggle('hidden', !log.trim());
+        window.VortexMarkdown?.render($('preview-log-body'), log, { headingOffset: 1 });
       }
 
       // ---- Actions ---------------------------------------------------------
@@ -759,6 +807,7 @@
       });
       $('title').addEventListener('input', updatePreview);
       $('body').addEventListener('input', updatePreview);
+      $('update-log').addEventListener('input', updatePreview);
 
       // Ctrl+Enter publishes without reaching for the mouse.
       document.addEventListener('keydown', (event) => {

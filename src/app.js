@@ -3342,7 +3342,9 @@ function navigateHistory(direction) {
   if (nextIndex < 0 || nextIndex >= navigationHistory.length) return;
   navigationHistoryIndex = nextIndex;
   const view = navigationHistory[navigationHistoryIndex];
-  if (view === 'game-detail') {
+  if (releaseLogRoutes.has(view)) {
+    showReleaseLog(view, { track: false });
+  } else if (view === 'game-detail') {
     if (!detailGame) { navigationHistoryIndex += direction < 0 ? -1 : 1; return; }
     currentView = 'game-detail';
     renderPage();
@@ -3403,11 +3405,12 @@ function renderPage() {
   updateSidebar();
   updateNavigationHistoryControls();
   renderUpdateBanner();
-  const pages = { home: renderHome, catalog: renderCatalog, 'game-detail': renderGameDetail, library: renderLibrary,
+  const pages = { home: renderHome, catalog: renderCatalog, 'game-detail': renderGameDetail, 'release-log': renderReleaseLog, library: renderLibrary,
     favorites: renderLibrary, recent: renderLibrary, quick: renderLibrary, activity: renderLibrary, friends: renderFriends, plans: renderPlans, settings: renderSettings };
   const viewKey = currentView === 'settings' ? 'settings/' + preferences.settingsTab
     : currentView === 'catalog' ? ['catalog', activeDiscoverySort, activeCategory, activeAccess].join('/')
     : currentView === 'game-detail' ? 'game/' + detailGame?.id
+    : currentView === 'release-log' ? shownReleaseLog
     : currentView === 'plans' ? 'plans/' + roadmapStage : currentView === 'activity' ? 'activity/' + libraryActivityPane : currentView;
   const sameView = pageContent.dataset.renderedView === viewKey;
   const gamePaneFocus = currentView === 'game-detail' && document.activeElement.matches?.('[role="tab"][data-game-pane]')
@@ -3674,13 +3677,27 @@ function renderAnnouncementList(highlightIds) {
       window.VortexMarkdown?.render(body, item.body);
       row.appendChild(body);
     }
-    if (item.url) {
-      const link = document.createElement('button');
-      link.type = 'button';
-      link.className = 'announcement-link';
-      link.textContent = t('notifications.open');
-      link.addEventListener('click', () => window.vortexDesktop?.openAnnouncementLink?.(item.url));
-      row.appendChild(link);
+    const hasLog = announcementHasLog(item);
+    if (item.url || hasLog) {
+      const actions = document.createElement('div');
+      actions.className = 'announcement-actions';
+      row.appendChild(actions);
+      if (hasLog) {
+        const log = document.createElement('button');
+        log.type = 'button';
+        log.className = 'announcement-link';
+        log.textContent = t('notifications.viewLog');
+        log.addEventListener('click', () => routeToReleaseLog(item));
+        actions.appendChild(log);
+      }
+      if (item.url) {
+        const link = document.createElement('button');
+        link.type = 'button';
+        link.className = 'announcement-link';
+        link.textContent = t('notifications.open');
+        link.addEventListener('click', () => window.vortexDesktop?.openAnnouncementLink?.(item.url));
+        actions.appendChild(link);
+      }
     }
     list.appendChild(row);
   }
@@ -4819,6 +4836,12 @@ function setView(view, { track = true } = {}) {
 document.addEventListener('click', async (event) => {
   const target = event.target instanceof Element ? event.target : event.target?.parentElement;
   if (!target) return;
+  const notesLink = target.closest('.announcement-body a[href]');
+  if (notesLink && window.vortexDesktop?.openAnnouncementLink) {
+    event.preventDefault();
+    window.vortexDesktop.openAnnouncementLink(notesLink.href);
+    return;
+  }
   const colorOpen = target.closest('[data-color-open]');
   if (colorOpen) {
     openColorPopover(colorOpen.dataset.colorOpen, colorOpen);

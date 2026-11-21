@@ -29,9 +29,6 @@ use tauri::{
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
 fn value_string(value: Option<&Value>) -> String {
     value
         .and_then(|v| {
@@ -1625,40 +1622,65 @@ async fn create_desktop_shortcut(
     access_code: Option<String>,
     thumbnail: Option<String>,
 ) -> Result<bool, String> {
-    let (url, _) = quick_game_links(&method, place_id, link_code, share_code, share_type, server_id, access_code)?;
+    let (deep_link, _) = quick_game_links(
+        &method, place_id, link_code, share_code, share_type, server_id, access_code,
+    )?;
+    let url = desktop_shortcut_url(&deep_link);
     let desktop = dirs::desktop_dir().ok_or("Desktop folder not found")?;
-    let name: String = title.chars().filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_')).take(64).collect();
+    let name: String = title
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_'))
+        .take(64)
+        .collect();
     let name = if name.trim().is_empty() { "Roblox" } else { name.trim() };
-    let filename = (1..=100).map(|index| {
-        let suffix = if index == 1 { String::new() } else { format!(" ({index})") };
-        desktop.join(format!("Vortex - {name}{suffix}.lnk"))
-    }).find(|path| !path.exists()).ok_or("No available shortcut name")?;
     let art = shortcut_icon::load_shortcut_icon(thumbnail.as_deref()).await;
     let fallback = std::env::current_exe().ok();
-    write_windows_shortcut(&filename, &url, art.as_deref().or(fallback.as_deref()))?;
-    Ok(art.is_some())
+    let icon = art.as_deref().or(fallback.as_deref());
+    for index in 1..=100 {
+        let suffix = if index == 1 { String::new() } else { format!(" ({index})") };
+        let filename = desktop.join(format!("Vortex - {name}{suffix}.url"));
+        if filename.with_extension("lnk").exists() {
+            continue;
+        }
+        match write_windows_shortcut(&filename, &url, icon) {
+            Ok(()) => return Ok(art.is_some()),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err("Windows could not save the shortcut".to_string()),
+        }
+    }
+    Err("No available shortcut name".to_string())
 }
 
-fn write_windows_shortcut(filename: &Path, url: &str, icon: Option<&Path>) -> Result<(), String> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
-    let path = filename.to_str().ok_or("Invalid Desktop folder")?.replace('\'', "''");
-    let icon_assignment = icon.and_then(Path::to_str).map(|path| {
-        format!("$link.IconLocation='{},0'; ", path.replace('\'', "''"))
-    }).unwrap_or_default();
-    // Both launch routes and query parameters originate from quick_game_links.
-    let script = format!(
-        "$ErrorActionPreference='Stop'; $shell=New-Object -ComObject WScript.Shell; \
-         $link=$shell.CreateShortcut('{path}'); \
-         $link.TargetPath=(Join-Path $env:SystemRoot 'System32\\rundll32.exe'); \
-         $link.Arguments='url.dll,FileProtocolHandler \"{url}\"'; {icon_assignment}$link.Save()"
-    );
-    let encoded = STANDARD.encode(script.encode_utf16().flat_map(u16::to_le_bytes).collect::<Vec<_>>());
-    let status = std::process::Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
-        .creation_flags(0x08000000)
-        .status()
-        .map_err(|_| "Windows could not create the shortcut")?;
-    if status.success() && filename.is_file() { Ok(()) } else { Err("Windows could not save the shortcut".to_string()) }
+fn desktop_shortcut_url(deep_link: &str) -> String {
+    // Use the explicit experience launch route for desktop activations.
+    match deep_link.strip_prefix("roblox://placeId=") {
+        Some(target) => format!("roblox://experiences/start?placeId={target}"),
+        None => deep_link.to_owned(),
+    }
+}
+
+fn write_windows_shortcut(filename: &Path, url: &str, icon: Option<&Path>) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let mut shortcut = format!("[InternetShortcut]\r\nURL={url}\r\n");
+    if let Some(icon) = icon.and_then(Path::to_str) {
+        shortcut.push_str(&format!("IconFile={icon}\r\nIconIndex=0\r\n"));
+    }
+    // A UTF-16 BOM keeps paths with non-ASCII characters readable by Explorer.
+    let data: Vec<_> = std::iter::once(0xfeff)
+        .chain(shortcut.encode_utf16())
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(filename)?;
+    if let Err(error) = file.write_all(&data) {
+        drop(file);
+        let _ = std::fs::remove_file(filename);
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1666,20 +1688,54 @@ mod shortcut_tests {
     use super::*;
 
     #[test]
-    fn shortcut_uses_the_same_native_target_as_server_launch() {
-        let (url, _) = quick_game_links(
-            "private", Some("812001".into()), Some("example_link".into()), None, None, None, None
-        ).unwrap();
-        let path = std::env::temp_dir().join(format!("vortex-shortcut-{}.lnk", Uuid::new_v4()));
-        let icon_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("icons").join("icon.ico");
+    fn shortcut_preserves_the_exact_server_target_and_icon() {
+        let (deep_link, _) = quick_game_links(
+            "private",
+            Some("812001".into()),
+            Some("example_link".into()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let url = desktop_shortcut_url(&deep_link);
+        assert_eq!(
+            url,
+            "roblox://experiences/start?placeId=812001&linkCode=example_link"
+        );
+        let path = std::env::temp_dir().join(format!("vortex-shortcut-{}.url", Uuid::new_v4()));
+        let icon_path = std::env::temp_dir().join("Vortex — обложка.ico");
         write_windows_shortcut(&path, &url, Some(&icon_path)).unwrap();
         let bytes = std::fs::read(&path).unwrap();
+        let duplicate = write_windows_shortcut(&path, &url, None).unwrap_err();
         let _ = std::fs::remove_file(path);
-        let expected: Vec<_> = url.encode_utf16().flat_map(u16::to_le_bytes).collect();
-        assert!(bytes.windows(expected.len()).any(|part| part == expected));
-        let expected: Vec<_> = icon_path.to_str().unwrap().encode_utf16().flat_map(u16::to_le_bytes).collect();
-        assert!(bytes.windows(expected.len()).any(|part| part == expected));
-        assert!(bytes.starts_with(&[0x4c, 0, 0, 0]));
+        assert_eq!(duplicate.kind(), std::io::ErrorKind::AlreadyExists);
+        let words = bytes
+            .chunks_exact(2)
+            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            String::from_utf16(&words).unwrap(),
+            format!(
+                "\u{feff}[InternetShortcut]\r\nURL={url}\r\nIconFile={}\r\nIconIndex=0\r\n",
+                icon_path.display()
+            )
+        );
+    }
+
+    #[test]
+    fn shortcut_keeps_roblox_share_navigation() {
+        let share = "roblox://navigation/share_links?code=example_share&type=Server";
+        assert_eq!(desktop_shortcut_url(share), share);
+        assert_eq!(
+            desktop_shortcut_url("roblox://placeId=1818"),
+            "roblox://experiences/start?placeId=1818"
+        );
+        assert_eq!(
+            desktop_shortcut_url("roblox://placeId=1818&gameInstanceId=example"),
+            "roblox://experiences/start?placeId=1818&gameInstanceId=example"
+        );
     }
 }
 
@@ -2635,6 +2691,7 @@ fn main() {
             friends_presence_cookie,
             import_legacy_local_storage,
             announcements_list,
+            announcements::announcement_release_log,
             plans_list,
             announcements_open,
             notifications_friend_playing,

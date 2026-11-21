@@ -2,11 +2,11 @@
 
 Vortex — лаунчер Roblox для Windows. Он помогает находить игры, собирать свою библиотеку, запускать сохранённые серверы и следить за игровым временем.
 
-![Версия 1.2.4](https://img.shields.io/badge/version-1.2.4-9b7cff) ![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
+![Версия 1.2.5](https://img.shields.io/badge/version-1.2.5-9b7cff) ![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
 
 ## Установка и обновление
 
-Скачай `Vortex.Launcher.Setup.1.2.4.exe` для Windows x64. Рядом с установщиком доступна контрольная сумма SHA-256. Для запуска игр нужен Roblox Player. [Релиз 1.2.4](https://github.com/mozrg/Vortex/releases/tag/1.2.4) · [Сайт проекта](https://vortex.mivermiver51.workers.dev)
+Скачай установщик Vortex для Windows x64. Рядом с установщиком доступна контрольная сумма SHA-256. Для запуска игр нужен Roblox Player. [Релизы на GitHub](https://github.com/mozrg/Vortex/releases) · [Сайт проекта](https://vortex.mivermiver51.workers.dev)
 
 Vortex проверяет новые версии на GitHub. Проверку можно запустить вручную через **Настройки → Версия → Проверить обновление**. Сборку с тем же номером версии можно установить вручную поверх текущей. [Все версии](https://github.com/mozrg/Vortex/releases)
 

@@ -234,8 +234,20 @@ body.light-theme .search-page-field { background: #fff; box-shadow: 0 12px 30px 
 .announcement-body pre { padding: 9px 11px; border-radius: 8px; background: var(--bg); white-space: pre-wrap; }
 .announcement-body code { padding: 1px 4px; border-radius: 4px; background: var(--bg); font-family: var(--font-mono); font-size: .92em; }
 .announcement-body a { color: var(--accent-text); }
+.announcement-actions { display: flex; flex-wrap: wrap; column-gap: 16px; }
 .announcement-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 9px; color: var(--accent-text); font-size: 12px; font-weight: 600; background: none; border: 0; padding: 0; cursor: pointer; }
 .announcement-link:hover { text-decoration: underline; }
+.release-log-page { max-width: 920px; margin: 0 auto; }
+.release-log-head { display: grid; gap: 6px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.release-log-head h1 { margin: 0; color: var(--text); font-size: clamp(24px, 4vw, 38px); overflow-wrap: anywhere; }
+.release-log-head h1:focus { outline: none; }
+.release-log-head span { color: var(--accent-text); font-weight: 600; }
+.release-log-head time, .release-log-status { color: var(--muted); }
+.release-log-body.announcement-body { font-size: 14px; color: var(--text); line-height: 1.7; }
+.release-log-body :is(h2, h3, h4, h5, h6) { margin: 1.35em 0 .4em; line-height: 1.3; }
+.release-log-body :is(p, ul, ol, blockquote, pre) { margin-block: .85em; }
+.release-log-body hr { border: 0; border-top: 1px solid var(--line); margin-block: 22px; }
+.announcement-body .task { list-style: none; }
 .announcement.is-unread .announcement-title::after { content: ''; display: inline-block; width: 5px; height: 5px; margin-left: 7px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
 .avatar-small { width: 32px; height: 32px; cursor: pointer; }
 .page-content { width: 100%; max-width: 1520px; min-height: calc(100vh - var(--window-titlebar-height) - 76px); padding: 34px clamp(18px, 2.6vw, 42px) 56px; margin: 0 auto; }

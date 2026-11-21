@@ -77,6 +77,7 @@
 
     // Announcements
     listAnnouncements: (request) => invoke('announcements_list', request),
+    getAnnouncementReleaseLog: (tag) => invoke('announcement_release_log', { tag }),
     listPlans: (request) => invoke('plans_list', request),
     openAnnouncementLink: (url) => invoke('announcements_open', { url }),
 

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0c10" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'self'" />
+    <title>Обновления Vortex</title>
+    <link rel="icon" href="assets/vortex-logo.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="site.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Vortex Place Launcher">
+        <img src="assets/vortex-logo.svg" alt="" />
+        <span><strong>VORTEX</strong><small>PLACE LAUNCHER</small></span>
+      </a>
+      <nav aria-label="Навигация">
+        <a href="./#features" data-copy="navFeatures">Возможности</a>
+        <a href="./#versions" data-copy="navVersions">Версии</a>
+        <a href="./updates.html" data-copy="navUpdates" aria-current="page">Обновления</a>
+        <a class="github-link" href="https://github.com/mozrg/Vortex/releases" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+      <button class="language-button" id="language-toggle" type="button" aria-label="Switch language">EN</button>
+    </header>
+
+    <main class="updates-page" data-updates-page>
+      <a class="updates-back" href="./updates.html"><span aria-hidden="true">←</span> <span data-copy="backToUpdates">Все обновления</span></a>
+      <h1 id="updates-title" data-copy="updatesTitle">Обновления Vortex</h1>
+      <p class="updates-description" data-updates-description data-copy="updatesBody">Список изменений и установщики для каждой версии.</p>
+      <div class="versions-list" id="versions-list" aria-live="polite">
+        <div class="versions-loading"><span class="spinner"></span><span data-copy="loadNotes">Загружаем изменения…</span></div>
+      </div>
+    </main>
+
+    <footer><a class="brand footer-brand" href="./"><img src="assets/vortex-logo.svg" alt="" /><span><strong>VORTEX</strong><small>PLACE LAUNCHER</small></span></a><p data-copy="footer">Сделано, чтобы быстрее находить игры и возвращаться в любимые миры.</p><span>© <span id="year"></span> Vortex</span></footer>
+    <script src="markdown.js"></script>
+    <script src="site.js"></script>
+  </body>
+</html>

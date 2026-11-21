@@ -4,6 +4,56 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const SOURCE_URL: &str =
     "https://raw.githubusercontent.com/mozrg/Vortex/main/site/notifications.json";
 const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
+const RELEASES_API: &str = "https://api.github.com/repos/mozrg/Vortex/releases/tags";
+
+#[tauri::command]
+pub async fn announcement_release_log(tag: String) -> Result<Option<Value>, String> {
+    if tag.is_empty()
+        || tag.len() > 80
+        || !tag
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'+' | b'-'))
+        || !tag.trim_start_matches(['v', 'V']).starts_with(|c: char| c.is_ascii_digit())
+    {
+        return Err("Invalid release tag".to_string());
+    }
+    let alternate = if let Some(version) = tag.strip_prefix(['v', 'V']) {
+        version.to_string()
+    } else {
+        format!("v{tag}")
+    };
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .user_agent("Vortex-Launcher")
+        .build()
+        .map_err(|error| error.to_string())?;
+    for candidate in [&tag, &alternate] {
+        let response = client
+            .get(format!("{RELEASES_API}/{}", crate::encode_query(candidate)))
+            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+            .send()
+            .await
+            .map_err(|error| error.to_string())?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            continue;
+        }
+        let data: Value = response
+            .error_for_status()
+            .map_err(|error| error.to_string())?
+            .json()
+            .await
+            .map_err(|error| error.to_string())?;
+        if data.get("draft").and_then(Value::as_bool) == Some(true) {
+            return Ok(None);
+        }
+        return Ok(Some(serde_json::json!({
+            "body": data.get("body").and_then(Value::as_str).unwrap_or_default(),
+            "date": data.get("published_at"),
+            "url": format!("https://github.com/mozrg/Vortex/releases/tag/{}", crate::encode_query(candidate))
+        })));
+    }
+    Ok(None)
+}
 
 fn version_numbers(version: &str) -> Vec<u64> {
     version

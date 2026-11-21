@@ -16,6 +16,14 @@
       "level": "success",
       "url": "https://vortex-site-orpin.vercel.app/",
       "date": "2026-11-21T11:26:49.599Z"
+    },
+    {
+      "id": "2026-11-21-1-2-5",
+      "title": "1.2.5",
+      "body": "Небольшое обновление",
+      "level": "info",
+      "url": "https://vortex-site-orpin.vercel.app/updates.html?tag=1.2.5",
+      "date": "2026-11-21T16:13:04.350Z"
     }
   ]
 }

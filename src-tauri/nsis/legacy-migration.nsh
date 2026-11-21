@@ -60,5 +60,11 @@ Var VortexLegacyFileName
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
+  ${If} $UpdateMode <> 1
+    ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Vortex Launcher"
+    ${If} $0 == '$\"$INSTDIR\vortex-launcher.exe$\"'
+      DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Vortex Launcher"
+    ${EndIf}
+  ${EndIf}
   Delete "$INSTDIR\Vortex Launcher.exe"
 !macroend

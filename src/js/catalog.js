@@ -1,8 +1,8 @@
 const catalogSortOrder = ['recommended', 'top-playing-now', 'top-trending', 'up-and-coming', 'top-rated',
-  'top-revisited', 'fun-with-friends', 'gems'];
+  'top-revisited', 'fun-with-friends', 'like-percentage'];
 const catalogSortGlyphs = {
   recommended: 'sparkles', 'top-playing-now': 'playCircle', 'top-trending': 'trend', 'up-and-coming': 'rocket',
-  'top-rated': 'trophy', 'top-revisited': 'repeat', 'fun-with-friends': 'party', gems: 'gem'
+  'top-rated': 'trophy', 'top-revisited': 'repeat', 'fun-with-friends': 'party', 'like-percentage': 'thumb'
 };
 const catalogRankStorageKey = 'vortex.catalogRankHistory';
 const catalogHour = 3600000;
@@ -138,11 +138,12 @@ function renderCatalogBody(query, chart, chartData) {
     return (genreStatus === 'error' ? note('catalog.errorBody') : '') + renderCatalogResults(list) + footer('load-more-genre', genreLoadingMore);
   }
   if (!chartData && discoveryStatus === 'loading') return catalogLoading('catalog.loading');
-  const previous = catalogPreviousRanks(activeDiscoverySort, chartData?.savedAt);
+  const comparison = chart ? catalogRankComparison(activeDiscoverySort, chartData?.savedAt) : null;
+  const rankNote = chart && chartData && list.length ? renderCatalogRankNote(comparison) : '';
   const explore = activeCategory !== 'all' && !catalogFriendsOnly ? `<div class="catalog-feed-footer">
     <button class="ghost-button" data-catalog-explore-genre>${t('chart.exploreGenre')} ${icon('arrow', 13)}</button></div>` : '';
   return (discoveryStatus === 'error' ? note('catalog.errorBody') : '') +
-    renderCatalogResults(list.slice(0, catalogVisibleCount), { chart, previous }) +
+    rankNote + renderCatalogResults(list.slice(0, catalogVisibleCount), { chart, comparison }) +
     (list.length > catalogVisibleCount ? footer('load-more') : explore);
 }
 
@@ -166,16 +167,16 @@ async function loadDiscoveryCatalog(sortId = activeDiscoverySort, { force = fals
   if (currentView === 'catalog') renderPage();
   try {
     if (!window.vortexDesktop?.discoverGames) throw new Error('Desktop catalog unavailable');
-    const source = sortId === 'gems' ? 'top-rated' : sortId;
-    const response = await window.vortexDesktop.discoverGames({ sortId: source, sessionId: discoverySessionId });
+    const source = sortId === 'like-percentage' ? 'top-rated' : sortId;
+    const response = await window.vortexDesktop.discoverGames({ sortId: source, sessionId: discoverySessionId, force });
     if (requestId !== discoveryRequestId) return;
     if (!Array.isArray(response.items)) throw new Error('No chart items');
     discoverySessionId = response.sessionId || discoverySessionId;
     discoverySorts = Array.isArray(response.sorts) && response.sorts.length ? response.sorts : fallbackDiscoverySorts;
     const loaded = response.items.map(game => normalizeDiscoveredGame(game));
-    const items = sortId === 'gems' ? chooseCatalogGems(loaded) : loaded;
+    const items = sortId === 'like-percentage' ? rankCatalogByLikes(loaded) : loaded;
     const savedAt = Date.now();
-    catalogRankSnapshot(sortId, items, savedAt);
+    catalogRankSnapshot(sortId, items, savedAt, cached);
     discoveryCatalog = { ...discoveryCatalog, [sortId]: { savedAt, items } };
     const known = new Map(dynamicGames.map(game => [String(game.id), game]));
     for (const { catalogRank, ...game } of items) known.set(game.id, { ...known.get(game.id), ...game });
@@ -199,30 +200,55 @@ function isRecommendationsView() {
     activeAccess !== 'paid' && activeDiscoverySort === RECOMMENDED_SORT.id;
 }
 
-function catalogRankSnapshot(sortId, games, at) {
-  catalogRankHistory ||= readStored(catalogRankStorageKey, {}) || {};
-  const ranks = Object.fromEntries(games.filter(game => Number.isInteger(game.catalogRank) && game.catalogRank > 0)
-    .map(game => [experienceKey(game), game.catalogRank]));
-  if (!Object.keys(ranks).length) return;
-  const since = at - 49 * catalogHour;
-  const recent = (Array.isArray(catalogRankHistory[sortId]) ? catalogRankHistory[sortId] : []).filter(entry => entry.at > since);
-  if (at - (recent.at(-1)?.at || 0) < catalogHour / 2) return;
-  catalogRankHistory[sortId] = [...recent, { at, ranks }].slice(-100);
+function catalogRankSnapshots(sortId) {
+  catalogRankHistory ||= Object.assign(Object.create(null), readStored(catalogRankStorageKey, {}));
+  const snapshots = catalogRankHistory[sortId];
+  return Array.isArray(snapshots) ? snapshots.filter(snap => Number.isFinite(snap?.at) &&
+    snap.at > 0 && snap.ranks && typeof snap.ranks === 'object' && !Array.isArray(snap.ranks)) : [];
+}
+
+function catalogRankSnapshot(sortId, games, at, cached = null) {
+  const snapshots = new Map(catalogRankSnapshots(sortId).filter(snap => snap.at < at)
+    .map(snap => [snap.at, snap]));
+  const record = (items, time) => {
+    const ranks = Object.fromEntries(items.filter(game => Number.isInteger(game.catalogRank) && game.catalogRank > 0)
+      .map(game => [experienceKey(game), game.catalogRank]));
+    if (Object.keys(ranks).length) snapshots.set(time, { at: time, ranks });
+  };
+  if (Number.isFinite(cached?.savedAt) && cached.savedAt > 0 && cached.savedAt < at &&
+      Array.isArray(cached.items) && !snapshots.has(cached.savedAt)) record(cached.items, cached.savedAt);
+  record(games, at);
+  if (!snapshots.has(at)) return;
+  const ordered = [...snapshots.values()].sort((a, b) => a.at - b.at);
+  // Keep both sides of a recent refresh, with one snapshot per hour further back.
+  const hourly = new Map(ordered.slice(0, -2).filter(snap => snap.at > at - 49 * catalogHour)
+    .map(snap => [Math.floor(snap.at / catalogHour), snap]));
+  catalogRankHistory[sortId] = [...hourly.values(), ...ordered.slice(-2)];
   try { localStorage.setItem(catalogRankStorageKey, JSON.stringify(catalogRankHistory)); } catch { /* The session can still compare snapshots. */ }
 }
 
-function catalogPreviousRanks(sortId, at) {
-  catalogRankHistory ||= readStored(catalogRankStorageKey, {}) || {};
-  const snapshots = catalogRankHistory[sortId];
-  if (!at || !Array.isArray(snapshots)) return null;
+function catalogRankComparison(sortId, at) {
+  if (!Number.isFinite(at) || at <= 0) return null;
   const target = at - 24 * catalogHour;
-  let closest = null;
-  let distance = 2 * catalogHour;
-  for (const snap of snapshots) {
-    const delta = Math.abs(snap.at - target);
-    if (delta <= distance) { distance = delta; closest = snap.ranks; }
+  let daily = null;
+  let latest = null;
+  for (const snap of catalogRankSnapshots(sortId)) {
+    if (snap.at >= at) continue;
+    if (!latest || snap.at > latest.at) latest = snap;
+    const distance = Math.abs(snap.at - target);
+    if (distance <= 2 * catalogHour && (!daily || distance < Math.abs(daily.at - target))) daily = snap;
   }
-  return closest;
+  const snapshot = daily || latest;
+  return snapshot ? { ...snapshot, daily: Boolean(daily) } : null;
+}
+
+function renderCatalogRankNote(comparison) {
+  const time = comparison && new Intl.DateTimeFormat(preferences.language, {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+  }).format(comparison.at);
+  const messaging = comparison ? t(comparison.daily ? 'chart.dayComparison' : 'chart.lastComparison', { time }) :
+    t('chart.rankHistoryEmpty');
+  return `<p class="catalog-rank-note">${escapeHtml(messaging)}</p>`;
 }
 
 function catalogLikeRatio(game) {
@@ -231,12 +257,8 @@ function catalogLikeRatio(game) {
   return up + down ? up / (up + down) : null;
 }
 
-function chooseCatalogGems(games) {
-  return games.filter(game => {
-    const online = Number(game.playerCount);
-    return online > 0 && online <= 5000 && catalogLikeRatio(game) >= .82 && Number(game.upVotes) + Number(game.downVotes) >= 40;
-  }).sort((a, b) => (catalogLikeRatio(b) * Math.log1p(b.upVotes) / Math.pow(Math.max(30, b.playerCount), .33)) -
-    (catalogLikeRatio(a) * Math.log1p(a.upVotes) / Math.pow(Math.max(30, a.playerCount), .33)))
+function rankCatalogByLikes(games) {
+  return [...games].sort((a, b) => (catalogLikeRatio(b) ?? -1) - (catalogLikeRatio(a) ?? -1))
     .map((game, index) => ({ ...game, catalogRank: index + 1 }));
 }
 
@@ -315,12 +337,13 @@ function catalogLoading(key) {
   return `<div class="search-loading" role="status"><span class="loading-spinner"></span><strong>${t(key)}</strong></div>`;
 }
 
-function catalogRankText(game, previous, type = 'rank') {
+function catalogRankText(game, comparison, type = 'rank') {
   const rank = game.catalogRank;
   if (!Number.isInteger(rank) || rank < 1) return '—';
   if (type === 'rank') return String(rank);
-  const old = previous?.[experienceKey(game)];
-  if (!Number.isInteger(old)) return '—';
+  if (!comparison) return '—';
+  const old = comparison.ranks[experienceKey(game)];
+  if (!Number.isInteger(old) || old < 1) return `<span class="catalog-rank-new" data-tooltip="${escapeHtml(t('chart.newInChartHint'))}">${t('chart.newInChart')}</span>`;
   const delta = old - rank;
   return delta ? `<span class="catalog-rank-change ${delta > 0 ? 'up' : 'down'}" aria-label="${escapeHtml(t(delta > 0 ? 'chart.rise' : 'chart.fall', { count: Math.abs(delta) }))}">${delta > 0 ? '▲' : '▼'} ${Math.abs(delta)}</span>` : '0';
 }
@@ -376,9 +399,9 @@ function renderCatalogPlayers(game) {
   return Number.isFinite(Number(count)) && count !== null && count !== '' ? formatCount(count) : '—';
 }
 
-function renderCatalogResults(list, { chart = false, previous = null, empty = '' } = {}) {
+function renderCatalogResults(list, { chart = false, comparison = null, empty = '' } = {}) {
   if (!list.length) return empty || catalogEmptyState();
-  const context = { chart, previous };
+  const context = { chart, comparison };
   if (!preferences.catalogGroupByGenre) return renderCatalogCollection(list, context);
   const groups = new Map();
   for (const game of list) {
@@ -394,24 +417,25 @@ function renderCatalogCollection(list, context) {
   if (preferences.catalogView !== 'list') {
     return `<div class="catalog-tiles">${list.map(game => renderCatalogTile(game, context)).join('')}</div>`;
   }
-  const { chart, previous } = context;
+  const { chart, comparison } = context;
+  const changeLabel = t(comparison?.daily ? 'chart.day' : comparison ? 'chart.sinceRefresh' : 'chart.rankChange');
   return `<div class="catalog-table-wrap"><table class="catalog-table">
     <thead><tr>${chart ? '<th class="catalog-col-rank" scope="col">#</th>' : ''}<th scope="col">${t('chart.game')}</th>
-      <th scope="col" class="catalog-col-players">${t('chart.players')}</th>${chart ? `<th scope="col" class="catalog-col-change">${t('chart.day')}</th>` : ''}
+      <th scope="col" class="catalog-col-players">${t('chart.players')}</th>${chart ? `<th scope="col" class="catalog-col-change">${changeLabel}</th>` : ''}
       ${preferences.cardShowLikes ? `<th scope="col" class="catalog-col-rating">${t('chart.rating')}</th>` : ''}
       <th scope="col" class="catalog-col-friends">${t('nav.friends')}</th>
       <th scope="col" class="catalog-col-actions" aria-label="${t('chart.actions')}"></th></tr></thead>
     <tbody>${list.map((game, index) => `<tr data-game="${escapeHtml(String(game.id))}">
-      ${chart ? `<td class="catalog-col-rank">${catalogRankText(game, previous)}</td>` : ''}
+      ${chart ? `<td class="catalog-col-rank">${catalogRankText(game, comparison)}</td>` : ''}
       <td><div class="catalog-row-game"><span class="catalog-art">${renderCatalogArt(game, { eager: index < 12 })}</span><div>
         ${renderCatalogTitle(game)}<div class="catalog-game-meta">${renderCatalogGenre(game)}</div></div></div></td>
-      <td class="catalog-col-players">${renderCatalogPlayers(game)}</td>${chart ? `<td class="catalog-col-change">${catalogRankText(game, previous, 'change')}</td>` : ''}
+      <td class="catalog-col-players">${renderCatalogPlayers(game)}</td>${chart ? `<td class="catalog-col-change">${catalogRankText(game, comparison, 'change')}</td>` : ''}
       ${preferences.cardShowLikes ? `<td class="catalog-col-rating">${renderCatalogRating(game)}</td>` : ''}
       <td class="catalog-col-friends">${renderCatalogFriends(game)}</td>
       <td class="catalog-col-actions"><div>${renderCatalogStar(game)}${renderCatalogPlay(game)}</div></td></tr>`).join('')}</tbody></table></div>`;
 }
 
-function renderCatalogTile(game, { chart = false, previous = null, recommended = false } = {}) {
+function renderCatalogTile(game, { chart = false, comparison = null, recommended = false } = {}) {
   const id = escapeHtml(String(game.id));
   const score = recommended && game.recommendationReason && game.recommendationScore;
   const rank = chart && Number.isInteger(game.catalogRank) ? `#${game.catalogRank}` : '';
@@ -425,7 +449,7 @@ function renderCatalogTile(game, { chart = false, previous = null, recommended =
     ${renderCatalogStar(game)}${renderCatalogPlay(game, 'catalog-tile-play')}
     </div><div class="catalog-tile-copy">${renderCatalogTitle(game)}<div class="catalog-game-meta">${renderCatalogGenre(game)}</div>
     <div class="catalog-tile-meta">${preferences.cardShowLikes ? renderCatalogRating(game) : ''}
-      ${chart ? catalogRankText(game, previous, 'change') : ''}
+      ${chart ? catalogRankText(game, comparison, 'change') : ''}
       ${score ? renderCatalogMatch(score) : ''}<span class="catalog-spacer"></span>
       ${renderCatalogFriends(game)}${recommended ? renderRecommendationMenu(game) : ''}</div>
     ${recommended && game.recommendationReason ? `<small class="catalog-tile-reason" data-tooltip="${escapeHtml(catalogReason(game))}">${escapeHtml(catalogReason(game))}</small>` : ''}</div></article>`;

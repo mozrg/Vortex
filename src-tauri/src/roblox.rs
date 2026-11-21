@@ -80,6 +80,10 @@ pub async fn fetch_cached_json(state: &AppState, url: &str) -> Result<Value, Str
             }
         }
     }
+    refresh_cached_json(state, url).await
+}
+
+pub async fn refresh_cached_json(state: &AppState, url: &str) -> Result<Value, String> {
     let value = fetch_json(url, None).await?;
     let mut cache = state.response_cache.lock().unwrap();
     if cache.len() > 400 {

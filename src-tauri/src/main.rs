@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod announcements;
+mod autostart;
 mod cache;
 mod cookie;
 mod game_servers;
@@ -1237,6 +1238,7 @@ async fn games_discover(
     state: tauri::State<'_, Arc<AppState>>,
     sort_id: Option<String>,
     session_id: Option<String>,
+    force: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     let session = session_id
         .filter(|s| !s.is_empty())
@@ -1299,7 +1301,11 @@ async fn games_discover(
         encode_query(&session),
         encode_query(&selected)
     );
-    let payload = roblox::fetch_cached_json(&*state, &sort_url).await?;
+    let payload = if force.unwrap_or(false) {
+        roblox::refresh_cached_json(&state, &sort_url).await?
+    } else {
+        roblox::fetch_cached_json(&state, &sort_url).await?
+    };
     let rows: Vec<Value> = map_content_rows(&payload)
         .into_iter()
         .filter(|row| row.get("isSponsored").and_then(Value::as_bool) != Some(true))
@@ -2595,6 +2601,8 @@ fn main() {
             shell_open_external,
             games_search,
             games_details,
+            autostart::windows_autostart_status,
+            autostart::windows_autostart_set,
             game_servers::games_public_servers,
             games_online,
             games_similar,

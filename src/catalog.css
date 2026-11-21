@@ -22,6 +22,7 @@
 .catalog-refresh { flex-wrap: nowrap; gap: 6px; color: var(--muted); font-size: .82rem; }
 .catalog-refresh .icon-button { width: 32px; height: 32px; }
 .catalog-refresh button[aria-busy="true"] svg { animation: catalog-spin .9s linear infinite; }
+.catalog-rank-note { margin: 0 0 8px; color: var(--muted); font-size: .82rem; }
 .catalog-spacer { flex: 1; }
 .catalog-table-wrap { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 0 8px; }
 .catalog-table { width: 100%; border-collapse: collapse; text-align: start; }
@@ -54,6 +55,7 @@
 .catalog-rating { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 650; }
 .catalog-rating svg { color: var(--accent-text); }
 .catalog-rank-change { font-weight: 650; }
+.catalog-rank-new { color: var(--muted); }
 .catalog-rank-change.up { color: #7bcaa1; }
 .catalog-rank-change.down { color: #f590a0; }
 body.light-theme .catalog-rank-change.up { color: #16764a; }

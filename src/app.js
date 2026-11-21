@@ -375,6 +375,7 @@ const fallbackDiscoverySorts = [
 let discoverySorts = readStored('vortex.discoverySorts', []);
 let discoveryCatalog = readStored('vortex.discoveryCatalog', {});
 let activeDiscoverySort = readStored('vortex.activeDiscoverySort', 'top-trending');
+if (activeDiscoverySort === 'gems') activeDiscoverySort = 'like-percentage';
 let discoverySessionId = readStored('vortex.discoverySessionId', '') || createSearchSessionId();
 let discoveryStatus = 'idle';
 let discoveryRequestId = 0;
@@ -387,7 +388,8 @@ let recommendationState = newRecommendationState();
 
 function catalogSorts() {
   const available = new Map([...fallbackDiscoverySorts, ...discoverySorts].map(sort => [sort.id, sort]));
-  for (const sort of [RECOMMENDED_SORT, { id: 'top-rated', title: 'Top Rated' }, { id: 'gems', title: 'Hidden Gems' }]) {
+  available.delete('gems');
+  for (const sort of [RECOMMENDED_SORT, { id: 'top-rated', title: 'Top Rated' }, { id: 'like-percentage', title: 'Like percentage' }]) {
     available.set(sort.id, sort);
   }
   return [...catalogSortOrder.map(id => available.get(id)).filter(Boolean),
@@ -3111,7 +3113,8 @@ async function checkApiStatus() {
 }
 
 function renderGeneralSettings() {
-  return `<section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.friends.title')}</h2><p>${t('settings.friends.body')}</p></div>${icon('users', 18)}</div>
+  return `${renderWindowsAutostart()}
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.friends.title')}</h2><p>${t('settings.friends.body')}</p></div>${icon('users', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.friends.username')}</strong><small>${t('settings.friends.usernameHint')}</small></div>
         <span class="roblox-username-field"><input class="control-field" type="text" maxlength="20" autocomplete="off" placeholder="Roblox" aria-label="${t('settings.friends.username')}" value="${escapeHtml(preferences.robloxUsername || '')}" data-roblox-username />
           <button class="control-button" data-detect-username>${icon('userScan', 15)} ${t('friends.detect')}</button>

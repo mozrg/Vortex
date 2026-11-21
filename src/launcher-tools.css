@@ -4,6 +4,7 @@
 .launcher-tool-dialog .settings-card-head { align-items: center; }
 .launcher-tool-dialog .settings-card-head h2 { margin: 0; }
 .launcher-tool-dialog .settings-card-head button { padding: 7px; }
+[data-windows-autostart] [aria-disabled="true"] { opacity: .58; cursor: progress; }
 .launcher-tool-dialog form,.launcher-dialog-list { display: grid; gap: 10px; }
 .launcher-dialog-list { list-style: none; padding: 0; margin: 0 0 12px; }
 .launcher-dialog-form label,.journal-filters label { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: calc(12px * var(--vortex-text-scale)); }

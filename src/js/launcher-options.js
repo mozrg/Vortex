@@ -38,6 +38,7 @@ function journalQuery() {
 }
 
 const settingIndex = [
+  ['general', 'windows-autostart', 'settings.autostart.title', 'загрузка вход в систему windows startup autostart автозагрузка автозапуск'],
   ['home', 'homeGameView', 'settings.home.gameView', 'главная вид список сетка плитки home layout list grid'],
   ['accent', 'accent', 'settings.accent.title', 'цвет акцент accent color'],
   ['accent', 'theme', 'tools.themePreview', 'цвет тема theme предпросмотр'],

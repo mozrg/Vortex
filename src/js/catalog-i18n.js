@@ -6,6 +6,13 @@ const catalogLabels = [
   ['game', 'Игра', 'Game'],
   ['players', 'Играют', 'Playing'],
   ['day', 'За сутки', '24h change'],
+  ['sinceRefresh', 'С обновления', 'Since refresh'],
+  ['rankChange', 'Позиция', 'Rank change'],
+  ['dayComparison', 'За сутки · сравнение с {time}', '24h change · compared with {time}'],
+  ['lastComparison', 'С прошлого обновления · {time}', 'Since the previous refresh · {time}'],
+  ['rankHistoryEmpty', 'Изменение позиций появится после следующего обновления чарта.', 'Rank changes will appear after the next chart refresh.'],
+  ['newInChart', 'В чарте', 'Entered'],
+  ['newInChartHint', 'Игры не было в подборке на момент сравнения.', 'This game was outside the chart at the time of comparison.'],
   ['rating', 'Оценка', 'Rating'],
   ['actions', 'Действия', 'Actions'],
   ['friendsPlaying', 'Друзей в игре: {count}', '{count} friends playing'],
@@ -44,7 +51,7 @@ for (const [key, ru, en] of catalogLabels) {
 const catalogCollectionLabels = [
   ['recommended', 'Для вас', 'For you'],
   ['top-rated', 'Лучшие по оценкам', 'Top rated'],
-  ['gems', 'Жемчужины', 'Hidden gems'],
+  ['like-percentage', 'По % лайков', 'Like percentage'],
   ['up-and-coming', 'Растущие', 'Up-and-coming'],
   ['top-revisited', 'Возвращаются', 'Top revisited'],
   ['fun-with-friends', 'Весело с друзьями', 'Fun with friends']

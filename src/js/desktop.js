@@ -37,6 +37,8 @@
     // Game search and details
     searchGames: (request) => invoke('games_search', request),
     getGameDetails: (request) => invoke('games_details', request),
+    getWindowsAutostart: () => invoke('windows_autostart_status'),
+    setWindowsAutostart: (enabled) => invoke('windows_autostart_set', { enabled }),
     getPublicServers: (request) => invoke('games_public_servers', request),
     getGameOnline: (request) => invoke('games_online', request),
     getSimilarGames: (request) => invoke('games_similar', request),

@@ -40,6 +40,14 @@
       "level": "info",
       "url": "https://vortex-site-orpin.vercel.app/updates.html?tag=1.2.8",
       "date": "2026-11-23T16:06:47.196Z"
+    },
+    {
+      "id": "2026-11-23-1-2-9",
+      "title": "1.2.9",
+      "body": "Некоторые улучшения",
+      "level": "info",
+      "url": "https://vortex-site-orpin.vercel.app/updates.html?tag=1.2.9",
+      "date": "2026-11-23T22:31:05.673Z"
     }
   ]
 }

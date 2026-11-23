@@ -58,7 +58,7 @@ function recordGameLaunch(game, serverId = '') {
   window.setTimeout(pollRobloxRuntime, 750);
 }
 
-async function openGame(id, gameId = '', accessCode = '') {
+async function openGame(id, gameId = '', accessCode = '', { skipConfirm = false } = {}) {
   const game = getGame(id) || (String(detailGame?.id) === String(id) ? detailGame : null) ||
     (gameIdPattern.test(String(id)) ? { id: String(id), title: t('friends.joinGameTitle') } : null);
   if (!game) return;
@@ -66,6 +66,17 @@ async function openGame(id, gameId = '', accessCode = '') {
   const joinGameId = serverIdPattern.test(String(gameId)) || /^\d{5,40}$/.test(String(gameId)) ? String(gameId) : '';
   if (gameId && !joinGameId) { showToast(t('toast.launchError')); return false; }
   const safeAccessCode = /^[A-Za-z0-9-]{8,100}$/.test(String(accessCode || '')) ? String(accessCode) : '';
+  if (!skipConfirm && preferences.confirmLaunch && typeof confirmVortexAction === 'function') {
+    const meta = typeof resolveGameSecurityMeta === 'function' ? await resolveGameSecurityMeta(game.id) : game;
+    const metaHtml = typeof renderSecurityMetaCard === 'function' ? renderSecurityMetaCard(meta, { isUrl: true, authentic: true, host: 'roblox.com', reason: 'authentic' }) : '';
+    const ok = await confirmVortexAction({
+      title: t('confirm.launchTitle'),
+      body: t('confirm.launchBody', { title: meta?.title || game.title }),
+      confirmText: t('confirm.launchAction'),
+      metaHtml
+    });
+    if (!ok) return false;
+  }
   try {
     if (window.vortexDesktop?.openGame) {
       await window.vortexDesktop.openGame(String(game.id), joinGameId, safeAccessCode);
@@ -642,7 +653,15 @@ function encodeQuickLaunchCode(item) {
 }
 
 function importQuickLaunchCode(raw) {
-  const code = String(raw || '').trim().replace(/^VORTEXQL1-/i, '').replace(/-/g, '+').replace(/_/g, '/');
+  const trimmed = String(raw || '').trim();
+  if (/^VORTEXFD1-/i.test(trimmed) && typeof decodeQuickFolderCode === 'function') {
+    const folderPayload = decodeQuickFolderCode(trimmed);
+    if (!folderPayload) return false;
+    closeQuickGameModal();
+    openSharedFolder(folderPayload);
+    return true;
+  }
+  const code = trimmed.replace(/^VORTEXQL1-/i, '').replace(/-/g, '+').replace(/_/g, '/');
   if (!code || code.length > 12000) return false;
   try {
     const binary = atob(code + '='.repeat((4 - code.length % 4) % 4));
@@ -695,6 +714,16 @@ async function submitQuickGameForm(event) {
   const form = event.currentTarget;
   const error = document.getElementById('quick-game-error');
   const field = (name) => String(form.elements.namedItem(name)?.value || '').trim();
+  if (typeof inspectRobloxLinkSafety === 'function') {
+    for (const rawVal of [field('placeId'), field('linkCode'), field('shareCode')]) {
+      const check = inspectRobloxLinkSafety(rawVal);
+      if (check.isUrl && !check.authentic) {
+        error.textContent = t(check.reason === 'homograph' ? 'security.domainHomograph' : 'security.domainSpoofed', { host: check.host });
+        error.hidden = false;
+        return;
+      }
+    }
+  }
   const preferredTitle = field('title').slice(0, 64);
   const existing = editingQuickGameId ? findQuickLaunchGame(editingQuickGameId) : null;
   const folderId = addingQuickGameToFolder;
@@ -754,7 +783,18 @@ async function submitQuickGameForm(event) {
   }
 }
 
-function removeQuickLaunchItem(id) {
+async function removeQuickLaunchItem(id) {
+  if (preferences.confirmDelete !== false && typeof confirmVortexAction === 'function') {
+    const found = preferences.quickLaunchItems.find(item => item.id === id) || findQuickLaunchGame(id);
+    const label = found?.title || t('quick.folderDefault');
+    const ok = await confirmVortexAction({
+      title: t('confirm.deleteTitle'),
+      body: t('confirm.deleteBody', { title: label }),
+      confirmText: t('confirm.deleteAction'),
+      danger: true
+    });
+    if (!ok) return;
+  }
   const removeFrom = (items) => {
     const index = items.findIndex((item) => item.id === id);
     if (index >= 0) {
@@ -817,12 +857,27 @@ function organizeQuickLaunchDrop(sourceId, targetGameId = '', targetFolderId = '
 async function launchQuickGame(id) {
   const item = findQuickLaunchGame(id);
   if (!item) return;
+  if (preferences.confirmLaunch && typeof confirmVortexAction === 'function') {
+    const meta = item.placeId && typeof resolveGameSecurityMeta === 'function'
+      ? await resolveGameSecurityMeta(item.placeId)
+      : { title: item.title, creator: '', thumbnail: item.thumbnail };
+    const metaHtml = typeof renderSecurityMetaCard === 'function'
+      ? renderSecurityMetaCard(meta, { isUrl: true, authentic: true, host: 'roblox.com', reason: 'authentic' })
+      : '';
+    const ok = await confirmVortexAction({
+      title: t('confirm.launchTitle'),
+      body: t('confirm.launchBody', { title: meta?.title || item.title }),
+      confirmText: t('confirm.launchAction'),
+      metaHtml
+    });
+    if (!ok) return false;
+  }
   try {
     if (!window.vortexDesktop?.launchQuickGame) throw new Error('Desktop launcher unavailable');
     const folder = preferences.quickLaunchItems.find(entry => entry.type === 'folder' && entry.games.some(game => game.id === item.id));
     if (item.method === 'public' && folder?.server && folder.server !== 'default') {
       const server = await preferredPublicServer(item.placeId, folder.server);
-      if (!server || !await openGame(item.placeId, server.id)) {
+      if (!server || !await openGame(item.placeId, server.id, '', { skipConfirm: true })) {
         if (!server) showToast(t('place.launchNoServer'));
         return false;
       }

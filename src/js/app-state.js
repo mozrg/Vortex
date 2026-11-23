@@ -98,6 +98,7 @@ const preferenceDefaults = {
   inviteHotkey: 'Alt+C', overlayToggleHotkey: '', muteRobloxHotkey: '',
   serverHopHotkey: '', serverHopMode: 'low-ping', serverHopRegion: 'any', serverHopExcludeVisited: true, rejoinHotkey: '',
   showPrivateServers: true,
+  confirmLaunch: false, confirmDelete: true,
   diskCache: true, lazyImages: true, onlineHistoryLimit: 'week', trayMiniPlayer: true,
   trayFavoritesLimit: 5, trayQuickLimit: 3, trayFavoritesUnlimited: false, trayQuickUnlimited: false,
   catalogGroupByGenre: false,

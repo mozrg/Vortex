@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0c10" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'" />
+    <title>Безопасность — Vortex Place Launcher</title>
+    <link rel="icon" href="assets/vortex-logo.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="site.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Vortex Place Launcher">
+        <img src="assets/vortex-logo.svg" alt="" />
+        <span><strong>VORTEX</strong><small>PLACE LAUNCHER</small></span>
+      </a>
+      <nav aria-label="Навигация">
+        <a href="./#features" data-copy="navFeatures">Возможности</a>
+        <a href="./#versions" data-copy="navVersions">Версии</a>
+        <a href="./updates.html" data-copy="navUpdates">Обновления</a>
+        <a href="./security.html" aria-current="page">Безопасность</a>
+        <a class="github-link" href="https://github.com/mozrg/Vortex" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+
+    <main class="updates-page security-page">
+      <a class="updates-back" href="./"><span aria-hidden="true">←</span> На главную</a>
+      <h1>Безопасность Vortex</h1>
+      <p class="updates-description">Прозрачно объясняем, как лаунчер работает с cookie Roblox, куда отправляются запросы, как проверить целостность установщика по SHA-256 и почему внутриигровой оверлей безопасен для клиента.</p>
+
+      <div class="security-grid">
+        <section class="security-card">
+          <span class="security-step">01 · COOKIE</span>
+          <h2>Что Vortex делает с <code>.ROBLOSECURITY</code></h2>
+          <p>Подключение cookie полностью <strong>опционально</strong>: каталог, поиск, избранное, быстрый запуск, трекинг времени и счётчик FPS работают и без авторизации.</p>
+          <ul>
+            <li>Cookie хранится <strong>только локально на вашем ПК</strong> в <code>%APPDATA%\vortex-roblox-launcher\</code> и шифруется средствами Windows (<strong>DPAPI / CryptProtectData</strong>), привязанными к вашей учётной записи Windows.</li>
+            <li>Значение cookie никогда не выводится в логи, не сохраняется в экспортируемые резервные копии и не передаётся в интерфейс без необходимости.</li>
+            <li>В любой момент cookie можно полностью удалить одной кнопкой в <strong>Настройки → Интеграции</strong>.</li>
+          </ul>
+        </section>
+
+        <section class="security-card">
+          <span class="security-step">02 · СЕТЬ</span>
+          <h2>Куда отправляется cookie</h2>
+          <p>Vortex не имеет собственного бэкенд-сервера для аккаунтов и <strong>никогда</strong> не отправляет cookie третьим лицам. Все авторизованные запросы идут напрямую по HTTPS на официальные домены <code>*.roblox.com</code>:</p>
+          <ul>
+            <li><code>users.roblox.com</code> — имя, ID и аватар вашего аккаунта;</li>
+            <li><code>friends.roblox.com</code> и <code>presence.roblox.com</code> — список друзей и статус «в игре»;</li>
+            <li><code>games.roblox.com</code> и <code>gamejoin.roblox.com</code> — приватные серверы, их настройки и реальный IP дата-центра для замера вашего пинга;</li>
+            <li><code>economy.roblox.com</code> — отображение баланса Robux рядом с аватаркой.</li>
+          </ul>
+        </section>
+
+        <section class="security-card">
+          <span class="security-step">03 · SHA-256</span>
+          <h2>Как проверить подлинность установщика</h2>
+          <p>Каждый релиз на <a href="https://github.com/mozrg/Vortex/releases" target="_blank" rel="noopener noreferrer">GitHub Releases</a> публикуется вместе с файлом контрольной суммы <code>.sha256</code>. Перед установкой вы можете убедиться, что файл не был изменён:</p>
+          <pre class="security-code"><code>Get-FileHash .\Vortex.Launcher.Setup.1.2.9.exe -Algorithm SHA256</code></pre>
+          <p>Сравните выведенную строку с содержимым файла <code>Vortex.Launcher.Setup.1.2.9.exe.sha256</code> на странице релиза. При полном совпадении файл на 100% идентичен официальной сборке. Кроме того, встроенный автообновлятор Vortex автоматически сверяет SHA-256 перед установкой каждого обновления.</p>
+        </section>
+
+        <section class="security-card">
+          <span class="security-step">04 · ОВЕРЛЕЙ</span>
+          <h2>Оверлей не вмешивается в клиент Roblox</h2>
+          <p>Внутриигровой HUD спроектирован так, чтобы быть полностью безопасным для клиента Roblox и античита <strong>Byfron / Hyperion</strong>:</p>
+          <ul>
+            <li>Оверлей — это обычное отдельное прозрачное окно Windows поверх экрана (клики проходят сквозь него прямо в игру).</li>
+            <li>Лаунчер <strong>не делает DLL-инжектов</strong>, не ставит хуки на DirectX/Vulkan, не читает и не изменяет память <code>RobloxPlayerBeta.exe</code> и не правит файлы клиента.</li>
+            <li><strong>FPS</strong> считывается через официальный системный счётчик видеодрайвера Windows (<code>D3DKMTQueryStatistics</code>), <strong>RAM/CPU</strong> — через стандартные Win32 API (<code>K32GetProcessMemoryInfo</code>, <code>GetProcessTimes</code>), а <strong>пинг</strong> — коротким TCP-рукопожатием до edge-узла дата-центра Roblox.</li>
+          </ul>
+        </section>
+
+        <section class="security-card">
+          <span class="security-step">05 · ССЫЛКИ И ПОДБОРКИ</span>
+          <h2>Защита от поддельных ссылок и чужих подборок</h2>
+          <p>При добавлении ссылок или импорте чужих файлов-подборок (<code>.vortex-folder.json</code>, <code>.vortex-collection.json</code>, кодов <code>VORTEXQL1-</code> и <code>VORTEXFD1-</code>):</p>
+          <ul>
+            <li>Vortex проверяет домен и предупреждает о подделках (подмена букв кириллицей, Punycode <code>xn--</code>, сторонние домены вместо настоящего <code>roblox.com</code>).</li>
+            <li>Перед добавлением подборки или запуском (если включено подтверждение запуска) показывается реальное название игры и её автор из Roblox API.</li>
+          </ul>
+        </section>
+      </div>
+    </main>
+
+    <footer>
+      <a class="brand footer-brand" href="./"><img src="assets/vortex-logo.svg" alt="" /><span><strong>VORTEX</strong><small>PLACE LAUNCHER</small></span></a>
+      <p data-copy="footer">Сделано, чтобы быстрее находить игры и возвращаться в любимые миры.</p>
+      <span>© <span id="year">2026</span> Vortex</span>
+    </footer>
+  </body>
+</html>

@@ -1030,6 +1030,10 @@ function renderGeneralSettings() {
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.history.title')}</h2><p>${t('settings.history.body')}</p></div>${icon('history', 18)}</div>
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.history.title')}</strong><small>${t('settings.history.body')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.saveHistory}" data-toggle="saveHistory" aria-label="${t('settings.history.title')}"></button></div>
     </section>
+    <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.safety.title')}</h2><p>${t('settings.safety.body')}</p></div>${icon('shield', 18)}</div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.safety.confirmLaunch')}</strong><small>${t('settings.safety.confirmLaunchHint')}</small></div><button class="toggle" role="switch" aria-checked="${Boolean(preferences.confirmLaunch)}" data-toggle="confirmLaunch" aria-label="${t('settings.safety.confirmLaunch')}"></button></div>
+      <div class="setting-line"><div class="setting-label"><strong>${t('settings.safety.confirmDelete')}</strong><small>${t('settings.safety.confirmDeleteHint')}</small></div><button class="toggle" role="switch" aria-checked="${preferences.confirmDelete !== false}" data-toggle="confirmDelete" aria-label="${t('settings.safety.confirmDelete')}"></button></div>
+    </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.profiles.title')}</h2><p>${t('settings.profiles.body')}</p></div>${icon('profileStack', 18)}</div>
       <div class="profile-actions">
         <div class="profile-editor"><input class="control-field" type="text" maxlength="32" aria-label="${t('settings.profiles.namePlaceholder')}" placeholder="${t('settings.profiles.namePlaceholder')}" data-profile-name />

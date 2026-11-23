@@ -67,6 +67,7 @@ function bootVortexInVm(initialStorage = {}) {
     requestAnimationFrame() {},
     cancelAnimationFrame() {},
     Date, Math, JSON, Object, Array, Set, Map, RegExp, Error, Promise, Number, String, Boolean, URL, URLSearchParams,
+    TextEncoder, TextDecoder, Uint8Array, btoa, atob,
     encodeURIComponent, decodeURIComponent, parseInt, parseFloat, isNaN, isFinite,
     localStorage: storage,
     sessionStorage: storage,
@@ -103,6 +104,7 @@ function bootVortexInVm(initialStorage = {}) {
     'src/js/game-page-i18n.js', 'src/js/game-page.js', 'src/js/game-page-servers.js', 'src/js/game-page-actions.js',
     'src/js/windows-autostart.js', 'src/js/game-overlay-settings.js', 'src/js/catalog-i18n.js', 'src/js/catalog.js',
     'src/js/recommendations.js', 'src/js/library-i18n.js', 'src/js/library.js', 'src/js/library-activity.js',
+    'src/js/security-confirm.js',
     'src/js/app-state.js', 'src/js/app-home.js', 'src/js/app-friends.js', 'src/js/app-settings.js',
     'src/js/app-sidebar.js', 'src/js/app-runtime.js', 'src/js/app-events.js', 'src/app.js'
   ];
@@ -222,4 +224,34 @@ test('overlay minimal FPS profile disables heavy metrics and passes hideFullscre
   assert.equal(call.args.config.system, false);
   assert.equal(call.args.config.timer, false);
   assert.equal(call.args.config.friends, false);
+});
+
+test('security domain checker detects spoofed & homograph domains and VORTEXFD1 folder codes round-trip', () => {
+  const { ctx } = bootVortexInVm();
+
+  assert.equal(ctx.inspectRobloxLinkSafety('https://www.roblox.com/games/2753915549/Blox-Fruits').authentic, true);
+  assert.equal(ctx.inspectRobloxLinkSafety('https://ro.blox.com/Ebh5?pid=share').authentic, true);
+  assert.equal(ctx.inspectRobloxLinkSafety('https://roblox.com.evil.net/games/123').authentic, false);
+  assert.equal(ctx.inspectRobloxLinkSafety('https://r0blox.com/games/123').authentic, false);
+  assert.equal(ctx.inspectRobloxLinkSafety('https://r\u043eblox.com/games/123').reason, 'homograph');
+  assert.equal(ctx.inspectRobloxLinkSafety('https://xn--rblox-0sa.com/games/123').reason, 'homograph');
+
+  const folder = {
+    type: 'folder',
+    id: 'f1',
+    title: 'Evening Pack',
+    color: '#a68bff',
+    server: 'default',
+    showInTray: true,
+    games: [
+      { method: 'public', placeId: '2753915549', title: 'Blox Fruits', thumbnail: '' },
+      { method: 'private', placeId: '4924922222', linkCode: '123456', title: 'Brookhaven VIP', thumbnail: '' }
+    ]
+  };
+  const code = ctx.encodeQuickFolderCode(folder);
+  assert.ok(code.startsWith('VORTEXFD1-'));
+  const decoded = ctx.decodeQuickFolderCode(code);
+  assert.equal(decoded.title, 'Evening Pack');
+  assert.equal(decoded.games.length, 2);
+  assert.equal(decoded.games[0].placeId, '2753915549');
 });

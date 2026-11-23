@@ -9,22 +9,64 @@ function collectionGame(game) {
   return { id, title: String(game.title || 'Roblox #' + id).slice(0, 140), thumbnail: safeThumbnail(game.thumbnail) };
 }
 
+function inspectPackSuspiciousUrls(payload) {
+  const suspicious = [];
+  if (typeof inspectRobloxLinkSafety !== 'function' || !payload || typeof payload !== 'object') return suspicious;
+  const scanValue = (val) => {
+    if (typeof val !== 'string') return;
+    const check = inspectRobloxLinkSafety(val);
+    if (check.isUrl && !check.authentic && !val.startsWith('https://tr.rbxcdn.com/') && !val.startsWith('https://t0.rbxcdn.com/') && !/^https:\/\/[a-z0-9-]+\.rbxcdn\.com\//i.test(val)) {
+      suspicious.push(check);
+    }
+  };
+  const walk = (node, depth = 0) => {
+    if (!node || depth > 4) return;
+    if (typeof node === 'string') { scanValue(node); return; }
+    if (Array.isArray(node)) { node.forEach(item => walk(item, depth + 1)); return; }
+    if (typeof node === 'object') { Object.values(node).forEach(v => walk(v, depth + 1)); }
+  };
+  walk(payload);
+  return suspicious;
+}
+
+async function hydratePackAuthors(containerSelector, placeIds) {
+  if (typeof resolveGameSecurityMeta !== 'function' || !Array.isArray(placeIds) || !placeIds.length) return;
+  const unique = [...new Set(placeIds.map(String).filter(id => /^\d{1,20}$/.test(id)))].slice(0, 20);
+  await Promise.all(unique.map(async (id) => {
+    const meta = await resolveGameSecurityMeta(id);
+    if (!meta) return;
+    document.querySelectorAll(`${containerSelector} [data-verify-place="${id}"]`).forEach((slot) => {
+      const creator = meta.creator ? escapeHtml(meta.creator) : t('security.authorUnknown');
+      const verified = meta.creatorVerified ? ' <span class="security-verified-mark">✓</span>' : '';
+      slot.innerHTML = `${t('security.authorLabel')}: ${creator}${verified}`;
+    });
+  }));
+}
+
 function openCollectionEditor(payload = null, localCollection = null) {
   const imported = payload !== null;
   if (imported && (payload?.app !== 'vortex-collection' || payload.version !== 1 || !Array.isArray(payload.games))) {
     showToast(t('settings.data.invalid'));
     return;
   }
+  const suspicious = imported ? inspectPackSuspiciousUrls(payload) : [];
   const candidates = imported ? payload.games : localCollection ? localCollection.games.filter(id => favorites.has(id)).map(libraryGame) : listCollectionGames();
   const games = [...new Map(candidates.slice(0, 300)
     .map(collectionGame).filter(Boolean).map(game => [game.id, game])).values()];
   collectionDraft = { imported, games, name: String(payload?.title || localCollection?.title || '').slice(0, 100) };
+  const securityBanner = imported
+    ? (suspicious.length
+      ? `<div class="security-domain-pill is-danger">${icon('alert', 13)} ${t('security.packWarning')}</div>`
+      : `<div class="security-domain-pill is-safe">${icon('check', 13)} ${t('security.packVerified')}</div>`)
+    : '';
   openLauncherDialog(t(imported ? 'tools.openCollection' : 'tools.collection'), `<form data-launcher-form="collection" class="launcher-dialog-form">
+    ${securityBanner}
     <label>${t('tools.collectionName')}<input name="title" maxlength="100" value="${escapeHtml(collectionDraft.name)}" ${imported ? 'readonly' : ''}></label>
-    ${games.length ? `<ul class="launcher-dialog-list launcher-collection-list">${games.map(game =>
-      `<li><label><input type="checkbox" name="games" value="${game.id}" checked>${gameArt(game)}<span>${escapeHtml(game.title)}</span></label></li>`).join('')}</ul>
+    ${games.length ? `<ul class="launcher-dialog-list launcher-collection-list" data-verify-pack-list>${games.map(game =>
+      `<li><label><input type="checkbox" name="games" value="${game.id}" checked>${gameArt(game)}<span class="shared-folder-copy"><strong>${escapeHtml(game.title)}</strong>${imported ? `<small class="shared-folder-author" data-verify-place="${escapeHtml(game.id)}">${t('security.checkingPack')}</small>` : ''}</span></label></li>`).join('')}</ul>
       <button class="primary-button" type="submit">${t(imported ? 'tools.saveSelected' : 'tools.downloadCollection')}</button>`
       : `<p>${t('tools.collectionEmpty')}</p>`}</form>`);
+  if (imported && games.length) void hydratePackAuthors('[data-verify-pack-list]', games.map(g => g.id));
 }
 
 function pickCollectionFile() {
@@ -91,9 +133,9 @@ async function submitCollection(form) {
 }
 
 let sharedQuickFolder;
-function folderGamesPreview(games) {
-  return `<ul class="launcher-dialog-list launcher-collection-list">${games.map(game => `<li><span class="shared-folder-game">
-    ${gameArt(game)}<strong>${escapeHtml(preferences.streamMode && game.method !== 'public' ? t('tools.privateShortcut') : game.title || 'Roblox #' + game.placeId)}</strong>
+function folderGamesPreview(games, showAuthors = false) {
+  return `<ul class="launcher-dialog-list launcher-collection-list" data-verify-folder-list>${games.map(game => `<li><span class="shared-folder-game">
+    ${gameArt(game)}<span class="shared-folder-copy"><strong>${escapeHtml(preferences.streamMode && game.method !== 'public' ? t('tools.privateShortcut') : game.title || 'Roblox #' + game.placeId)}</strong>${showAuthors && game.placeId ? `<small class="shared-folder-author" data-verify-place="${escapeHtml(String(game.placeId))}">${t('security.checkingPack')}</small>` : ''}</span>
     ${game.method !== 'public' ? icon('lock', 13) : ''}</span></li>`).join('')}</ul>`;
 }
 
@@ -106,8 +148,23 @@ function openQuickFolderShare(id) {
     <strong>${escapeHtml(folder.title || t('quick.folderDefault'))}</strong>
     ${folderGamesPreview(folder.games)}
     ${folder.games.some(game => game.method !== 'public') ? `<p class="catalog-disclaimer">${t('tools.folderPrivateLinks')}</p>` : ''}
-    <button class="primary-button" type="submit">${t('tools.saveFolder')}</button></form>`);
+    <div class="folder-share-actions">
+      <button class="ghost-button" type="button" data-copy-folder-code>${icon('link', 14)} ${t('tools.copyFolderCode')}</button>
+      <button class="primary-button" type="submit">${t('tools.saveFolder')}</button>
+    </div></form>`);
 }
+
+document.addEventListener('click', async (event) => {
+  const btn = event.target.closest?.('[data-copy-folder-code]');
+  if (!btn || !sharedQuickFolder || typeof encodeQuickFolderCode !== 'function') return;
+  const code = encodeQuickFolderCode(sharedQuickFolder);
+  if (!code) {
+    showToast(t('tools.folderCodeTooLarge'));
+    return;
+  }
+  await copyText(code);
+  showToast(t('tools.folderCodeCopied'));
+});
 
 async function submitQuickFolderShare() {
   const { title, color, games, server, showInTray } = sharedQuickFolder;
@@ -120,15 +177,21 @@ async function submitQuickFolderShare() {
 
 function openSharedFolder(payload) {
   if (payload.version !== 1 || !Array.isArray(payload.games)) { showToast(t('settings.data.invalid')); return; }
+  const suspicious = inspectPackSuspiciousUrls(payload);
   const games = payload.games.slice(0, 80).filter(game => game && typeof game === 'object' &&
     ['public', 'private', 'share', 'instance', 'access'].includes(game.method))
     .map(game => ({ ...game, type: 'game', id: quickLaunchId(), hotkey: null, lastPlayed: 0 }));
   const [folder] = cleanQuickLaunchItems([{ type: 'folder', id: quickLaunchId(), title: payload.title, color: payload.color, server: payload.server, showInTray: payload.showInTray, games }]);
   if (folder?.type !== 'folder') { showToast(t('tools.folderInvalid')); return; }
   sharedQuickFolder = folder;
+  const securityBanner = suspicious.length
+    ? `<div class="security-domain-pill is-danger">${icon('alert', 13)} ${t('security.packWarning')}</div>`
+    : `<div class="security-domain-pill is-safe">${icon('check', 13)} ${t('security.packVerified')}</div>`;
   openLauncherDialog(t('tools.openFolder'), `<form data-launcher-form="folder-import" class="launcher-dialog-form">
+    ${securityBanner}
     <strong>${escapeHtml(folder.title || t('quick.folderDefault'))}</strong>
-    ${folderGamesPreview(folder.games)}<button class="primary-button" type="submit">${t('tools.addFolder')}</button></form>`);
+    ${folderGamesPreview(folder.games, true)}<button class="primary-button" type="submit">${t('tools.addFolder')}</button></form>`);
+  void hydratePackAuthors('[data-verify-folder-list]', folder.games.map(g => g.placeId).filter(Boolean));
 }
 
 function submitSharedFolder() {

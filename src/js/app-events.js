@@ -730,8 +730,22 @@ document.addEventListener('click', async (event) => {
   }
   const removeProfileBtn = target.closest('[data-remove-profile]');
   if (removeProfileBtn) {
-    deleteProfile(removeProfileBtn.dataset.removeProfile);
-    renderPage();
+    const profileName = removeProfileBtn.dataset.removeProfile;
+    if (preferences.confirmDelete !== false && typeof confirmVortexAction === 'function') {
+      confirmVortexAction({
+        title: t('confirm.deleteTitle'),
+        body: t('confirm.deleteBody', { title: profileName }),
+        confirmText: t('confirm.deleteAction'),
+        danger: true
+      }).then((ok) => {
+        if (!ok) return;
+        deleteProfile(profileName);
+        renderPage();
+      });
+    } else {
+      deleteProfile(profileName);
+      renderPage();
+    }
     return;
   }
 

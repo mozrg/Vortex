@@ -1,5 +1,6 @@
 const releaseLogRoutes = new Map();
 let shownReleaseLog = null;
+const allReleaseLogsState = { status: 'idle', items: [], loadedAt: 0 };
 
 function announcementReleaseTag(item) {
   const releaseUrl = /^https:\/\/github\.com\/mozrg\/Vortex\/releases\/tag\/([^/?#]+)/i.exec(item.url || '');
@@ -8,12 +9,16 @@ function announcementReleaseTag(item) {
   return candidates.find(tag => typeof tag === 'string' && /^v?\d+\.\d+\.\d+(?:[-+][\da-z.+-]+)?$/i.test(tag)) || '';
 }
 
+function normalizeReleaseTagKey(tag) {
+  return String(tag || '').trim().toLowerCase().replace(/^v/, '');
+}
+
 function announcementHasLog(item) {
   return Boolean(announcementReleaseTag(item) || String(item.updateLog ?? '').trim());
 }
 
 function routeToReleaseLog(item) {
-  const route = 'release-log/' + (item.id || announcementReleaseTag(item));
+  const route = 'release-log/' + (item.id || announcementReleaseTag(item) || 'all');
   const existing = releaseLogRoutes.get(route);
   if (!existing || existing.item !== item || existing.status === 'error') {
     releaseLogRoutes.set(route, { item, status: 'idle', release: null });
@@ -31,20 +36,26 @@ function showReleaseLog(route, { track = true } = {}) {
   const area = document.querySelector('.main-area');
   if (area) area.scrollTop = 0;
   document.querySelector('.release-log-page h1')?.focus({ preventScroll: true });
-  if (!String(entry.item.updateLog ?? '').trim() && entry.status === 'idle') {
-    const tag = announcementReleaseTag(entry.item);
-    if (tag) void loadReleaseLog(route, entry, tag);
+  const stale = Date.now() - allReleaseLogsState.loadedAt > 5 * 60 * 1000;
+  if (allReleaseLogsState.status === 'idle' || allReleaseLogsState.status === 'error' || stale) {
+    void loadAllReleaseLogs(route, entry);
   }
 }
 
-async function loadReleaseLog(route, entry, tag) {
-  entry.status = 'loading';
+async function loadAllReleaseLogs(route, entry) {
+  allReleaseLogsState.status = 'loading';
   updateReleaseLogContent(route, entry);
   try {
-    entry.release = await window.vortexDesktop?.getAnnouncementReleaseLog?.(tag);
-    entry.status = entry.release ? 'ready' : 'error';
+    const list = await window.vortexDesktop?.getAllReleaseLogs?.();
+    if (Array.isArray(list)) {
+      allReleaseLogsState.items = list;
+      allReleaseLogsState.loadedAt = Date.now();
+      allReleaseLogsState.status = 'ready';
+    } else {
+      allReleaseLogsState.status = 'error';
+    }
   } catch {
-    entry.status = 'error';
+    allReleaseLogsState.status = 'error';
   }
   updateReleaseLogContent(route, entry);
 }
@@ -55,30 +66,82 @@ function updateReleaseLogContent(route, entry) {
   if (content) content.innerHTML = renderReleaseLogContent(entry);
 }
 
-function renderReleaseLogContent({ item, status, release }) {
-  const body = [item.updateLog, release?.body, item.body]
-    .find(value => typeof value === 'string' && value.trim());
-  const message = status === 'loading' ? 'notifications.loadingLog'
-    : status === 'error' ? 'notifications.logUnavailable'
-      : body ? '' : 'notifications.logEmpty';
-  return `${message ? `<p class="release-log-status">${t(message)}</p>` : ''}
-    ${body ? `<div class="announcement-body release-log-body">${window.VortexMarkdown.toHtml(body, { headingOffset: 1 })}</div>` : ''}`;
+function formatReleaseDate(dateStr) {
+  const date = new Date(dateStr ?? '');
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU', {
+    day: 'numeric', month: 'long', year: 'numeric'
+  });
+}
+
+function renderReleaseLogContent({ item }) {
+  const activeTag = normalizeReleaseTagKey(announcementReleaseTag(item));
+  const combined = [];
+  const seenTags = new Set();
+
+  // Include all GitHub releases first (newest to oldest)
+  for (const rel of allReleaseLogsState.items) {
+    const key = normalizeReleaseTagKey(rel.tag || rel.name);
+    if (key) seenTags.add(key);
+    combined.push({
+      tag: rel.tag || rel.name || '',
+      title: rel.name || rel.tag || '',
+      date: rel.date || '',
+      body: rel.body || '',
+      url: rel.url || '',
+      highlighted: Boolean(activeTag && key === activeTag)
+    });
+  }
+
+  // If the clicked announcement has a local updateLog or tag not yet in GitHub releases, show it at the top.
+  const localBody = String(item?.updateLog || item?.body || '').trim();
+  if (item && (!activeTag || !seenTags.has(activeTag)) && localBody) {
+    combined.unshift({
+      tag: announcementReleaseTag(item) || '',
+      title: item.title || '',
+      date: item.date || '',
+      body: localBody,
+      url: item.url || '',
+      highlighted: true
+    });
+  }
+
+  const statusMsg = allReleaseLogsState.status === 'loading' && !combined.length
+    ? `<p class="release-log-status">${t('notifications.loadingLog')}</p>`
+    : allReleaseLogsState.status === 'error' && !combined.length
+      ? `<p class="release-log-status">${t('notifications.logUnavailable')}</p>`
+      : !combined.length
+        ? `<p class="release-log-status">${t('notifications.logEmpty')}</p>`
+        : '';
+
+  if (!combined.length) return statusMsg;
+
+  return `${allReleaseLogsState.status === 'loading' ? `<p class="release-log-status">${t('notifications.loadingLog')}</p>` : ''}
+    <div class="release-log-list">${combined.map(rel => {
+      const dateLabel = formatReleaseDate(rel.date);
+      const bodyHtml = rel.body
+        ? window.VortexMarkdown.toHtml(rel.body, { headingOffset: 2 })
+        : `<p class="release-log-status">${t('notifications.logEmpty')}</p>`;
+      return `<section class="release-log-entry ${rel.highlighted ? 'is-highlighted' : ''}">
+        <header class="release-log-entry-head">
+          <div class="release-log-entry-title">
+            ${rel.tag ? `<span class="release-log-tag">${escapeHtml(rel.tag)}</span>` : ''}
+            <h2>${escapeHtml(rel.title)}</h2>
+          </div>
+          ${dateLabel ? `<time>${escapeHtml(dateLabel)}</time>` : ''}
+        </header>
+        <div class="announcement-body release-log-body">${bodyHtml}</div>
+      </section>`;
+    }).join('')}</div>`;
 }
 
 function renderReleaseLog() {
   const entry = releaseLogRoutes.get(shownReleaseLog);
   if (!entry) return '';
-  const { item } = entry;
-  const date = new Date(item.date ?? '');
-  const dateLabel = Number.isNaN(date.getTime()) ? ''
-    : date.toLocaleDateString(preferences.language === 'en' ? 'en-US' : 'ru-RU', {
-      day: 'numeric', month: 'long', year: 'numeric'
-    });
   return `<article class="settings-card release-log-page">
     <header class="release-log-head">
       <span>${t('notifications.logTitle')}</span>
-      <h1 tabindex="-1">${escapeHtml(item.title)}</h1>
-      ${dateLabel ? `<time datetime="${date.toISOString()}">${dateLabel}</time>` : ''}
+      <h1 tabindex="-1">${t('notifications.logTitle')}</h1>
     </header>
     <div class="release-log-content" aria-live="polite">${renderReleaseLogContent(entry)}</div>
   </article>`;

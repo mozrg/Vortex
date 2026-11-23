@@ -11,23 +11,35 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(12);
 const THUMB_TIMEOUT: Duration = Duration::from_secs(10);
 const PAID_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 
-/// Shared HTTP client with a User-Agent header.
+/// Shared HTTP client with a standard browser User-Agent header so Roblox's
+/// edge gateway does not reject requests with 403 Request Context Failure.
 fn http_client() -> reqwest::Client {
     reqwest::Client::builder()
-        .user_agent("Vortex-Place-Launcher")
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
         .timeout(FETCH_TIMEOUT)
         .build()
         .expect("failed to build HTTP client")
 }
 
+pub fn normalize_cookie_value(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    trimmed
+        .strip_prefix(".ROBLOSECURITY=")
+        .or_else(|| trimmed.strip_prefix("ROBLOSECURITY="))
+        .unwrap_or(trimmed)
+        .trim()
+}
+
 /// Fetch JSON from a URL, with an optional cookie header.
 pub async fn fetch_json(url: &str, cookie: Option<&str>) -> Result<Value, String> {
     let client = http_client();
-    let mut req = client.get(url).header("Accept", "application/json");
-    if let Some(c) = cookie {
-        if !c.is_empty() {
-            req = req.header("Cookie", format!(".ROBLOSECURITY={}", c));
-        }
+    let mut req = client
+        .get(url)
+        .header("Accept", "application/json")
+        .header("Origin", "https://www.roblox.com")
+        .header("Referer", "https://www.roblox.com/");
+    if let Some(c) = cookie.map(normalize_cookie_value).filter(|c| !c.is_empty()) {
+        req = req.header("Cookie", format!(".ROBLOSECURITY={}", c));
     }
     let resp = req
         .send()
@@ -52,11 +64,11 @@ pub async fn fetch_json_post(
         .post(url)
         .header("Accept", "application/json")
         .header("Content-Type", "application/json")
+        .header("Origin", "https://www.roblox.com")
+        .header("Referer", "https://www.roblox.com/")
         .body(body.to_string());
-    if let Some(c) = cookie {
-        if !c.is_empty() {
-            req = req.header("Cookie", format!(".ROBLOSECURITY={}", c));
-        }
+    if let Some(c) = cookie.map(normalize_cookie_value).filter(|c| !c.is_empty()) {
+        req = req.header("Cookie", format!(".ROBLOSECURITY={}", c));
     }
     let resp = req
         .send()

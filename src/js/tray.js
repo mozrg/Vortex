@@ -2,8 +2,30 @@
   const invoke = (command, args = {}) => window.__TAURI__?.core?.invoke?.(command, args);
   const eventApi = window.__TAURI__?.event;
   const copy = {
-    ru: { favorites: 'Избранное', quick: 'Быстрый запуск', open: 'Открыть Vortex', quit: 'Выход', launch: 'Запустить', launchHint: 'Нажмите, чтобы запустить', emptyFavorites: 'Добавьте игры в избранное, чтобы запускать их отсюда.', emptyQuick: 'Добавьте игры через «Быстрый запуск» в приложении.', justNow: 'только что', minutes: 'мин назад', hours: 'ч назад', days: 'дн назад', launching: 'Запускаем…', playing: 'Играет', collapse: 'Свернуть раздел', expand: 'Развернуть раздел' },
-    en: { favorites: 'Favorites', quick: 'Quick launch', open: 'Open Vortex', quit: 'Quit', launch: 'Launch', launchHint: 'Click to launch', emptyFavorites: 'Add games to your favorites to launch them here.', emptyQuick: 'Add games from Quick launch in the app.', justNow: 'just now', minutes: 'm ago', hours: 'h ago', days: 'd ago', launching: 'Launching…', playing: 'Playing', collapse: 'Collapse section', expand: 'Expand section' }
+    ru: {
+      favorites: 'Избранное', quick: 'Быстрый запуск', open: 'Открыть Vortex', quit: 'Выход',
+      launch: 'Запустить', launchHint: 'Нажмите, чтобы запустить',
+      emptyFavorites: 'Добавьте игры в избранное, чтобы запускать их отсюда.',
+      emptyQuick: 'Добавьте игры через «Быстрый запуск» в приложении.',
+      justNow: 'только что', minutes: 'мин назад', hours: 'ч назад', days: 'дн назад',
+      launching: 'Запускаем…', playing: 'В игре', collapse: 'Свернуть раздел', expand: 'Развернуть раздел',
+      sessionInvite: 'Инвайт-ссылка', sessionHop: 'Сменить сервер (Hop)',
+      sessionRejoin: 'Перезайти (Rejoin)', sessionMute: 'Выключить / включить звук Roblox',
+      inviteCopied: 'Инвайт-ссылка скопирована', hopping: 'Смена сервера…',
+      rejoining: 'Перезаход на сервер…', muted: 'Звук Roblox выключен', unmuted: 'Звук Roblox включён'
+    },
+    en: {
+      favorites: 'Favorites', quick: 'Quick launch', open: 'Open Vortex', quit: 'Quit',
+      launch: 'Launch', launchHint: 'Click to launch',
+      emptyFavorites: 'Add games to your favorites to launch them here.',
+      emptyQuick: 'Add games from Quick launch in the app.',
+      justNow: 'just now', minutes: 'm ago', hours: 'h ago', days: 'd ago',
+      launching: 'Launching…', playing: 'Playing', collapse: 'Collapse section', expand: 'Expand section',
+      sessionInvite: 'Copy invite link', sessionHop: 'Switch server (Hop)',
+      sessionRejoin: 'Rejoin server', sessionMute: 'Mute / unmute Roblox audio',
+      inviteCopied: 'Invite link copied', hopping: 'Switching server…',
+      rejoining: 'Rejoining server…', muted: 'Roblox audio muted', unmuted: 'Roblox audio unmuted'
+    }
   };
   const cssTokens = ['--bg', '--surface', '--surface-2', '--surface-3', '--line', '--line-strong', '--text', '--muted', '--subtle', '--accent', '--accent-rgb', '--accent-secondary', '--accent-secondary-rgb', '--accent-fill', '--accent-wash', '--accent-text', '--accent-contrast', '--accent-border', '--radius-card', '--font-ui'];
   const state = { favorites: [], quickLaunch: [], style: {}, language: 'ru', collapsed: {} };
@@ -47,6 +69,17 @@
     });
     applyCollapsed();
     $('[data-tray-action="quit"]')?.setAttribute('aria-label', state.language === 'en' ? 'Quit Vortex completely' : 'Закрыть Vortex полностью');
+    const sessionLabels = {
+      'session-invite': strings().sessionInvite,
+      'session-hop': strings().sessionHop,
+      'session-rejoin': strings().sessionRejoin,
+      'session-mute': strings().sessionMute
+    };
+    document.querySelectorAll('[data-tray-session]').forEach((btn) => {
+      const label = sessionLabels[btn.dataset.traySession] || '';
+      btn.dataset.tooltip = label;
+      btn.setAttribute('aria-label', label);
+    });
   }
 
   const gamepadIcon = icon('gamepad', 16);
@@ -174,6 +207,31 @@
     const action = target.closest('[data-tray-action]')?.dataset.trayAction;
     if (action === 'open') { await invoke('tray_open_app'); return; }
     if (action === 'quit') { await invoke('tray_quit_app'); return; }
+    const sessionBtn = target.closest('[data-tray-session]');
+    if (sessionBtn) {
+      const kind = sessionBtn.dataset.traySession;
+      try {
+        if (kind === 'session-mute') {
+          const muted = await invoke('roblox_toggle_mute', { muted: null });
+          sessionBtn.classList.toggle('is-muted', Boolean(muted));
+          showToast(muted ? strings().muted : strings().unmuted);
+          return;
+        }
+        await invoke('tray_launch_game', { kind, id: '' });
+        if (kind === 'session-invite') {
+          showToast(strings().inviteCopied);
+        } else if (kind === 'session-hop') {
+          showToast(strings().hopping);
+          window.setTimeout(() => void invoke('tray_dismiss'), 420);
+        } else if (kind === 'session-rejoin') {
+          showToast(strings().rejoining);
+          window.setTimeout(() => void invoke('tray_dismiss'), 420);
+        }
+      } catch {
+        showToast(state.language === 'en' ? 'Action unavailable' : 'Действие недоступно');
+      }
+      return;
+    }
     const collapse = target.closest('[data-tray-collapse]');
     if (collapse) {
       const key = collapse.dataset.trayCollapse;

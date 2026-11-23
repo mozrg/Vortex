@@ -151,14 +151,96 @@ function setLauncherStreamMode(enabled) {
   renderPage();
   renderFriendsDrawer();
   reportRecentGamesToTray();
+  if (preferences.discordPresence && typeof applyDiscordPresence === 'function') applyDiscordPresence();
 }
 
 function pauseBackgroundRefresh() {
   return Boolean(preferences.gamingMode && playSessionGameId && (document.hidden || !document.hasFocus()));
 }
 
+const PINNED_FRIEND_LOG_KEY = 'vortex.pinnedFriendLog';
 const pinnedFriendActivity = new Map();
 function friendPins() { return readStored('vortex.friendPins', {}); }
+
+function readPinnedFriendLog() {
+  const raw = readStored(PINNED_FRIEND_LOG_KEY, []);
+  return Array.isArray(raw) ? raw.filter(item => item && item.friendName && item.gameName && Number(item.at) > 0).slice(0, 30) : [];
+}
+
+function writePinnedFriendLog(entries) {
+  try {
+    accountStorage.setItem(PINNED_FRIEND_LOG_KEY, JSON.stringify(entries.slice(0, 30)));
+  } catch { /* ignore quota */ }
+}
+
+function appendPinnedFriendLog(friend, gameName, placeId, serverId) {
+  if (preferences.streamMode) return;
+  const list = readPinnedFriendLog();
+  const friendId = String(friend.id || '');
+  const friendName = String(friend.displayName || friend.name || t('friends.unknown')).slice(0, 48);
+  const cleanGame = String(gameName || t('friends.someGame')).slice(0, 80);
+  const cleanPlace = gameIdPattern.test(String(placeId || '')) ? String(placeId) : '';
+  const cleanServer = typeof validSessionServer === 'function' ? validSessionServer(serverId) : '';
+  const now = Date.now();
+  const duplicate = list.find(item => item.friendId === friendId && item.gameName === cleanGame && now - item.at < 15 * 60 * 1000);
+  if (duplicate) return;
+  list.unshift({
+    id: `${friendId}-${now}`,
+    friendId,
+    friendName,
+    avatar: safeThumbnail(friend.avatar) || '',
+    gameName: cleanGame,
+    placeId: cleanPlace,
+    serverId: cleanServer,
+    at: now
+  });
+  writePinnedFriendLog(list);
+}
+
+function clearPinnedFriendLog() {
+  writePinnedFriendLog([]);
+}
+
+function renderPinnedFriendsLogCard(pinnedFriends = []) {
+  if (preferences.streamMode) return '';
+  const entries = readPinnedFriendLog();
+  if (!entries.length && !pinnedFriends.length) return '';
+  const fmtTime = new Intl.DateTimeFormat(preferences.language, { hour: '2-digit', minute: '2-digit' });
+  const rows = entries.length
+    ? `<ul class="pinned-log-list" role="list">${entries.slice(0, 12).map((entry, idx) => {
+        const timeStr = fmtTime.format(new Date(entry.at));
+        const avatar = safeThumbnail(entry.avatar);
+        const initial = escapeHtml((entry.friendName || '?')[0].toLocaleUpperCase());
+        const gameHtml = entry.placeId
+          ? `<button type="button" class="pinned-log-game" data-action="open-details" data-id="${escapeHtml(entry.placeId)}">${escapeHtml(entry.gameName)}</button>`
+          : `<strong class="pinned-log-game-text">${escapeHtml(entry.gameName)}</strong>`;
+        const joinBtn = entry.placeId
+          ? `<button type="button" class="icon-button pinned-log-join" data-friend-join="${escapeHtml(entry.placeId)}" data-friend-game="${escapeHtml(entry.serverId || '')}" data-tooltip="${escapeHtml(t('friends.join'))}" aria-label="${escapeHtml(t('friends.join'))}">${icon('play', 12)}</button>`
+          : '';
+        return `<li class="pinned-log-row" style="--stagger:${Math.min(idx, 8)}">
+          <time class="pinned-log-time" datetime="${new Date(entry.at).toISOString()}">${escapeHtml(timeStr)}</time>
+          <span class="pinned-log-avatar">${avatar ? `<img src="${escapeHtml(avatar)}" alt="" loading="lazy">` : initial}</span>
+          <span class="pinned-log-text"><strong>${escapeHtml(entry.friendName)}</strong> ${t('tools.pinnedFriendJoined')} ${gameHtml}</span>
+          ${joinBtn}
+        </li>`;
+      }).join('')}</ul>`
+    : `<p class="pinned-log-empty">${t('tools.pinnedFriendLogEmpty')}</p>`;
+
+  return `<section class="settings-card pinned-friends-log" aria-label="${escapeHtml(t('tools.pinnedFriendLogTitle'))}">
+    <div class="pinned-log-head">
+      <div class="pinned-log-title">
+        ${icon('history', 16)}
+        <div>
+          <h3>${t('tools.pinnedFriendLogTitle')}</h3>
+          <small>${t('tools.pinnedFriendLogBody')}</small>
+        </div>
+      </div>
+      ${entries.length ? `<button type="button" class="control-button control-button-quiet" data-action="clear-pinned-friend-log">${icon('trash', 13)} ${t('tools.pinnedFriendLogClear')}</button>` : ''}
+    </div>
+    ${rows}
+  </section>`;
+}
+
 function friendPinControls(friend, pins) {
   const id = String(friend.id);
   if (!gameIdPattern.test(id)) return '';
@@ -175,11 +257,14 @@ function notifyPinnedFriends(friends) {
   const pins = friendPins();
   for (const friend of friends) {
     const id = String(friend.id);
-    if (!pins[id]) continue;
-    const now = friend.presence === 'playing' ? String(friend.placeId || friend.playingPlaceId || 'playing') : '';
+    if (!Object.hasOwn(pins, id)) continue;
+    const now = friend.presence === 'playing' ? String(friend.placeId || friend.playingPlaceId || friend.gameName || 'playing') : '';
     const was = pinnedFriendActivity.get(id);
     pinnedFriendActivity.set(id, now);
-    if (!now || was === undefined || was === now || preferences.streamMode) continue;
+    if (now && (was === undefined || was !== now) && !preferences.streamMode) {
+      appendPinnedFriendLog(friend, friend.gameName || t('friends.someGame'), friend.placeId || friend.playingPlaceId, friend.gameId);
+    }
+    if (!pins[id] || !now || was === undefined || was === now || preferences.streamMode) continue;
     void window.vortexDesktop?.notifyFriendPlaying?.({ friend: friend.displayName || friend.name || t('friends.unknown'),
       game: friend.gameName || t('friends.someGame') }).then(shown => {
       if (!shown && !preferences.streamMode) showToast(t('tools.friendStarted', {

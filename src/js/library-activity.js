@@ -669,35 +669,55 @@ function checkLibraryBreakReminder(interval) {
   else if (window.__TAURI__) void window.vortexDesktop?.notifyBreak?.(t('library.breakTitle'), t('library.breakMessage')).catch(() => {});
 }
 
+let overlayNotifiedFriendsSession = '';
+const overlayNotifiedFriends = new Set();
+
 function observeLibraryFriends() {
-  const server = recordingSession?.serverId;
+  const server = validSessionServer(recordingSession?.serverId) || validSessionServer(gameOverlaySession?.serverId);
   const username = String(preferences.robloxUsername || '').trim();
-  if (!server || !preferences.saveHistory || !username) return;
+  const wantOverlayNotice = Boolean(preferences.gameOverlay && preferences.gameOverlayFriendJoin !== false);
+  if (!server || (!preferences.saveHistory && !wantOverlayNotice) || !username) return;
+  const sessionKey = recordingSession?.key || runtimeSessionKey || (playSessionGameId + '/' + server);
+  if (overlayNotifiedFriendsSession !== sessionKey) {
+    overlayNotifiedFriendsSession = sessionKey;
+    overlayNotifiedFriends.clear();
+  }
   const age = Date.now() - friendsCache.at;
   if (age > FRIENDS_TTL) {
     if (Date.now() - libraryPresenceRequestedAt > 60000 && !friendsLoading) {
       libraryPresenceRequestedAt = Date.now();
-      const session = recordingSession.key;
       void (async () => {
         const enabled = preferences.friendsNoticeAccepted ||
           (await window.vortexDesktop?.getPresenceStatus().catch(() => null))?.enabled;
-        if (enabled && recordingSession?.key === session && username === String(preferences.robloxUsername || '').trim()) {
+        if (enabled && (recordingSession?.key === sessionKey || runtimeSessionKey === sessionKey) && username === String(preferences.robloxUsername || '').trim()) {
           await loadFriends(username);
-          if (recordingSession?.key === session) observeLibraryFriends();
+          observeLibraryFriends();
         }
       })();
     }
     return;
   }
-  if (!friendsCache.data?.ok || friendsCache.at < recordingSession.startedAt) return;
-  const seen = new Set(recordingSession.friends.map(friend => friend.id));
+  const sessionStart = Number(recordingSession?.startedAt || gameOverlaySession?.startedAt || playSessionStart) || 0;
+  if (!friendsCache.data?.ok || friendsCache.at < sessionStart) return;
   const matches = cleanSessionFriends(friendsCache.data.friends
     .filter(friend => friend.presence === 'playing' && validSessionServer(friend.gameId) === server)
     .map(friend => ({ id: friend.id, name: friend.displayName || friend.name, avatar: friend.avatar })));
-  const additions = matches.filter(friend => !seen.has(friend.id));
-  if (additions.length) {
-    recordingSession.friends.push(...additions);
-    writeJournalInterval(runtimeConfirmedAt, runtimeConfirmedAt);
+  if (wantOverlayNotice) {
+    for (const friend of matches) {
+      if (!overlayNotifiedFriends.has(friend.id)) {
+        overlayNotifiedFriends.add(friend.id);
+        const friendLabel = friend.name || friend.id;
+        void window.vortexDesktop?.notifyGameOverlay?.(t('overlay.friendJoinedHud', { friend: friendLabel })).catch(() => {});
+      }
+    }
+  }
+  if (recordingSession && preferences.saveHistory) {
+    const seen = new Set(recordingSession.friends.map(friend => friend.id));
+    const additions = matches.filter(friend => !seen.has(friend.id));
+    if (additions.length) {
+      recordingSession.friends.push(...additions);
+      writeJournalInterval(runtimeConfirmedAt, runtimeConfirmedAt);
+    }
   }
 }
 let libraryPresenceRequestedAt = 0;

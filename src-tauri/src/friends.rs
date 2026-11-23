@@ -36,38 +36,118 @@ pub async fn resolve_roblox_user_id(username: &str) -> Result<Option<Value>, Str
         }))
 }
 
-/// Fetch a user's friends list from the public friends API.
+/// Fetch a user's friends list via Roblox's modern paginated `friends/find`
+/// endpoint (supports up to 1,000 friends) with fallback to legacy `/friends`.
 pub async fn fetch_roblox_friends(
     state: &AppState,
     user_id: &str,
     cookie: &str,
 ) -> Result<Vec<Value>, String> {
-    let url = format!("https://friends.roblox.com/v1/users/{}/friends", user_id);
-    let payload = if cookie.is_empty() {
-        roblox::fetch_cached_json(state, &url).await?
+    let clean_cookie = roblox::normalize_cookie_value(cookie);
+    let legacy_url = format!("https://friends.roblox.com/v1/users/{}/friends", user_id);
+
+    // 1. Try the standard `/friends` endpoint first.
+    let legacy_res = if clean_cookie.is_empty() {
+        roblox::fetch_cached_json(state, &legacy_url).await
     } else {
-        // An authenticated friends response may be private to the account and
-        // must not be shared through the public response cache.
-        roblox::fetch_json(&url, Some(cookie)).await?
+        roblox::fetch_json(&legacy_url, Some(clean_cookie)).await
     };
-    if let Some(data) = payload.get("data").and_then(|d| d.as_array()) {
-        Ok(data
-            .iter()
-            .take(500)
-            .map(|friend| {
-                json!({
-                    "id": friend.get("id").map(|i| i.to_string()).unwrap_or_default(),
-                    "name": friend.get("name").and_then(|n| n.as_str()).unwrap_or(""),
-                    "displayName": friend.get("displayName").and_then(|d| d.as_str())
-                        .or_else(|| friend.get("name").and_then(|n| n.as_str()))
-                        .unwrap_or(""),
-                    "isOnline": friend.get("isOnline").and_then(|o| o.as_bool()).unwrap_or(false)
+    if let Ok(payload) = legacy_res {
+        if let Some(data) = payload.get("data").and_then(|d| d.as_array()) {
+            return Ok(data
+                .iter()
+                .take(500)
+                .map(|friend| {
+                    json!({
+                        "id": friend.get("id").map(|i| i.to_string()).unwrap_or_default(),
+                        "name": friend.get("name").and_then(|n| n.as_str()).unwrap_or(""),
+                        "displayName": friend.get("displayName").and_then(|d| d.as_str())
+                            .or_else(|| friend.get("name").and_then(|n| n.as_str()))
+                            .unwrap_or(""),
+                        "isOnline": friend.get("isOnline").and_then(|o| o.as_bool()).unwrap_or(false)
+                    })
                 })
-            })
-            .collect())
-    } else {
-        Err("Roblox returned an unexpected friends response".to_string())
+                .collect());
+        }
+    } else if let Err(legacy_err) = legacy_res {
+        // 2. Fall back to the paginated `/friends/find` endpoint (which Roblox
+        // migrated to for accounts with larger friend lists and stricter gateway rules).
+        if let Ok(found) = fetch_roblox_friends_find(user_id, clean_cookie).await {
+            return Ok(found);
+        }
+        return Err(legacy_err);
     }
+
+    fetch_roblox_friends_find(user_id, clean_cookie).await
+}
+
+async fn fetch_roblox_friends_find(user_id: &str, cookie: &str) -> Result<Vec<Value>, String> {
+    let mut all = Vec::new();
+    let mut cursor: Option<String> = None;
+    let mut seen_ids = std::collections::HashSet::new();
+
+    for _page in 0..10 {
+        let mut url = format!(
+            "https://friends.roblox.com/v1/users/{}/friends/find?limit=50",
+            user_id
+        );
+        if let Some(ref c) = cursor {
+            if !c.is_empty() {
+                url.push_str("&cursor=");
+                url.push_str(c);
+            }
+        }
+        let payload = roblox::fetch_json(&url, (!cookie.is_empty()).then_some(cookie)).await?;
+        let items = payload
+            .get("PageItems")
+            .or_else(|| payload.get("pageItems"))
+            .and_then(Value::as_array)
+            .ok_or_else(|| "Roblox returned an unexpected friends/find response".to_string())?;
+        for item in items {
+            let id = item
+                .get("id")
+                .map(|v| v.to_string().trim_matches('"').to_string())
+                .unwrap_or_default();
+            if id.is_empty() || !seen_ids.insert(id.clone()) {
+                continue;
+            }
+            all.push(json!({
+                "id": id,
+                "name": item.get("name").and_then(Value::as_str).unwrap_or(""),
+                "displayName": item.get("displayName").and_then(Value::as_str).unwrap_or(""),
+                "isOnline": false
+            }));
+            if all.len() >= 500 {
+                return Ok(all);
+            }
+        }
+        let next = payload
+            .get("NextCursor")
+            .or_else(|| payload.get("nextCursor"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        if next.is_none() {
+            break;
+        }
+        cursor = next;
+    }
+    Ok(all)
+}
+
+/// Check whether a stored `.ROBLOSECURITY` cookie is still accepted by Roblox.
+pub async fn is_cookie_valid(cookie: &str) -> bool {
+    let clean = roblox::normalize_cookie_value(cookie);
+    if clean.is_empty() {
+        return false;
+    }
+    roblox::fetch_json(
+        "https://users.roblox.com/v1/users/authenticated",
+        Some(clean),
+    )
+    .await
+    .is_ok_and(|payload| payload.get("id").is_some())
 }
 
 /// Fetch display names for users that arrive with empty names (privacy mode).
@@ -205,12 +285,20 @@ pub async fn detect_authenticated_account(state: &AppState, cookie: &str) -> Opt
         .and_then(Value::as_str)
         .unwrap_or(&name)
         .to_string();
-    let avatar = fetch_avatar_for_user(state, &id).await;
+    let currency_url = format!("https://economy.roblox.com/v1/users/{id}/currency");
+    let (avatar, currency_res) = tokio::join!(
+        fetch_avatar_for_user(state, &id),
+        roblox::fetch_json(&currency_url, Some(cookie))
+    );
+    let robux = currency_res
+        .ok()
+        .and_then(|v| v.get("robux").and_then(Value::as_u64));
     Some(json!({
         "id": id,
         "name": name,
         "displayName": display_name,
         "avatar": avatar,
+        "robux": robux,
         "source": "cookie"
     }))
 }

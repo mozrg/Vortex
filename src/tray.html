@@ -18,7 +18,17 @@
   <main class="tray-shell">
     <header class="tray-brand"><img src="./assets/vortex-logo.svg" alt="" />Vortex</header>
     <div class="tray-now-playing" id="tray-now-playing" hidden>
-      <span class="tray-now-art" id="tray-now-art"></span><span class="tray-now-copy"><strong id="tray-now-title"></strong><small id="tray-now-time"></small></span><span class="tray-now-live" aria-hidden="true"></span>
+      <span class="tray-now-art" id="tray-now-art"></span>
+      <span class="tray-now-copy">
+        <strong id="tray-now-title"></strong>
+        <small><i class="tray-now-live" aria-hidden="true"></i><span id="tray-now-time"></span></small>
+      </span>
+      <div class="tray-now-actions" role="group" aria-label="Управление текущей сессией">
+        <button class="tray-session-btn" type="button" data-tray-session="session-invite" data-icon="link"></button>
+        <button class="tray-session-btn" type="button" data-tray-session="session-hop" data-icon="refreshCw"></button>
+        <button class="tray-session-btn" type="button" data-tray-session="session-rejoin" data-icon="rotate"></button>
+        <button class="tray-session-btn" type="button" data-tray-session="session-mute" data-icon="bell"></button>
+      </div>
     </div>
     <div class="tray-content">
       <section class="tray-section" aria-labelledby="favorite-heading">

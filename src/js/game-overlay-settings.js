@@ -46,6 +46,13 @@ const overlayLabels = [
   ['overlay.stabilityHint', 'Показывает разброс задержки (±ms) и мини-линию пинга прямо в полоске, чтобы сразу отличать сетевые лаги от фризов самой игры.', 'Shows latency variance (±ms) and a ping sparkline right in the bar to distinguish network lag from game freezes.'],
   ['overlay.region', 'Регион сервера и детектор плохого пинга', 'Server region & bad-server detector'],
   ['overlay.regionHint', 'Определяет дата-центр сервера (AMS, FRA, LON, NYC и др.). Если сервер плохой по пингу, оверлей покажет предупреждение.', 'Detects the server datacenter (AMS, FRA, LON, NYC, etc.). Shows a warning indicator if the server ping is poor.'],
+  ['overlay.badPingPrompt', 'Авто-предложение сменить сервер при плохом пинге', 'Auto-prompt to switch server on bad ping'],
+  ['overlay.badPingPromptHint', 'Добавляет подсказку прямо в HUD: «Плохой пинг · Нажмите [Хоткей], чтобы сменить», чтобы в один клик перейти на нормальный регион.', 'Adds an inline HUD prompt ("Bad ping · Press [Hotkey] to switch") so you can hop to a better region immediately.'],
+  ['overlay.system', 'Счётчик потребления ОЗУ и нагрузки процессора Roblox', 'Roblox RAM & CPU usage counter'],
+  ['overlay.systemHint', 'Показывает в HUD память и нагрузку процесса RobloxPlayerBeta.exe (например, 1.8 GB · 14% CPU). Помогает заметить утечку памяти до вылета.', 'Shows RobloxPlayerBeta.exe memory and CPU usage in the HUD (e.g. 1.8 GB · 14% CPU) to spot memory leaks early.'],
+  ['overlay.friendJoin', 'Уведомление в оверлее, когда друг зашёл к вам на сервер', 'In-overlay notification when a friend joins your server'],
+  ['overlay.friendJoinHint', 'Показывает короткое сообщение прямо в полоске HUD («Друг ник зашёл в вашу игру»), чтобы не сворачивать Roblox.', 'Displays a short alert right inside the HUD bar ("Friend name joined your game") without leaving Roblox.'],
+  ['overlay.friendJoinedHud', 'Друг {friend} зашёл в вашу игру', 'Friend {friend} joined your game'],
   ['overlay.clock', 'Текущее время', 'Current time'],
   ['overlay.clockHint', 'Показывает системные часы (ЧЧ:ММ) в полоске оверлея.', 'Displays system clock (HH:MM) in the overlay bar.'],
   ['overlay.friends', 'Друзья онлайн', 'Friends online'],
@@ -104,12 +111,39 @@ const overlayLabels = [
   ['hotkeys.serverHop.searching', 'Подбираем подходящий сервер…', 'Finding a suitable server…'],
   ['hotkeys.serverHop.connecting', 'Переключаемся на новый сервер ({detail})…', 'Switching to new server ({detail})…'],
   ['hotkeys.serverHop.fallback', 'Переподключаемся к новому серверу плейса…', 'Reconnecting to a new server…'],
+  ['hotkeys.serverHop.excludeVisited', 'Исключать посещённые серверы (за последние 30 минут)', 'Exclude visited servers (last 30 minutes)'],
+  ['hotkeys.serverHop.excludeVisitedHint', 'Запоминает список серверов, на которых вы уже побывали за последние 30 минут, чтобы Vortex никогда не закидывал вас обратно на старый сервер.', 'Remembers servers visited in the last 30 minutes so Server Hop never puts you back into an old server.'],
+  ['hotkeys.serverHop.visitedCount', 'В памяти: {count}', 'Remembered: {count}'],
+  ['hotkeys.serverHop.clearVisited', 'Очистить список ({count})', 'Clear list ({count})'],
+  ['hotkeys.serverHop.visitedCleared', 'Список посещённых серверов очищен', 'Visited server history cleared'],
 
   ['hotkeys.rejoin.title', 'Перезайти на тот же сервер (Rejoin)', 'Rejoin the same server'],
   ['hotkeys.rejoin.body', 'Перезаходит на ваш текущий сервер или на последний сервер, с которого вы уже вышли.', 'Rejoins your current server or the last server you exited from.'],
   ['hotkeys.rejoin.action', 'Перезайти на сервер', 'Rejoin server'],
   ['hotkeys.rejoin.connecting', 'Перезаходим на тот же сервер…', 'Rejoining the same server…'],
-  ['hotkeys.rejoin.noServer', 'Нет активного или последнего сервера для перезахода.', 'No active or recent server available to rejoin.']
+  ['hotkeys.rejoin.noServer', 'Нет активного или последнего сервера для перезахода.', 'No active or recent server available to rejoin.'],
+
+  ['home.lastPlayedKicker', 'Последняя запущенная игра', 'Last launched game'],
+  ['home.rejoinLastServer', 'Вернуться на последний сервер', 'Return to last server'],
+
+  ['discord.playingGame', 'Играет в {game}', 'Playing {game}'],
+  ['discord.playingServer', 'Сервер #{server}', 'Server #{server}'],
+  ['discord.inRoblox', 'В Roblox через Vortex', 'In Roblox via Vortex'],
+  ['discord.joinServer', 'Присоединиться к серверу', 'Join server'],
+
+  ['tools.pinnedFriendLogTitle', 'Лог активности закреплённых друзей', 'Pinned friends activity log'],
+  ['tools.pinnedFriendLogBody', 'Фиксирует переходы закреплённых друзей между играми, пока Vortex открыт или в трее.', 'Tracks game switches for your pinned friends while Vortex is open or in the tray.'],
+  ['tools.pinnedFriendLogEmpty', 'Пока нет переходов. Закрепите друзей значком булавки, чтобы отслеживать их игры.', 'No recent activity yet. Pin friends to track which games they join.'],
+  ['tools.pinnedFriendJoined', 'зашёл в', 'joined'],
+  ['tools.pinnedFriendLogClear', 'Очистить лог', 'Clear log'],
+
+  ['friends.cookieExpiredTitle', 'Cookie .ROBLOSECURITY устарел', '.ROBLOSECURITY cookie expired'],
+  ['friends.cookieExpiredBody', 'Сессия Roblox сбросилась (например, после смены IP/VPN или выхода из браузера). Вставьте свежий cookie в Настройки → Интеграции.', 'Your Roblox session expired (e.g. after an IP/VPN change or browser sign-out). Paste a fresh cookie in Settings → Integrations.'],
+  ['friends.authRequiredTitle', 'Roblox требует cookie для списка друзей', 'Roblox requires a cookie for friends'],
+  ['friends.authRequiredBody', 'Roblox закрыл анонимный доступ к списку друзей (HTTP 403). Подключите cookie .ROBLOSECURITY в Настройки → Интеграции.', 'Roblox restricted anonymous access to friend lists (HTTP 403). Connect your .ROBLOSECURITY cookie in Settings → Integrations.'],
+  ['friends.rateLimitedTitle', 'Слишком много запросов к Roblox', 'Roblox rate limit reached'],
+  ['friends.rateLimitedBody', 'Подождите 30–60 секунд и нажмите «Обновить друзей».', 'Wait 30–60 seconds and click Refresh friends.'],
+  ['friends.openIntegrations', 'Настроить cookie', 'Configure cookie']
 ];
 
 for (const [key, ru, en] of overlayLabels) {
@@ -123,6 +157,45 @@ let gameOverlayReport = '';
 let rebindingOverlayPrefKey = '';
 let serverHopBusy = false;
 let rejoinBusy = false;
+
+const VISITED_SERVERS_TTL_MS = 30 * 60 * 1000;
+const VISITED_SERVERS_STORAGE_KEY = 'vortex.visitedServers';
+
+function getVisitedServersMap() {
+  const now = Date.now();
+  const raw = typeof readStored === 'function' ? readStored(VISITED_SERVERS_STORAGE_KEY, {}) : {};
+  const map = new Map();
+  if (raw && typeof raw === 'object') {
+    for (const [id, stamp] of Object.entries(raw)) {
+      const at = Number(stamp) || 0;
+      if (id && now - at <= VISITED_SERVERS_TTL_MS) {
+        map.set(String(id).toLowerCase(), at);
+      }
+    }
+  }
+  return map;
+}
+
+function saveVisitedServersMap(map) {
+  const obj = Object.fromEntries(map.entries());
+  try {
+    accountStorage.setItem(VISITED_SERVERS_STORAGE_KEY, JSON.stringify(obj));
+  } catch { /* ignore quota */ }
+}
+
+function rememberVisitedServer(serverId) {
+  const clean = typeof validSessionServer === 'function' ? validSessionServer(serverId) : String(serverId || '').trim().toLowerCase();
+  if (!clean) return;
+  const map = getVisitedServersMap();
+  map.set(clean, Date.now());
+  saveVisitedServersMap(map);
+}
+
+function clearVisitedServersHistory() {
+  try {
+    accountStorage.removeItem(VISITED_SERVERS_STORAGE_KEY);
+  } catch {}
+}
 
 function formatActionHotkey(spec, fallback = '') {
   const clean = String(spec ?? fallback).trim();
@@ -143,6 +216,8 @@ function reportGameOverlay() {
   const ping = Boolean(preferences.gameOverlayPing);
   const stability = Boolean(preferences.gameOverlayStability);
   const region = Boolean(preferences.gameOverlayRegion);
+  const badPingPrompt = preferences.gameOverlayBadPingPrompt !== false;
+  const system = Boolean(preferences.gameOverlaySystem);
   const clock = Boolean(preferences.gameOverlayClock);
   const friends = Boolean(preferences.gameOverlayFriends);
   const corner = overlayCorners.includes(preferences.gameOverlayCorner) ? preferences.gameOverlayCorner : 'top-right';
@@ -159,6 +234,8 @@ function reportGameOverlay() {
     ping,
     stability,
     region,
+    badPingPrompt,
+    system,
     clock,
     friends,
     friendCount: overlayFriendsCount(),
@@ -197,8 +274,11 @@ function updateGameOverlaySession(data, id, startedAt) {
   gameOverlaySession = id && Number.isInteger(data?.pid) && startedAt
     ? { pid: data.pid, startedAt, placeId: id, serverId, serverIp: ip, serverPort: port }
     : null;
-  if (id && serverId && typeof rememberLastActiveServerSession === 'function') {
-    rememberLastActiveServerSession(id, serverId, startedAt);
+  if (id && serverId) {
+    rememberVisitedServer(serverId);
+    if (typeof rememberLastActiveServerSession === 'function') {
+      rememberLastActiveServerSession(id, serverId, startedAt);
+    }
   }
   reportGameOverlay();
   const username = String(preferences.robloxUsername || '').trim();
@@ -254,13 +334,14 @@ function renderOverlayPreviewMetrics() {
   const now = new Date();
   const timeStr = [now.getHours(), now.getMinutes()].map(v => String(v).padStart(2, '0')).join(':');
   const items = [];
-  if (preferences.gameOverlayTimer) items.push(`<span><strong>00:24:18</strong><small>${t(' library.session') !== ' library.session' ? (preferences.language === 'en' ? 'Session' : 'Сессия') : 'Сессия'}</small></span>`);
+  if (preferences.gameOverlayTimer) items.push(`<span><strong>00:24:18</strong><small>${preferences.language === 'en' ? 'Session' : 'Сессия'}</small></span>`);
   if (preferences.gameOverlayFps) items.push(`<span><strong>120</strong><small>FPS</small></span>`);
   if (preferences.gameOverlayPing) items.push(`<span><strong>42</strong><small>ms</small></span>`);
   if (preferences.gameOverlayStability) {
     items.push(`<span class="preview-metric-stability"><strong>±2 ms</strong><svg viewBox="0 0 34 12" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="1,7 7,6 13,8 19,5 25,7 33,6"/></svg></span>`);
   }
-  if (preferences.gameOverlayRegion) items.push(`<span><strong>AMS</strong><small>${t('overlay.previewRegionLabel')}</small></span>`);
+  if (preferences.gameOverlayRegion) items.push(`<span><i class="preview-status-dot"></i><strong>AMS</strong><small>${t('overlay.previewRegionLabel')}</small></span>`);
+  if (preferences.gameOverlaySystem) items.push(`<span><strong>1.8 GB</strong><small>14% CPU</small></span>`);
   if (preferences.gameOverlayClock) items.push(`<span><strong>${timeStr}</strong><small>${t('overlay.previewTimeLabel')}</small></span>`);
   if (preferences.gameOverlayFriends) items.push(`<span><strong>4</strong><small>${t('overlay.friends')}</small></span>`);
   return items.join('');
@@ -326,6 +407,9 @@ function renderGameOverlaySettings() {
         ${toggle('gameOverlayPing', 'overlay.ping', t('overlay.pingHint'))}
         ${toggle('gameOverlayStability', 'overlay.stability', t('overlay.stabilityHint'))}
         ${toggle('gameOverlayRegion', 'overlay.region', t('overlay.regionHint'))}
+        ${toggle('gameOverlayBadPingPrompt', 'overlay.badPingPrompt', t('overlay.badPingPromptHint'))}
+        ${toggle('gameOverlaySystem', 'overlay.system', t('overlay.systemHint'))}
+        ${toggle('gameOverlayFriendJoin', 'overlay.friendJoin', t('overlay.friendJoinHint'))}
         ${toggle('gameOverlayClock', 'overlay.clock', t('overlay.clockHint'))}
         ${toggle('gameOverlayFriends', 'overlay.friends', t('overlay.friendsHint'))}
       </div>
@@ -343,6 +427,8 @@ function renderGameOverlaySettings() {
 function renderHotkeySettings() {
   const hopMode = serverHopModes.includes(preferences.serverHopMode) ? preferences.serverHopMode : 'low-ping';
   const hopRegion = serverHopRegions.includes(preferences.serverHopRegion) ? preferences.serverHopRegion : 'any';
+  const excludeVisited = preferences.serverHopExcludeVisited !== false;
+  const visitedCount = getVisitedServersMap().size;
 
   return `<section class="settings-card hotkeys-settings-card">
     <div class="settings-card-head">
@@ -387,8 +473,22 @@ function renderHotkeySettings() {
             <strong>${t('hotkeys.serverHop.regionLabel')}</strong>
             <small>${t('hotkeys.serverHop.regionHint')}</small>
           </div>
-          <div class="overlay-region-picker" role="group" aria-label="${t('hotkeys.serverHop.regionLabel')}">
-            ${serverHopRegions.map(reg => `<button type="button" class="control-button ${hopRegion === reg ? 'is-selected' : ''}" data-pref="serverHopRegion" data-value="${reg}" aria-pressed="${hopRegion === reg}">${t('hotkeys.serverHop.region.' + reg)}</button>`).join('')}
+          ${renderVortexDropdown({
+            label: t('hotkeys.serverHop.regionLabel'),
+            value: hopRegion,
+            kind: 'server-hop-region',
+            options: serverHopRegions.map(reg => ({ value: reg, text: t('hotkeys.serverHop.region.' + reg) })),
+            input: `<input type="hidden" data-overlay-pref-select="serverHopRegion" data-vortex-field value="${escapeHtml(hopRegion)}">`
+          })}
+        </div>
+        <div class="setting-line">
+          <div class="setting-label">
+            <strong>${t('hotkeys.serverHop.excludeVisited')}</strong>
+            <small>${t('hotkeys.serverHop.excludeVisitedHint')}</small>
+          </div>
+          <div class="hotkey-feature-actions">
+            ${visitedCount > 0 ? `<button type="button" class="control-button control-button-quiet" data-overlay-action="clear-visited-servers">${icon('trash', 13)} ${t('hotkeys.serverHop.clearVisited', { count: visitedCount })}</button>` : ''}
+            <button class="toggle" type="button" role="switch" aria-checked="${excludeVisited}" data-toggle="serverHopExcludeVisited" aria-label="${t('hotkeys.serverHop.excludeVisited')}"></button>
           </div>
         </div>
       </div>
@@ -460,80 +560,124 @@ function triggerOverlayToggle() {
   showToast(t(preferences.gameOverlay ? 'overlay.toastEnabled' : 'overlay.toastDisabled'));
 }
 
-function regionPingBand(regionKey) {
-  switch (regionKey) {
-    case 'eu': return { min: 12, max: 96, ideal: 48, label: 'EU' };
-    case 'us-east': return { min: 95, max: 165, ideal: 128, label: 'US-East' };
-    case 'us-west': return { min: 165, max: 235, ideal: 192, label: 'US-West' };
-    case 'asia': return { min: 175, max: 325, ideal: 235, label: 'Asia' };
-    case 'sa': return { min: 195, max: 320, ideal: 250, label: 'SA' };
-    case 'au': return { min: 235, max: 390, ideal: 295, label: 'AU' };
-    default: return null;
+async function resolveCandidatesRealMeta(placeId, candidates, targetRegion = 'any') {
+  const resolveFn = window.vortexDesktop?.resolveGameServers;
+  if (typeof resolveFn !== 'function' || !candidates.length) return new Map();
+
+  const metaMap = new Map();
+  const toProbe = [];
+  for (const row of candidates) {
+    const cached = typeof getResolvedServerMeta === 'function' ? getResolvedServerMeta(row.id) : null;
+    if (cached) {
+      metaMap.set(row.id, cached);
+    } else {
+      toProbe.push(row.id);
+    }
   }
+
+  // Probe up to 50 candidates in batches of 25; stop early if we already found good matches in targetRegion.
+  const maxProbe = Math.min(toProbe.length, 50);
+  for (let offset = 0; offset < maxProbe; offset += 25) {
+    if (targetRegion !== 'any') {
+      const matchedCount = [...metaMap.values()].filter(m => m.regionGroup === targetRegion).length;
+      if (matchedCount >= 3) break;
+    }
+    const chunk = toProbe.slice(offset, offset + 25);
+    try {
+      const res = await resolveFn({ placeId, serverIds: chunk });
+      if (res?.resolved && typeof res.resolved === 'object') {
+        if (typeof storeResolvedServerMap === 'function') storeResolvedServerMap(res.resolved);
+        for (const [id, info] of Object.entries(res.resolved)) {
+          if (info) metaMap.set(id.toLowerCase(), info);
+        }
+      }
+      if (res?.ok === false && (res.reason === 'auth-required' || res.reason === 'cookie-expired')) {
+        break;
+      }
+    } catch {
+      break;
+    }
+  }
+  return metaMap;
 }
 
-async function selectServerHopCandidate(placeId, currentServerId) {
-  const mode = serverHopModes.includes(preferences.serverHopMode) ? preferences.serverHopMode : 'low-ping';
-  const regionKey = serverHopRegions.includes(preferences.serverHopRegion) ? preferences.serverHopRegion : 'any';
-  const band = (mode === 'region' || regionKey !== 'any') ? regionPingBand(regionKey) : null;
+async function selectServerHopCandidate(placeId, currentServerId, overrideMode = null, overrideRegion = null) {
+  const mode = serverHopModes.includes(overrideMode || preferences.serverHopMode)
+    ? (overrideMode || preferences.serverHopMode)
+    : 'low-ping';
+  const regionKey = serverHopRegions.includes(overrideRegion || preferences.serverHopRegion)
+    ? (overrideRegion || preferences.serverHopRegion)
+    : 'any';
+  const wantRegion = regionKey !== 'any';
+  const excludeVisited = preferences.serverHopExcludeVisited !== false;
+  const visitedMap = excludeVisited ? getVisitedServersMap() : new Map();
+  if (currentServerId) visitedMap.set(String(currentServerId).toLowerCase(), Date.now());
 
   const requests = [];
   if (mode === 'low-players') {
     requests.push(window.vortexDesktop?.getPublicServers?.({ placeId, smallest: true, cursor: '' }).catch(() => null));
   } else {
     requests.push(window.vortexDesktop?.getPublicServers?.({ placeId, smallest: false, cursor: '' }).catch(() => null));
-    if (band) {
+    if (wantRegion) {
       requests.push(window.vortexDesktop?.getPublicServers?.({ placeId, smallest: true, cursor: '' }).catch(() => null));
     }
   }
 
   const payloads = await Promise.all(requests);
-  const merged = new Map();
+  const allOpen = new Map();
+  const unvisitedOpen = new Map();
   for (const payload of payloads) {
     for (const row of normalizeBrowserServers(payload?.servers)) {
-      if (row.playing < row.capacity && (!currentServerId || row.id.toLowerCase() !== currentServerId.toLowerCase())) {
-        merged.set(row.id, row);
+      if (row.playing >= row.capacity) continue;
+      if (currentServerId && row.id.toLowerCase() === currentServerId.toLowerCase()) continue;
+      allOpen.set(row.id, row);
+      if (!visitedMap.has(row.id.toLowerCase())) {
+        unvisitedOpen.set(row.id, row);
       }
     }
   }
-  const candidates = [...merged.values()];
+  // Prefer servers not visited in the last 30 minutes; fall back to any other open server only if all servers were visited.
+  const candidates = unvisitedOpen.size ? [...unvisitedOpen.values()] : [...allOpen.values()];
   if (!candidates.length) return null;
 
+  // Resolve real datacenter IP, real region, and real user ping for candidates.
+  const metaMap = await resolveCandidatesRealMeta(placeId, candidates, wantRegion ? regionKey : 'any');
+  const enriched = candidates.map(row => {
+    const meta = metaMap.get(row.id.toLowerCase()) || null;
+    const realPing = meta && Number.isFinite(Number(meta.realPing)) && Number(meta.realPing) > 0
+      ? Math.round(Number(meta.realPing))
+      : null;
+    return {
+      ...row,
+      regionGroup: meta?.regionGroup || null,
+      regionLabel: meta?.regionLabel || null,
+      realPing
+    };
+  });
+
+  // If a specific region is requested, strictly pick from servers verified to be in that region!
+  let pool = enriched;
+  if (wantRegion) {
+    const inRegion = enriched.filter(r => r.regionGroup === regionKey);
+    if (!inRegion.length) return null;
+    pool = inRegion;
+  }
+
+  const effPing = row => row.realPing ?? row.ping ?? 9999;
+
   if (mode === 'low-players') {
-    const inBand = band ? candidates.filter(r => r.ping != null && r.ping >= band.min && r.ping <= band.max) : [];
-    const pool = inBand.length ? inBand : candidates;
-    pool.sort((a, b) => (a.playing - b.playing) || ((a.ping ?? 999) - (b.ping ?? 999)));
+    pool.sort((a, b) => (a.playing - b.playing) || (effPing(a) - effPing(b)));
     return pool[0];
   }
 
-  if (mode === 'region' && band) {
-    const withPing = candidates.filter(r => r.ping != null);
-    const inBand = withPing.filter(r => r.ping >= band.min && r.ping <= band.max);
-    if (inBand.length) {
-      inBand.sort((a, b) => Math.abs(a.ping - band.ideal) - Math.abs(b.ping - band.ideal) || (a.ping - b.ping));
-      return inBand[0];
-    }
-    if (withPing.length) {
-      withPing.sort((a, b) => Math.abs(a.ping - band.ideal) - Math.abs(b.ping - band.ideal));
-      return withPing[0];
-    }
+  // low-ping or region: prioritize real measured user ping first, then player count
+  const withRealPing = pool.filter(r => r.realPing !== null);
+  if (withRealPing.length) {
+    withRealPing.sort((a, b) => (a.realPing - b.realPing) || (a.playing - b.playing));
+    return withRealPing[0];
   }
-
-  // Default: low-ping (respecting region filter if specified)
-  const withPing = candidates.filter(r => r.ping != null);
-  if (band) {
-    const inBand = withPing.filter(r => r.ping >= band.min && r.ping <= band.max);
-    if (inBand.length) {
-      inBand.sort((a, b) => a.ping - b.ping || a.playing - b.playing);
-      return inBand[0];
-    }
-  }
-  if (withPing.length) {
-    withPing.sort((a, b) => a.ping - b.ping || a.playing - b.playing);
-    return withPing[0];
-  }
-  candidates.sort((a, b) => a.playing - b.playing);
-  return candidates[0];
+  pool.sort((a, b) => (effPing(a) - effPing(b)) || (a.playing - b.playing));
+  return pool[0];
 }
 
 async function triggerServerHop() {
@@ -548,6 +692,7 @@ async function triggerServerHop() {
   }
   serverHopBusy = true;
   try {
+    if (currentServerId) rememberVisitedServer(currentServerId);
     showToast(t('hotkeys.serverHop.searching'));
     const chosen = await selectServerHopCandidate(targetPlaceId, currentServerId);
     if (active && window.vortexDesktop?.terminateRobloxPlayer) {
@@ -555,8 +700,11 @@ async function triggerServerHop() {
       await new Promise(resolve => window.setTimeout(resolve, 350));
     }
     if (chosen) {
+      rememberVisitedServer(chosen.id);
+      const shownPing = chosen.realPing ?? chosen.ping;
       const detail = [
-        chosen.ping ? `${chosen.ping} ms` : '',
+        chosen.regionLabel || '',
+        shownPing ? `${shownPing} ms` : '',
         Number.isInteger(chosen.playing) ? `${chosen.playing}/${chosen.capacity}` : ''
       ].filter(Boolean).join(' · ') || ('#' + chosen.id.slice(0, 8));
       showToast(t('hotkeys.serverHop.connecting', { detail }));
@@ -593,6 +741,16 @@ async function triggerServerRejoin(explicitTarget = null) {
 }
 
 // Live slider updates and interactive custom HUD placement on the preview frame.
+document.addEventListener('change', event => {
+  const select = event.target?.closest?.('[data-overlay-pref-select]');
+  if (!select) return;
+  const key = select.dataset.overlayPrefSelect;
+  if (key === 'serverHopRegion' && serverHopRegions.includes(select.value)) {
+    preferences.serverHopRegion = select.value;
+    savePreferences();
+  }
+});
+
 document.addEventListener('input', event => {
   const slider = event.target?.closest?.('[data-overlay-range]');
   if (!slider) return;
@@ -708,6 +866,12 @@ document.addEventListener('click', event => {
   }
   if (action === 'copy-invite-now') {
     if (typeof copyActiveServerInviteLink === 'function') void copyActiveServerInviteLink();
+    return;
+  }
+  if (action === 'clear-visited-servers') {
+    clearVisitedServersHistory();
+    renderPage();
+    showToast(t('hotkeys.serverHop.visitedCleared'));
   }
 });
 

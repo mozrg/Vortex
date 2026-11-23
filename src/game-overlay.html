@@ -17,11 +17,19 @@
         <svg class="game-hud-spark" viewBox="0 0 38 14" preserveAspectRatio="none" aria-hidden="true">
           <polyline fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" points="1,7 37,7" />
         </svg>
-        <span hidden></span>
       </div>
-      <div class="game-hud-metric" data-metric="region" hidden><strong></strong><span></span></div>
+      <div class="game-hud-metric" data-metric="region" hidden>
+        <i class="hud-status-dot" aria-hidden="true"></i>
+        <strong></strong>
+        <span></span>
+      </div>
+      <div class="game-hud-metric" data-metric="system" hidden><strong></strong><span></span></div>
       <div class="game-hud-metric" data-metric="clock" hidden><strong></strong><span></span></div>
       <div class="game-hud-metric" data-metric="friends" hidden><strong></strong><span></span></div>
+      <div class="game-hud-alert" id="game-hud-alert" hidden>
+        <i class="hud-alert-dot" aria-hidden="true"></i>
+        <span id="game-hud-alert-text"></span>
+      </div>
     </main>
   </body>
 </html>

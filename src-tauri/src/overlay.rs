@@ -165,12 +165,109 @@ extern "system" {
     fn GetAsyncKeyState(vkey: i32) -> i16;
 }
 
+#[repr(C)]
+#[derive(Default)]
+struct ProcessMemoryCounters {
+    cb: u32,
+    page_fault_count: u32,
+    peak_working_set_size: usize,
+    working_set_size: usize,
+    quota_peak_paged_pool_usage: usize,
+    quota_paged_pool_usage: usize,
+    quota_peak_non_paged_pool_usage: usize,
+    quota_non_paged_pool_usage: usize,
+    pagefile_usage: usize,
+    peak_pagefile_usage: usize,
+}
+
 #[link(name = "kernel32")]
 extern "system" {
     fn GlobalAlloc(flags: u32, bytes: usize) -> isize;
     fn GlobalLock(mem: isize) -> *mut u16;
     fn GlobalUnlock(mem: isize) -> i32;
     fn GlobalFree(mem: isize) -> isize;
+    fn OpenProcess(desired_access: u32, inherit_handle: i32, process_id: u32) -> isize;
+    fn CloseHandle(object: isize) -> i32;
+    fn K32GetProcessMemoryInfo(
+        process: isize,
+        ppsmemcounters: *mut ProcessMemoryCounters,
+        cb: u32,
+    ) -> i32;
+    fn GetProcessTimes(
+        process: isize,
+        creation_time: *mut u64,
+        exit_time: *mut u64,
+        kernel_time: *mut u64,
+        user_time: *mut u64,
+    ) -> i32;
+    fn GetSystemTimes(idle_time: *mut u64, kernel_time: *mut u64, user_time: *mut u64) -> i32;
+}
+
+const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+
+#[derive(Default)]
+struct ProcessPerfTracker {
+    pid: u32,
+    last_sampled: Option<std::time::Instant>,
+    prev_proc_ticks: u64,
+    prev_sys_ticks: u64,
+    ram_mb: Option<u32>,
+    cpu_percent: Option<u32>,
+}
+
+impl ProcessPerfTracker {
+    fn sample(&mut self, pid: u32) -> (Option<u32>, Option<u32>) {
+        if pid == 0 {
+            *self = Self::default();
+            return (None, None);
+        }
+        if self.pid != pid {
+            *self = Self {
+                pid,
+                ..Self::default()
+            };
+        }
+        if self
+            .last_sampled
+            .is_some_and(|at| at.elapsed() < Duration::from_millis(950))
+        {
+            return (self.ram_mb, self.cpu_percent);
+        }
+        self.last_sampled = Some(std::time::Instant::now());
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle == 0 {
+                return (self.ram_mb, self.cpu_percent);
+            }
+            let mut pmc = ProcessMemoryCounters {
+                cb: std::mem::size_of::<ProcessMemoryCounters>() as u32,
+                ..Default::default()
+            };
+            if K32GetProcessMemoryInfo(handle, &mut pmc, pmc.cb) != 0 && pmc.working_set_size > 0 {
+                self.ram_mb = Some((pmc.working_set_size / (1024 * 1024)) as u32);
+            }
+            let (mut c, mut e, mut pk, mut pu) = (0_u64, 0_u64, 0_u64, 0_u64);
+            let (mut idle, mut sk, mut su) = (0_u64, 0_u64, 0_u64);
+            if GetProcessTimes(handle, &mut c, &mut e, &mut pk, &mut pu) != 0
+                && GetSystemTimes(&mut idle, &mut sk, &mut su) != 0
+            {
+                let proc_total = pk.saturating_add(pu);
+                let sys_total = sk.saturating_add(su);
+                if self.prev_sys_ticks > 0 && sys_total > self.prev_sys_ticks {
+                    let proc_delta = proc_total.saturating_sub(self.prev_proc_ticks);
+                    let sys_delta = sys_total.saturating_sub(self.prev_sys_ticks);
+                    let pct = ((proc_delta.saturating_mul(100)) / sys_delta).min(100) as u32;
+                    self.cpu_percent = Some(pct);
+                } else if self.cpu_percent.is_none() {
+                    self.cpu_percent = Some(0);
+                }
+                self.prev_proc_ticks = proc_total;
+                self.prev_sys_ticks = sys_total;
+            }
+            let _ = CloseHandle(handle);
+        }
+        (self.ram_mb, self.cpu_percent)
+    }
 }
 
 const CF_UNICODETEXT: u32 = 13;
@@ -345,6 +442,19 @@ pub fn roblox_terminate_player() -> Result<usize, String> {
     Ok(crate::runtime::terminate_player_processes())
 }
 
+#[tauri::command]
+pub fn game_overlay_notify(app: AppHandle, text: String) -> Result<(), String> {
+    let clean: String = text.chars().filter(|ch| !ch.is_control()).take(140).collect();
+    if !clean.trim().is_empty() {
+        let _ = app.emit_to(LABEL, "game-overlay:notice", clean);
+    }
+    Ok(())
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct Session {
@@ -378,6 +488,10 @@ pub struct Config {
     stability: bool,
     #[serde(default)]
     region: bool,
+    #[serde(default = "default_true")]
+    bad_ping_prompt: bool,
+    #[serde(default)]
+    system: bool,
     #[serde(default)]
     clock: bool,
     friends: bool,
@@ -410,6 +524,11 @@ pub struct Content {
     show_region: bool,
     region: Option<String>,
     bad_server: bool,
+    bad_ping_prompt: bool,
+    server_hop_hotkey: String,
+    show_system: bool,
+    ram_mb: Option<u32>,
+    cpu_percent: Option<u32>,
     show_clock: bool,
     show_friends: bool,
     friend_count: Option<u32>,
@@ -663,6 +782,7 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
     let mut probe: Option<Probe> = None;
     let mut fps_retry_at: Option<std::time::Instant> = None;
     let mut opened_at = None;
+    let mut perf_tracker = ProcessPerfTracker::default();
     let mut invite_down = false;
     let mut toggle_down = false;
     let mut mute_down = false;
@@ -756,11 +876,14 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
             .map_or_else(PingSnapshot::default, |probe| probe.samples.borrow().clone());
 
         let show_region_slot = config.region || ping_snapshot.bad_server;
+        let extra_bad_prompt_slot = i32::from(ping_snapshot.bad_server && config.bad_ping_prompt);
         let count = i32::from(config.timer)
             + i32::from(config.fps)
             + i32::from(config.ping)
             + i32::from(config.stability)
             + i32::from(show_region_slot)
+            + extra_bad_prompt_slot
+            + i32::from(config.system)
             + i32::from(config.clock)
             + i32::from(config.friends);
         let active = active_session.filter(|_| count != 0);
@@ -821,6 +944,11 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
             window = create_window(&app).ok();
         }
         let Some(window) = &window else { continue };
+        let (ram_mb, cpu_percent) = if config.system {
+            perf_tracker.sample(session.pid)
+        } else {
+            (None, None)
+        };
         let content = Content {
             started_at: config
                 .timer
@@ -834,6 +962,11 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
             show_region: config.region,
             region: ping_snapshot.region,
             bad_server: ping_snapshot.bad_server,
+            bad_ping_prompt: config.bad_ping_prompt,
+            server_hop_hotkey: config.server_hop_hotkey.clone(),
+            show_system: config.system,
+            ram_mb,
+            cpu_percent,
             show_clock: config.clock,
             show_friends: config.friends,
             friend_count: config.friend_count,

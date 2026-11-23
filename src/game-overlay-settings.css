@@ -1,20 +1,89 @@
-.game-overlay-options { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, .65fr); gap: 24px; align-items: start; }
-.game-overlay-controls-col { display: grid; gap: 4px; }
-.game-overlay-corner { align-items: start; flex-direction: column; gap: 10px; }
-.overlay-corner-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; max-width: 460px; }
-.overlay-corner-picker .control-button { justify-content: flex-start; min-width: 0; padding-inline: 10px; white-space: normal; font-size: 12px; }
+/* In-Game Overlay settings, Hotkeys tab, Home banner rejoin & Pinned Friends log
+ * Styled on a strict 4px spacing scale with nested radii, physical keycaps and
+ * GPU-only motion (transform / opacity / color). */
+
+.game-overlay-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, .65fr);
+  gap: 24px;
+  align-items: start;
+}
+.game-overlay-controls-col {
+  display: grid;
+  gap: 4px;
+}
+.game-overlay-corner {
+  align-items: start;
+  flex-direction: column;
+  gap: 12px;
+}
+.overlay-corner-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 480px;
+}
+.overlay-corner-picker .control-button {
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  white-space: normal;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color .15s cubic-bezier(.22, 1, .36, 1), border-color .15s cubic-bezier(.22, 1, .36, 1), color .15s cubic-bezier(.22, 1, .36, 1), transform .14s cubic-bezier(.22, 1, .36, 1);
+}
+.overlay-corner-picker .control-button:active,
+.overlay-region-picker .control-button:active {
+  transform: scale(.98);
+}
 .overlay-corner-picker .is-selected,
-.overlay-region-picker .is-selected { background: var(--accent-wash); color: var(--accent-text); border-color: var(--accent-border); }
-.overlay-corner-glyph { position: relative; width: 15px; height: 12px; flex: 0 0 auto; border: 1px solid currentColor; border-radius: 3px; }
-.overlay-corner-glyph::after { position: absolute; width: 4px; height: 3px; border-radius: 1px; background: currentColor; content: ""; }
+.overlay-region-picker .is-selected {
+  background: var(--accent-wash);
+  color: var(--accent-text);
+  border-color: var(--accent-border);
+}
+.overlay-corner-glyph {
+  position: relative;
+  width: 16px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+}
+.overlay-corner-glyph::after {
+  position: absolute;
+  width: 4px;
+  height: 3px;
+  border-radius: 1px;
+  background: currentColor;
+  content: "";
+}
 .overlay-corner-glyph[data-corner^="top"]::after { top: 1px; }
 .overlay-corner-glyph[data-corner^="bottom"]::after { bottom: 1px; }
 .overlay-corner-glyph[data-corner$="left"]::after { left: 1px; }
 .overlay-corner-glyph[data-corner$="right"]::after { right: 1px; }
 .overlay-corner-glyph[data-corner$="center"]::after { left: calc(50% - 2px); }
 .overlay-corner-glyph[data-corner="custom"]::after { top: calc(50% - 1.5px); left: calc(50% - 2px); border-radius: 50%; }
-.overlay-custom-coords { display: grid; gap: 6px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); margin-bottom: 6px; }
-.game-overlay-preview { position: sticky; top: 16px; display: grid; gap: 8px; color: var(--muted); font-size: 12px; }
+
+.overlay-custom-coords {
+  display: grid;
+  gap: 2px;
+  padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--line-strong);
+  background: transparent;
+  margin: 4px 0 8px 2px;
+}
+.game-overlay-preview {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .game-overlay-preview-frame {
   --preview-hud-scale: 1;
   --preview-hud-gap: 5px;
@@ -25,24 +94,33 @@
   display: grid;
   place-items: center;
   aspect-ratio: 16 / 10;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 12px;
   overflow: hidden;
   background: var(--bg);
   cursor: crosshair;
   user-select: none;
+  transition: border-color .16s cubic-bezier(.22, 1, .36, 1);
 }
-.game-overlay-preview-frame > img { width: 32%; opacity: .35; pointer-events: none; }
+.game-overlay-preview-frame:hover {
+  border-color: var(--accent-border);
+}
+.game-overlay-preview-frame > img {
+  width: 28%;
+  opacity: .28;
+  pointer-events: none;
+}
 .game-overlay-preview-metrics {
   position: absolute;
   display: flex;
   max-width: calc(100% - 16px);
-  border: 1px solid var(--accent-border);
+  border: 1px solid var(--line-strong);
+  border-top-color: var(--accent-border);
   border-radius: calc(6px * var(--preview-hud-scale, 1));
   background: color-mix(in srgb, var(--surface) calc(var(--preview-hud-opacity, .74) * 100%), transparent);
   font-size: calc(11px * var(--preview-hud-scale, 1));
   pointer-events: none;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .28);
+  transition: transform .18s cubic-bezier(.22, 1, .36, 1), background-color .16s ease, border-radius .16s ease;
 }
 .game-overlay-preview-frame[data-corner^="top"] .game-overlay-preview-metrics { top: 8px; }
 .game-overlay-preview-frame[data-corner^="bottom"] .game-overlay-preview-metrics { bottom: 8px; }
@@ -50,37 +128,275 @@
 .game-overlay-preview-frame[data-corner$="right"] .game-overlay-preview-metrics { right: 8px; }
 .game-overlay-preview-frame[data-corner$="center"] .game-overlay-preview-metrics { left: 50%; transform: translateX(-50%); }
 .game-overlay-preview-frame[data-corner="custom"] .game-overlay-preview-metrics {
-  left: clamp(6px, var(--preview-custom-x, 96%), calc(100% - 6px));
-  top: clamp(6px, var(--preview-custom-y, 4%), calc(100% - 6px));
+  left: clamp(8px, var(--preview-custom-x, 96%), calc(100% - 8px));
+  top: clamp(8px, var(--preview-custom-y, 4%), calc(100% - 8px));
   transform: translate(calc(-1 * var(--preview-custom-x, 96%)), calc(-1 * var(--preview-custom-y, 4%)));
 }
 .game-overlay-preview-metrics > span {
   display: flex;
   align-items: center;
-  gap: calc(3px * var(--preview-hud-scale, 1) + var(--preview-hud-gap, 5px) * .15);
+  gap: calc(4px * var(--preview-hud-scale, 1) + var(--preview-hud-gap, 5px) * .15);
   min-width: 0;
-  padding: calc(3px * var(--preview-hud-scale, 1)) calc(4px * var(--preview-hud-scale, 1) + var(--preview-hud-gap, 5px) * .35);
+  padding: calc(4px * var(--preview-hud-scale, 1)) calc(6px * var(--preview-hud-scale, 1) + var(--preview-hud-gap, 5px) * .35);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.game-overlay-preview-metrics > span + span { border-inline-start: 1px solid var(--line); }
-.game-overlay-preview-metrics strong { color: var(--text); font-size: calc(11px * var(--preview-hud-scale, 1)); }
-.game-overlay-preview-metrics small { overflow: hidden; text-overflow: ellipsis; font-size: calc(9px * var(--preview-hud-scale, 1)); }
-.preview-metric-stability svg { width: calc(28px * var(--preview-hud-scale, 1)); height: calc(10px * var(--preview-hud-scale, 1)); color: var(--accent); }
+.game-overlay-preview-metrics > span + span {
+  border-inline-start: 1px solid var(--line);
+}
+.game-overlay-preview-metrics strong {
+  color: var(--text);
+  font-size: calc(11px * var(--preview-hud-scale, 1));
+  font-weight: 600;
+}
+.game-overlay-preview-metrics small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: calc(9px * var(--preview-hud-scale, 1));
+  color: var(--muted);
+}
+.preview-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #35c47c;
+  flex: none;
+}
+.preview-metric-stability svg {
+  width: calc(28px * var(--preview-hud-scale, 1));
+  height: calc(10px * var(--preview-hud-scale, 1));
+  color: var(--accent);
+}
 
-.action-hotkey-controls { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.activity-hotkey-trigger.is-unassigned kbd { opacity: .72; font-weight: 500; }
-.action-hotkey-clear { width: 28px; height: 28px; border-radius: 8px; }
-.hotkey-feature-row { align-items: center; gap: 14px; flex-wrap: wrap; }
-.hotkey-feature-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.hotkey-feature-group { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-block: 8px; background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
-.hotkey-subsettings { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
-.overlay-region-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: 6px; width: 100%; max-width: 640px; }
-.overlay-region-picker .control-button { justify-content: flex-start; font-size: 12px; padding: 6px 10px; text-align: left; }
-.server-hop-mode-segmented { flex-wrap: wrap; }
+/* Hotkeys tab & physical keycap styling */
+.action-hotkey-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.activity-hotkey-trigger.is-unassigned kbd {
+  opacity: .72;
+  font-weight: 500;
+}
+.action-hotkey-clear {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+.hotkey-feature-row {
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-block: 12px;
+  border-radius: 8px;
+  transition: background-color .15s cubic-bezier(.22, 1, .36, 1);
+}
+.hotkey-feature-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.hotkey-feature-group {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 8px 0 12px;
+  margin-block: 4px;
+  background: transparent;
+}
+.hotkey-subsettings {
+  margin-top: 6px;
+  margin-left: 2px;
+  padding-left: 16px;
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 4px;
+}
+.overlay-region-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 640px;
+}
+.overlay-region-picker .control-button {
+  justify-content: flex-start;
+  min-height: 36px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 8px;
+  text-align: left;
+  transition: background-color .15s cubic-bezier(.22, 1, .36, 1), border-color .15s cubic-bezier(.22, 1, .36, 1), color .15s cubic-bezier(.22, 1, .36, 1), transform .14s cubic-bezier(.22, 1, .36, 1);
+}
+.server-hop-mode-segmented {
+  flex-wrap: wrap;
+}
+
+/* Home banner last-played & rejoin controls */
+.hero-kicker-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.hero-server-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.hero-rejoin-button {
+  min-height: 40px;
+  padding-inline: 14px;
+  border-radius: 10px;
+}
+
+/* Pinned friends activity log */
+.pinned-friends-log {
+  margin: 16px 0 20px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.pinned-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.pinned-log-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+.pinned-log-title h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.pinned-log-title small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.pinned-log-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pinned-log-row {
+  display: grid;
+  grid-template-columns: 44px 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: transparent;
+  transition: background-color .15s cubic-bezier(.22, 1, .36, 1);
+}
+.pinned-log-row:hover {
+  background: var(--surface-2);
+}
+.pinned-log-time {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.pinned-log-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.pinned-log-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pinned-log-text {
+  min-width: 0;
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pinned-log-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.pinned-log-game {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: 500 13px/1.3 var(--font-ui);
+  cursor: pointer;
+}
+.pinned-log-game:hover {
+  text-decoration: underline;
+}
+.pinned-log-join {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+.pinned-log-empty {
+  margin: 0;
+  padding: 8px 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Purposeful, GPU-friendly animations for newly added and updated surfaces */
+@keyframes vortex-fade-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  body:not(.no-motion) .game-overlay-settings,
+  body:not(.no-motion) .hotkeys-settings-card,
+  body:not(.no-motion) .pinned-friends-log,
+  body:not(.no-motion) .activity-now-playing {
+    animation: vortex-fade-rise var(--reveal-time, 210ms) var(--animation-easing, cubic-bezier(.22, 1, .36, 1)) both;
+  }
+  body:not(.no-motion) .overlay-custom-coords {
+    animation: vortex-fade-rise var(--feedback-time, 160ms) var(--animation-easing, cubic-bezier(.22, 1, .36, 1)) both;
+  }
+  body:not(.no-motion) .pinned-log-row {
+    animation: vortex-fade-rise var(--reveal-time, 200ms) var(--animation-easing, cubic-bezier(.22, 1, .36, 1)) calc(var(--stagger, 0) * 24ms) both;
+  }
+}
 
 @media (max-width: 880px) {
-  .game-overlay-options { grid-template-columns: 1fr; gap: 12px; }
+  .game-overlay-options { grid-template-columns: 1fr; gap: 16px; }
   .game-overlay-preview { position: static; width: min(100%, 360px); }
   .overlay-corner-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

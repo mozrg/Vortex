@@ -35,7 +35,7 @@ function renderVortexPopup({ label, trigger, panel, className = '', triggerClass
   const supportsPopover = typeof HTMLElement.prototype.showPopover === 'function';
   const tipTarget = '[data-tooltip], button[aria-label], a[aria-label], summary[aria-label], [data-window-drag]';
   const triggerSelector = '.vortex-dropdown-trigger, [data-vortex-trigger]';
-  let tip, pendingTip, activeTip, tipTimer, leaveTimer;
+  let tip, pendingTip, activeTip, tipTimer, leaveTimer, tipOpenedByKeyboard = false;
   let menu, menuClosing, typeahead = '', lastType = 0;
 
   function setPopup(node, open) {
@@ -87,14 +87,16 @@ function renderVortexPopup({ label, trigger, panel, className = '', triggerClass
       else activeTip.removeAttribute('aria-describedby');
     }
     activeTip = null;
+    tipOpenedByKeyboard = false;
     tip.inert = true;
     setPopup(tip, false);
     if (immediate) tip.getAnimations().forEach(effect => effect.finish());
   }
 
-  function showTooltip(target) {
+  function showTooltip(target, byKeyboard = false) {
     const text = (target.dataset.tooltip ?? target.getAttribute('aria-label'))?.trim();
     if (!text || !target.isConnected || !target.getClientRects().length || document.body.matches('.no-tooltips, .library-drag-active')) return;
+    if (!byKeyboard && !target.matches(':hover')) return;
     if (!tip) {
       tip = document.createElement('div');
       tip.id = 'vortex-tooltip';
@@ -105,6 +107,7 @@ function renderVortexPopup({ label, trigger, panel, className = '', triggerClass
       document.body.append(tip);
     }
     activeTip = target;
+    tipOpenedByKeyboard = byKeyboard;
     tip.inert = false;
     tip.textContent = text;
     if (target.matches(':focus-visible') && text !== target.getAttribute('aria-label')) {
@@ -115,13 +118,13 @@ function renderVortexPopup({ label, trigger, panel, className = '', triggerClass
     placePopup(tip, target);
   }
 
-  function queueTooltip(target, delay) {
+  function queueTooltip(target, delay, byKeyboard = false) {
     clearTimeout(leaveTimer);
     if (activeTip === target || pendingTip === target) return;
     closeTooltip();
     if (!target || document.body.matches('.no-tooltips, .library-drag-active')) return;
     pendingTip = target;
-    tipTimer = setTimeout(() => { pendingTip = null; showTooltip(target); }, delay);
+    tipTimer = setTimeout(() => { pendingTip = null; showTooltip(target, byKeyboard); }, delay);
   }
 
   function dropdownOptions(panel) {
@@ -160,26 +163,37 @@ function renderVortexPopup({ label, trigger, panel, className = '', triggerClass
 
   document.addEventListener('pointerover', event => {
     if (event.pointerType === 'touch' || menu) return;
-    if (tip?.contains(event.target)) { clearTimeout(leaveTimer); return; }
-    queueTooltip(tooltipFor(event.target), 420);
+    queueTooltip(tooltipFor(event.target), 420, false);
   });
+  document.addEventListener('pointermove', event => {
+    if (event.pointerType === 'touch') return;
+    if (activeTip && !tipOpenedByKeyboard && (!activeTip.isConnected || !activeTip.matches(':hover'))) {
+      closeTooltip();
+    }
+    if (pendingTip && (!pendingTip.isConnected || !pendingTip.matches(':hover'))) {
+      clearTimeout(tipTimer);
+      pendingTip = null;
+    }
+  }, { passive: true });
   document.addEventListener('pointerout', event => {
     const target = tooltipFor(event.target);
-    if (target?.contains(event.relatedTarget) || tip?.contains(event.relatedTarget)) return;
-    if (!target && !tip?.contains(event.target)) return;
-    if (activeTip?.matches(':focus-visible') || activeTip?.contains(event.relatedTarget)) return;
+    if (target?.contains(event.relatedTarget)) return;
+    if (!target && !activeTip && !pendingTip) return;
+    if (tipOpenedByKeyboard && activeTip?.matches(':focus-visible')) return;
+    if (activeTip?.contains(event.relatedTarget)) return;
     clearTimeout(tipTimer);
     pendingTip = null;
     clearTimeout(leaveTimer);
-    leaveTimer = setTimeout(closeTooltip, 110);
+    leaveTimer = setTimeout(closeTooltip, 80);
   });
+  document.documentElement.addEventListener('pointerleave', () => closeTooltip());
   document.addEventListener('focusin', event => {
     if (menu) {
       if (!menu.root.contains(event.target)) closeMenu();
       return;
     }
     const target = event.target.matches?.(':focus-visible') && tooltipFor(event.target);
-    if (target) queueTooltip(target, 240);
+    if (target) queueTooltip(target, 240, true);
     else if (activeTip && !activeTip.contains(event.target)) closeTooltip();
   });
   document.addEventListener('focusout', event => {

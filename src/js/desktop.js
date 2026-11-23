@@ -40,6 +40,12 @@
     getWindowsAutostart: () => invoke('windows_autostart_status'),
     setWindowsAutostart: (enabled) => invoke('windows_autostart_set', { enabled }),
     getPublicServers: (request) => invoke('games_public_servers', request),
+    getPrivateServers: (request) => invoke('games_private_servers', { ...request, profileId: activeAccountProfile }),
+    createPrivateServer: (request) => invoke('games_private_server_create', { ...request, profileId: activeAccountProfile }),
+    getPrivateServerConfig: (request) => invoke('games_private_server_get', { ...request, profileId: activeAccountProfile }),
+    updatePrivateServer: (request) => invoke('games_private_server_update', { ...request, profileId: activeAccountProfile }),
+    updatePrivateServerPermissions: (request) => invoke('games_private_server_permissions', { ...request, profileId: activeAccountProfile }),
+    resolveGameServers: (request) => invoke('games_resolve_servers', { ...request, profileId: activeAccountProfile }),
     getGameOnline: (request) => invoke('games_online', request),
     getSimilarGames: (request) => invoke('games_similar', request),
     getFeaturedGames: (placeIds) => invoke('games_featured', { placeIds }),
@@ -71,6 +77,7 @@
     getRobloxAccount: () => invoke('roblox_account', { profileId: activeAccountProfile }),
     getRobloxRuntime: () => invoke('roblox_runtime_status'),
     configureGameOverlay: (config) => invoke('game_overlay_configure', { config }),
+    notifyGameOverlay: (text) => invoke('game_overlay_notify', { text }),
     onGameOverlayFps: (callback) => handleEvent('game-overlay:fps', callback),
     onGameOverlayInviteCopied: (callback) => handleEvent('game-overlay:invite-copied', callback),
     onGameOverlayToggled: (callback) => handleEvent('game-overlay:toggled', callback),
@@ -88,6 +95,7 @@
     // Announcements
     listAnnouncements: (request) => invoke('announcements_list', request),
     getAnnouncementReleaseLog: (tag) => invoke('announcement_release_log', { tag }),
+    getAllReleaseLogs: () => invoke('announcement_all_releases'),
     listPlans: (request) => invoke('plans_list', request),
     openAnnouncementLink: (url) => invoke('announcements_open', { url }),
 

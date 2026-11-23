@@ -2014,7 +2014,12 @@ async fn tray_quit_app(app: AppHandle) {
 
 #[tauri::command]
 async fn tray_launch_game(app: AppHandle, kind: String, id: String) -> Result<(), String> {
-    if !matches!(kind.as_str(), "favorite" | "quick") || id.is_empty() || id.len() > 64 {
+    if !matches!(
+        kind.as_str(),
+        "favorite" | "quick" | "session-invite" | "session-hop" | "session-rejoin" | "session-mute"
+    ) || id.len() > 64
+        || (matches!(kind.as_str(), "favorite" | "quick") && id.is_empty())
+    {
         return Err("invalid tray shortcut".to_string());
     }
     app.emit_to("main", "tray:launch", json!({ "kind": kind, "id": id }))
@@ -2157,8 +2162,16 @@ async fn friends_list(
     let mut list = match friends::fetch_roblox_friends(&*state, &user_id, &cookie).await {
         Ok(list) => list,
         Err(error) => {
-            let code = if error.contains("403") && cookie.is_empty() {
-                "auth-required"
+            let code = if error.contains("403") || error.contains("401") {
+                if cookie.trim().is_empty() {
+                    "auth-required"
+                } else if !friends::is_cookie_valid(&cookie).await {
+                    "cookie-expired"
+                } else {
+                    "auth-required"
+                }
+            } else if error.contains("429") {
+                "rate-limited"
             } else {
                 "network"
             };
@@ -2325,7 +2338,7 @@ fn is_main_profile(id: Option<&str>) -> bool {
     matches!(id, None | Some("default"))
 }
 
-fn profile_cookie(state: &AppState, id: Option<&str>) -> String {
+pub(crate) fn profile_cookie(state: &AppState, id: Option<&str>) -> String {
     if is_main_profile(id) {
         state.roblox_cookie.lock().unwrap().clone()
     } else {
@@ -2359,8 +2372,9 @@ async fn friends_presence_cookie(
             *state.roblox_cookie.lock().unwrap() = String::new();
         }
         Ok(json!({"ok": true, "enabled": false}))
-    } else if let Some(c) = cookie {
-        if c.len() < 100 || c.len() > 2200 || c.chars().any(|ch| ch.is_whitespace() || ch.is_control() || matches!(ch, '"' | '\''))
+    } else if let Some(raw_cookie) = cookie {
+        let c = roblox::normalize_cookie_value(&raw_cookie).to_string();
+        if c.len() < 100 || c.len() > 4096 || c.chars().any(|ch| ch.is_whitespace() || ch.is_control() || matches!(ch, '"' | '\''))
         {
             return Ok(json!({"ok": false, "error": "invalid"}));
         }
@@ -2453,8 +2467,8 @@ async fn discord_set_enabled(
         }
         discord
             .activity
-            .clone()
-            .map(|value| json!({"details": value.details, "state": value.state}))
+            .as_ref()
+            .map(|value| value.to_rpc_json())
     };
     if enabled {
         let _ = discord::send_activity(&state, true, activity, false).await;
@@ -2487,7 +2501,7 @@ async fn discord_set_client_id(
         discord
             .activity
             .as_ref()
-            .map(|value| json!({"details": value.details, "state": value.state}))
+            .map(|value| value.to_rpc_json())
     });
     // Wake the worker so a changed id triggers a new IPC handshake right away.
     let _ = discord::send_activity(&*state, enabled, activity, false).await;
@@ -2508,7 +2522,7 @@ async fn discord_status(
             discord
                 .activity
                 .as_ref()
-                .map(|value| json!({"details": value.details, "state": value.state}))
+                .map(|value| value.to_rpc_json())
         });
         let update_activity = activity.is_some();
         let _ = discord::send_activity(&state, true, activity, update_activity).await;
@@ -2521,27 +2535,58 @@ async fn discord_set_activity(
     state: tauri::State<'_, Arc<AppState>>,
     activity: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
-    let enabled = {
+    let (enabled, rpc_payload) = {
         let mut discord = state
             .discord
             .lock()
             .map_err(|_| "Discord state unavailable".to_string())?;
         discord.activity = activity
             .as_ref()
-            .map(|value| crate::state::DiscordActivity {
-                details: value
-                    .get("details")
+            .map(|value| {
+                let start_timestamp = value
+                    .get("startTimestamp")
+                    .and_then(Value::as_u64)
+                    .or_else(|| {
+                        value
+                            .get("timestamps")
+                            .and_then(|t| t.get("start"))
+                            .and_then(Value::as_u64)
+                    });
+                let first_button = value
+                    .get("buttons")
+                    .and_then(Value::as_array)
+                    .and_then(|arr| arr.first());
+                let button_label = value
+                    .get("buttonLabel")
                     .and_then(Value::as_str)
-                    .map(|text| text.chars().take(128).collect()),
-                state: value
-                    .get("state")
+                    .or_else(|| first_button.and_then(|b| b.get("label")).and_then(Value::as_str))
+                    .map(|text| text.chars().take(32).collect::<String>())
+                    .filter(|text| !text.trim().is_empty());
+                let button_url = value
+                    .get("buttonUrl")
                     .and_then(Value::as_str)
-                    .map(|text| text.chars().take(128).collect()),
+                    .or_else(|| first_button.and_then(|b| b.get("url")).and_then(Value::as_str))
+                    .map(|text| text.trim().chars().take(256).collect::<String>())
+                    .filter(|url| url.starts_with("https://www.roblox.com/"));
+                crate::state::DiscordActivity {
+                    details: value
+                        .get("details")
+                        .and_then(Value::as_str)
+                        .map(|text| text.chars().take(128).collect()),
+                    state: value
+                        .get("state")
+                        .and_then(Value::as_str)
+                        .map(|text| text.chars().take(128).collect()),
+                    start_timestamp,
+                    button_label,
+                    button_url,
+                }
             });
-        discord.enabled
+        let payload = discord.activity.as_ref().map(|a| a.to_rpc_json());
+        (discord.enabled, payload)
     };
     if enabled {
-        let _ = discord::send_activity(&state, true, activity, true).await;
+        let _ = discord::send_activity(&state, true, rpc_payload, true).await;
     }
     discord::public_status(&state, true)
 }
@@ -2666,6 +2711,12 @@ fn main() {
             autostart::windows_autostart_status,
             autostart::windows_autostart_set,
             game_servers::games_public_servers,
+            game_servers::games_private_servers,
+            game_servers::games_private_server_create,
+            game_servers::games_private_server_get,
+            game_servers::games_private_server_update,
+            game_servers::games_private_server_permissions,
+            game_servers::games_resolve_servers,
             games_online,
             games_similar,
             games_featured,
@@ -2692,6 +2743,7 @@ fn main() {
             roblox_runtime_status,
             overlay::game_overlay_configure,
             overlay::game_overlay_ready,
+            overlay::game_overlay_notify,
             overlay::copy_to_clipboard,
             overlay::roblox_toggle_mute,
             overlay::roblox_terminate_player,
@@ -2703,6 +2755,7 @@ fn main() {
             import_legacy_local_storage,
             announcements_list,
             announcements::announcement_release_log,
+            announcements::announcement_all_releases,
             plans_list,
             announcements_open,
             notifications_friend_playing,

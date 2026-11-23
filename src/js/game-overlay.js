@@ -1,14 +1,26 @@
 (() => {
   const hud = document.querySelector('.game-hud');
-  const metrics = Object.fromEntries([...hud.children].map(node => [node.dataset.metric, node]));
+  const metrics = Object.fromEntries(
+    [...hud.querySelectorAll('.game-hud-metric')].map(node => [node.dataset.metric, node])
+  );
   const sparkPolyline = metrics.stability?.querySelector('polyline');
+  const alertBox = document.getElementById('game-hud-alert');
+  const alertText = document.getElementById('game-hud-alert-text');
   let start = 0;
   let showClock = false;
   let clock = 0;
+  let alertTimer = 0;
 
   function formatSystemTime() {
     const now = new Date();
     return [now.getHours(), now.getMinutes()].map(unit => String(unit).padStart(2, '0')).join(':');
+  }
+
+  function formatRamValue(ramMb) {
+    const mb = Number(ramMb);
+    if (!Number.isFinite(mb) || mb <= 0) return '—';
+    if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+    return `${Math.round(mb)} MB`;
   }
 
   function paintClock() {
@@ -35,6 +47,25 @@
       const y = 12 - ratio * 10;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(' ');
+  }
+
+  function renderBadPingPrompt(span, english, badServer, badPingPrompt, hopHotkey) {
+    span.replaceChildren();
+    if (!badServer) {
+      span.textContent = english ? 'Region' : 'Регион';
+      return;
+    }
+    const cleanHotkey = String(hopHotkey || '').trim();
+    if (!badPingPrompt || !cleanHotkey) {
+      span.textContent = english ? 'Bad ping' : 'Плохой пинг';
+      return;
+    }
+    span.append(document.createTextNode(english ? 'Bad ping · Press ' : 'Плохой пинг · Нажмите '));
+    const kbd = document.createElement('kbd');
+    kbd.className = 'hud-kbd';
+    kbd.textContent = cleanHotkey;
+    span.append(kbd);
+    span.append(document.createTextNode(english ? ' to switch' : ', чтобы сменить'));
   }
 
   function paint(data) {
@@ -83,10 +114,22 @@
       const showRegion = Boolean(data.showRegion || data.badServer);
       metrics.region.hidden = !showRegion;
       metrics.region.dataset.bad = data.badServer ? 'true' : 'false';
-      metrics.region.firstElementChild.textContent = data.region || '—';
-      metrics.region.lastElementChild.textContent = data.badServer
-        ? (english ? '⚠ Bad ping' : '⚠ Плохой пинг')
-        : (english ? 'Region' : 'Регион');
+      const strong = metrics.region.querySelector('strong');
+      const span = metrics.region.querySelector('span');
+      if (strong) strong.textContent = data.region || '—';
+      if (span) renderBadPingPrompt(span, english, Boolean(data.badServer), data.badPingPrompt !== false, data.serverHopHotkey);
+    }
+
+    if (metrics.system) {
+      const showSystem = Boolean(data.showSystem);
+      metrics.system.hidden = !showSystem;
+      if (showSystem) {
+        const ramMb = Number(data.ramMb) || 0;
+        const cpuPct = data.cpuPercent != null ? `${data.cpuPercent}% CPU` : 'RAM';
+        metrics.system.dataset.highRam = ramMb >= 3200 ? 'true' : 'false';
+        metrics.system.firstElementChild.textContent = formatRamValue(ramMb);
+        metrics.system.lastElementChild.textContent = cpuPct;
+      }
     }
 
     if (metrics.clock) {
@@ -99,29 +142,25 @@
     metrics.friends.firstElementChild.textContent = data.friendCount ?? '—';
     metrics.friends.lastElementChild.textContent = english ? 'Friends online' : 'Друзья онлайн';
 
-    hud.hidden = Object.values(metrics).every(metric => metric.hidden);
+    hud.hidden = Object.values(metrics).every(metric => metric.hidden) && (alertBox ? alertBox.hidden : true);
     paintClock();
   }
 
-  function flashNotice(ruText, enText) {
+  function showHudAlert(message, durationMs = 2200) {
+    if (!alertBox || !alertText || !message) return;
+    clearTimeout(alertTimer);
+    alertText.textContent = message;
+    alertBox.hidden = false;
+    hud.hidden = false;
+    alertTimer = setTimeout(() => {
+      alertBox.hidden = true;
+      hud.hidden = Object.values(metrics).every(metric => metric.hidden);
+    }, durationMs);
+  }
+
+  function flashNotice(ruText, enText, durationMs = 1800) {
     const english = document.documentElement.lang === 'en';
-    const target = Object.values(metrics).find(metric => !metric.hidden && metric.dataset.metric !== 'stability')
-      || Object.values(metrics).find(metric => !metric.hidden);
-    if (!target) return;
-    const label = target.lastElementChild;
-    if (!label) return;
-    const notice = english ? enText : ruText;
-    const previous = label.textContent;
-    const wasHidden = label.hidden;
-    if (previous === notice) return;
-    label.hidden = false;
-    label.textContent = notice;
-    setTimeout(() => {
-      if (label.textContent === notice) {
-        label.textContent = previous;
-        label.hidden = wasHidden;
-      }
-    }, 1600);
+    showHudAlert(english ? enText : ruText, durationMs);
   }
 
   async function startOverlay() {
@@ -132,18 +171,24 @@
       received = true;
       paint(payload);
     });
+    await tauri.event.listen('game-overlay:notice', ({ payload }) => {
+      if (typeof payload === 'string' && payload.trim()) {
+        showHudAlert(payload.trim(), 3800);
+      }
+    });
     await tauri.event.listen('game-overlay:invite-copied', () => {
-      flashNotice('Инвайт скопирован', 'Invite copied');
+      flashNotice('Инвайт-ссылка скопирована', 'Invite link copied');
     });
     await tauri.event.listen('game-overlay:mute-toggled', ({ payload }) => {
-      if (payload?.muted) flashNotice('Звук Roblox выкл', 'Roblox muted');
-      else flashNotice('Звук Roblox вкл', 'Roblox unmuted');
+      const muted = typeof payload === 'boolean' ? payload : Boolean(payload?.muted);
+      if (muted) flashNotice('Звук Roblox выключен', 'Roblox audio muted');
+      else flashNotice('Звук Roblox включён', 'Roblox audio unmuted');
     });
     await tauri.event.listen('game-overlay:server-hop', () => {
-      flashNotice('Смена сервера…', 'Hopping server…');
+      flashNotice('Подбираем новый сервер…', 'Switching server…');
     });
     await tauri.event.listen('game-overlay:rejoin', () => {
-      flashNotice('Перезаход…', 'Rejoining…');
+      flashNotice('Перезаходим на сервер…', 'Rejoining server…');
     });
     const initial = await tauri.core.invoke('game_overlay_ready');
     if (!received) paint(initial);

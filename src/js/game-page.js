@@ -5,7 +5,7 @@ const serverIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 function gamePageView(id) {
   const key = String(id);
   if (!gamePageState.has(key)) gamePageState.set(key, {
-    pane: 'overview', media: 0, serverMode: 'all', serverSearch: '', pages: new Map(), launching: false
+    pane: 'overview', media: 0, serverMode: 'all', serverRegion: 'all', serverSearch: '', pages: new Map(), launching: false
   });
   return gamePageState.get(key);
 }

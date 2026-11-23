@@ -1,10 +1,86 @@
 use serde_json::Value;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::{
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 
 const SOURCE_URL: &str =
     "https://raw.githubusercontent.com/mozrg/Vortex/main/site/notifications.json";
 const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const RELEASES_API: &str = "https://api.github.com/repos/mozrg/Vortex/releases/tags";
+const ALL_RELEASES_API: &str = "https://api.github.com/repos/mozrg/Vortex/releases?per_page=30";
+
+fn all_releases_cache() -> &'static Mutex<Option<(Instant, Vec<Value>)>> {
+    static CACHE: OnceLock<Mutex<Option<(Instant, Vec<Value>)>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(None))
+}
+
+#[tauri::command]
+pub async fn announcement_all_releases() -> Result<Vec<Value>, String> {
+    if let Ok(guard) = all_releases_cache().lock() {
+        if let Some((at, items)) = guard.as_ref() {
+            if at.elapsed() < CACHE_TTL {
+                return Ok(items.clone());
+            }
+        }
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .user_agent("Vortex-Launcher")
+        .build()
+        .map_err(|error| error.to_string())?;
+    let response = client
+        .get(ALL_RELEASES_API)
+        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    let data: Value = response
+        .error_for_status()
+        .map_err(|error| error.to_string())?
+        .json()
+        .await
+        .map_err(|error| error.to_string())?;
+    let releases: Vec<Value> = data
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|rel| rel.get("draft").and_then(Value::as_bool) != Some(true))
+        .filter_map(|rel| {
+            let tag = rel.get("tag_name").and_then(Value::as_str)?.trim();
+            if tag.is_empty() {
+                return None;
+            }
+            let name = rel
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(tag);
+            let body = rel
+                .get("body")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim();
+            let date = rel.get("published_at").cloned().unwrap_or(Value::Null);
+            let url = rel
+                .get("html_url")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            Some(serde_json::json!({
+                "tag": tag,
+                "name": name,
+                "body": body,
+                "date": date,
+                "url": url
+            }))
+        })
+        .collect();
+    if let Ok(mut guard) = all_releases_cache().lock() {
+        *guard = Some((Instant::now(), releases.clone()));
+    }
+    Ok(releases)
+}
 
 #[tauri::command]
 pub async fn announcement_release_log(tag: String) -> Result<Option<Value>, String> {

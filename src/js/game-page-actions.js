@@ -8,7 +8,9 @@ function gameLaunchChoices(game) {
 function gameLaunchOptions(game) {
   const id = String(game.id);
   const saved = Object.hasOwn(preferences.gameLaunchOptions || {}, id) ? preferences.gameLaunchOptions[id] : null;
-  return { server: String(saved?.server || 'default'), hide: saved?.hide === true };
+  const validRegions = ['any', 'eu', 'us-east', 'us-west', 'asia', 'sa', 'au'];
+  const region = validRegions.includes(String(saved?.region)) ? String(saved.region) : 'any';
+  return { server: String(saved?.server || 'default'), region, hide: saved?.hide === true };
 }
 
 function writeGameLaunchOptions(game, changes) {
@@ -19,10 +21,19 @@ function writeGameLaunchOptions(game, changes) {
 }
 
 function renderGameLaunch(game) {
-  const { server, hide } = gameLaunchOptions(game);
+  const { server, region, hide } = gameLaunchOptions(game);
   const choices = [
     ['default', t('place.normalServer')], ['ping', t('place.bestPing')], ['small', t('place.fewerPlayers')],
     ...gameLaunchChoices(game).map(item => ['saved:' + item.id, preferences.streamMode ? t('tools.privateShortcut') : item.title])
+  ];
+  const regionChoices = [
+    ['any', t('hotkeys.serverHop.region.any')],
+    ['eu', t('hotkeys.serverHop.region.eu')],
+    ['us-east', t('hotkeys.serverHop.region.us-east')],
+    ['us-west', t('hotkeys.serverHop.region.us-west')],
+    ['asia', t('hotkeys.serverHop.region.asia')],
+    ['sa', t('hotkeys.serverHop.region.sa')],
+    ['au', t('hotkeys.serverHop.region.au')]
   ];
   if (server.startsWith('saved:') && !choices.some(([key]) => key === server)) choices.push([server, t('place.savedServerUnavailable'), true]);
   return `<div class="game-page-columns"><section class="game-page-card game-launch-card">
@@ -32,6 +43,12 @@ function renderGameLaunch(game) {
       ${renderVortexDropdown({ label: t('place.serverAtLaunch'), value: server, kind: 'game-launch-server',
         options: choices.map(([value, text, disabled]) => ({ value, text, disabled })),
         input: `<input type="hidden" data-game-launch="server" data-vortex-field value="${escapeHtml(server)}">` })}
+    </div>
+    <div class="setting-line">
+      <div class="setting-label"><strong>${t('place.regionAtLaunch')}</strong><small>${t('place.regionAtLaunchHint')}</small></div>
+      ${renderVortexDropdown({ label: t('place.regionAtLaunch'), value: region, kind: 'game-launch-region',
+        options: regionChoices.map(([value, text]) => ({ value, text })),
+        input: `<input type="hidden" data-game-launch="region" data-vortex-field value="${escapeHtml(region)}">` })}
     </div>
     <div class="setting-line"><div class="setting-label"><strong>${t('place.hideLauncher')}</strong>
       <small>${t('place.hideLauncherHint')}</small></div>
@@ -55,7 +72,11 @@ function renderGameOther(game) {
   </section>`;
 }
 
-async function preferredPublicServer(id, mode) {
+async function preferredPublicServer(id, mode, region = 'any') {
+  if (typeof selectServerHopCandidate === 'function') {
+    const hopMode = mode === 'small' ? 'low-players' : (region && region !== 'any' && mode === 'default' ? 'region' : 'low-ping');
+    return selectServerHopCandidate(id, '', hopMode, region || 'any');
+  }
   const payload = await window.vortexDesktop?.getPublicServers?.({ placeId: id, smallest: true }).catch(() => null);
   const open = normalizeBrowserServers(payload?.servers).filter(row => row.playing < row.capacity);
   return mode === 'ping'
@@ -63,24 +84,25 @@ async function preferredPublicServer(id, mode) {
     : open.sort((a, b) => a.playing - b.playing)[0];
 }
 
-async function detailLaunch(game, place = '', instance = '') {
+async function detailLaunch(game, place = '', instance = '', accessCode = '') {
   const id = String(game.id);
   const view = gamePageView(id);
   if (!gameIdPattern.test(id) || (place && !gameIdPattern.test(place)) || (instance && !serverIdPattern.test(instance)) || view.launching) return;
-  const { server, hide } = gameLaunchOptions(game);
+  const { server, region, hide } = gameLaunchOptions(game);
   view.launching = true;
   renderPage();
   try {
     let launched;
-    if (place && instance) launched = await openGame(place, instance);
+    if (place && accessCode) launched = await openGame(place, '', accessCode);
+    else if (place && instance) launched = await openGame(place, instance);
     else if (server.startsWith('saved:')) {
       const item = gameLaunchChoices(game).find(choice => choice.id === server.slice(6));
       if (item) launched = await launchQuickGame(item.id);
       else showToast(t('place.savedServerMissing'));
     } else {
       let target;
-      if (server === 'ping' || server === 'small') {
-        target = await preferredPublicServer(id, server);
+      if (server === 'ping' || server === 'small' || (region && region !== 'any')) {
+        target = await preferredPublicServer(id, server, region);
         if (!target) {
           showToast(t('place.launchNoServer'));
           return;
@@ -115,6 +137,25 @@ function scheduleGamePageData(game, view) {
       if (isCurrentGamePage(id, 'servers') && gameServerPage(view).status === 'idle') void loadGameServers(game);
     });
   }
+  if (view.pane === 'servers' && preferences.showPrivateServers !== false && !preferences.streamMode && typeof gamePrivateServerPage === 'function') {
+    const priv = gamePrivateServerPage(view);
+    const shouldLoadPriv = priv.status === 'idle' || (priv.status === 'error' && (priv.reason === 'auth-required' || priv.reason === 'cookie-expired'));
+    if (shouldLoadPriv) {
+      queueMicrotask(() => {
+        if (isCurrentGamePage(id, 'servers') && preferences.showPrivateServers !== false && !preferences.streamMode) {
+          void loadPrivateServers(game);
+        }
+      });
+    }
+  }
+  if (view.pane === 'servers' && view.serverMode !== 'friends') {
+    const pub = gameServerPage(view);
+    if (pub.status === 'success' && pub.rows.length && (pub.resolveStatus === 'auth-required' || pub.resolveStatus === 'cookie-expired')) {
+      queueMicrotask(() => {
+        if (isCurrentGamePage(id, 'servers')) void resolveServersForView(game, view, pub.rows, view.serverMode);
+      });
+    }
+  }
 }
 
 function selectGamePane(pane) {
@@ -122,21 +163,26 @@ function selectGamePane(pane) {
   const view = gamePageView(detailGame.id);
   if (view.pane === pane) return;
   const tabs = document.querySelector('.game-page-tabs');
-  const oldLine = tabs.querySelector('[aria-selected="true"] .game-page-tab-line').getBoundingClientRect();
-  const scrollLeft = tabs.scrollLeft;
+  const oldLineNode = tabs?.querySelector('[aria-selected="true"] .game-page-tab-line');
+  const oldLine = oldLineNode?.getBoundingClientRect();
+  const scrollLeft = tabs?.scrollLeft || 0;
   const direction = Math.sign(gamePanes.indexOf(pane) - gamePanes.indexOf(view.pane));
   view.pane = pane;
   renderPage();
   const active = document.getElementById('game-pane-' + pane);
-  active.parentElement.scrollLeft = scrollLeft;
-  active.focus({ preventScroll: true });
-  active.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
-  const line = active.querySelector('.game-page-tab-line');
-  const newLine = line.getBoundingClientRect();
-  window.vortexMotion.animate(line, [
-    { transform: `translateX(${oldLine.left - newLine.left}px) scaleX(${oldLine.width / newLine.width})` },
-    { transform: 'none' }
-  ], 210);
+  if (active) {
+    if (active.parentElement) active.parentElement.scrollLeft = scrollLeft;
+    active.focus({ preventScroll: true });
+    active.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    const line = active.querySelector('.game-page-tab-line');
+    const newLine = line?.getBoundingClientRect();
+    if (line && oldLine && newLine && newLine.width > 0) {
+      window.vortexMotion.animate(line, [
+        { transform: `translateX(${oldLine.left - newLine.left}px) scaleX(${oldLine.width / newLine.width})` },
+        { transform: 'none' }
+      ], 210);
+    }
+  }
   revealGameContent(document.getElementById('game-page-panel'), direction * 8);
 }
 
@@ -184,14 +230,36 @@ document.addEventListener('click', event => {
       revealGameContent(document.getElementById('game-page-server-results'));
       if (view.serverMode === 'friends') requestGamePageFriends();
       return;
+    case 'server-region': {
+      const nextRegion = target.dataset.region || 'all';
+      if (view.serverRegion === nextRegion) return;
+      view.serverRegion = nextRegion;
+      document.querySelectorAll('[data-game-page-action="server-region"]').forEach(btn => {
+        btn.setAttribute('aria-pressed', String(btn.dataset.region === nextRegion));
+      });
+      const resultsNode = document.getElementById('game-page-server-results');
+      if (resultsNode) {
+        resultsNode.innerHTML = gameServerResults(game, view);
+        revealGameContent(resultsNode);
+      }
+      return;
+    }
     case 'server-refresh':
       if (view.serverMode === 'friends') requestGamePageFriends(true);
       else void loadGameServers(game);
+      if (preferences.showPrivateServers !== false && typeof loadPrivateServers === 'function') {
+        void loadPrivateServers(game);
+      }
       return;
     case 'server-more': void loadGameServers(game, true); return;
+    case 'private-refresh': if (typeof loadPrivateServers === 'function') void loadPrivateServers(game); return;
+    case 'private-more': if (typeof loadPrivateServers === 'function') void loadPrivateServers(game, true); return;
+    case 'private-config': if (typeof openPrivateServerConfigModal === 'function') void openPrivateServerConfigModal(game, target.dataset.vipServerId); return;
+    case 'private-create': if (typeof openCreatePrivateServerModal === 'function') void openCreatePrivateServerModal(game, view); return;
     case 'friends-refresh': requestGamePageFriends(true); return;
     case 'friends-settings': preferences.settingsTab = 'general'; setView('settings'); return;
     case 'join': void detailLaunch(game, target.dataset.placeId, target.dataset.serverId); return;
+    case 'join-private': void detailLaunch(game, target.dataset.placeId, '', target.dataset.accessCode); return;
     case 'play': void detailLaunch(game); return;
     case 'toggle-hide': {
       const hide = !gameLaunchOptions(game).hide;
@@ -218,12 +286,31 @@ document.addEventListener('input', event => {
   if (!event.target.matches?.('[data-game-server-search]') || !detailGame) return;
   const view = gamePageView(detailGame.id);
   view.serverSearch = event.target.value;
-  document.getElementById('game-page-server-results').innerHTML = gameServerResults(detailGame, view);
+  const results = document.getElementById('game-page-server-results');
+  if (results) results.innerHTML = gameServerResults(detailGame, view);
+  if (typeof updatePrivateServerResults === 'function') updatePrivateServerResults(detailGame, view);
 });
 
 document.addEventListener('change', event => {
-  if (!event.target.matches?.('[data-game-launch="server"]') || !detailGame) return;
-  writeGameLaunchOptions(detailGame, { server: event.target.value });
+  if (!detailGame) return;
+  if (event.target.matches?.('[data-game-launch="server"]')) {
+    writeGameLaunchOptions(detailGame, { server: event.target.value });
+  } else if (event.target.matches?.('[data-game-launch="region"]')) {
+    writeGameLaunchOptions(detailGame, { region: event.target.value });
+  } else if (event.target.matches?.('[data-game-private-toggle]')) {
+    preferences.showPrivateServers = Boolean(event.target.checked);
+    savePreferences();
+    const view = gamePageView(detailGame.id);
+    if (typeof updatePrivateServerResults === 'function') {
+      updatePrivateServerResults(detailGame, view);
+      if (preferences.showPrivateServers) {
+        revealGameContent(document.getElementById('game-page-private-servers'));
+        if (typeof gamePrivateServerPage === 'function' && gamePrivateServerPage(view).status === 'idle') {
+          void loadPrivateServers(detailGame);
+        }
+      }
+    }
+  }
 });
 
 document.addEventListener('keydown', event => {

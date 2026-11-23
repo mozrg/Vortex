@@ -13,9 +13,23 @@
     return currentValue;
   }
 
-  function loadApplication() {
+  const appScripts = [
+    './js/app-state.js',
+    './js/app-home.js',
+    './js/app-friends.js',
+    './js/app-settings.js',
+    './js/app-sidebar.js',
+    './js/app-runtime.js',
+    './js/app-events.js',
+    './app.js'
+  ];
+
+  function loadApplication(index = 0) {
+    if (index >= appScripts.length) return;
     const script = document.createElement('script');
-    script.src = './app.js';
+    script.src = appScripts[index];
+    script.onload = () => loadApplication(index + 1);
+    script.onerror = (error) => console.error('Failed to load Vortex module:', appScripts[index], error);
     document.body.appendChild(script);
   }
 

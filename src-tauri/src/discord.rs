@@ -146,7 +146,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<DiscordCommand>, state: A
                 if connection.is_none() {
                     if let Ok(active) = start_connection(&state, &active_client_id).await {
                         connection = Some(active);
-                        let activity = state.discord.lock().ok().and_then(|discord| discord.activity.as_ref().map(|value| json!({"details": value.details, "state": value.state})));
+                        let activity = state.discord.lock().ok().and_then(|discord| discord.activity.as_ref().map(|value| value.to_rpc_json()));
                         if let Some(active) = connection.as_ref() {
                             if let Err(error) = send_rpc_activity(&active.writer, activity).await {
                                 connection = None;

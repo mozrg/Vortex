@@ -74,6 +74,29 @@ pub struct DiscordState {
 pub struct DiscordActivity {
     pub details: Option<String>,
     pub state: Option<String>,
+    pub start_timestamp: Option<u64>,
+    pub button_label: Option<String>,
+    pub button_url: Option<String>,
+}
+
+impl DiscordActivity {
+    pub fn to_rpc_json(&self) -> serde_json::Value {
+        let mut obj = serde_json::json!({
+            "details": self.details,
+            "state": self.state
+        });
+        if let Some(start) = self.start_timestamp.filter(|&ts| ts > 0) {
+            obj["timestamps"] = serde_json::json!({ "start": start });
+        }
+        if let (Some(label), Some(url)) = (&self.button_label, &self.button_url) {
+            if !label.is_empty() && url.starts_with("https://www.roblox.com/") {
+                obj["buttons"] = serde_json::json!([
+                    { "label": label, "url": url }
+                ]);
+            }
+        }
+        obj
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]

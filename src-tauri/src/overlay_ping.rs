@@ -9,16 +9,57 @@
 //! Roblox's Performance Stats while also tracking connection jitter (`±ms`),
 //! recent ping history for the mini-sparkline, and the server's region code.
 use serde::Serialize;
+use serde_json::Value;
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     io::{Read, Write},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
+    sync::{Mutex, OnceLock},
     time::{Duration, Instant},
 };
 use tokio::{
     sync::{oneshot, watch},
     task::JoinHandle,
 };
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegionInfo {
+    pub group: String,
+    pub code: String,
+    pub label: String,
+}
+
+impl RegionInfo {
+    pub fn new(group: &str, prefix: &str, code: &str) -> Self {
+        let code_upper = code.to_ascii_uppercase();
+        let label = if prefix.is_empty() || prefix.eq_ignore_ascii_case(&code_upper) {
+            code_upper.clone()
+        } else {
+            format!("{prefix} · {code_upper}")
+        };
+        Self {
+            group: group.to_string(),
+            code: code_upper,
+            label,
+        }
+    }
+}
+
+fn geo_cache() -> &'static Mutex<HashMap<(u8, u8, u8), Option<RegionInfo>>> {
+    static CACHE: OnceLock<Mutex<HashMap<(u8, u8, u8), Option<RegionInfo>>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn ping_subnet_cache() -> &'static Mutex<HashMap<(u8, u8, u8), (Instant, u32)>> {
+    static CACHE: OnceLock<Mutex<HashMap<(u8, u8, u8), (Instant, u32)>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn shared_local_ipv4() -> &'static Mutex<Option<Ipv4Addr>> {
+    static LOCAL: OnceLock<Mutex<Option<Ipv4Addr>>> = OnceLock::new();
+    LOCAL.get_or_init(|| Mutex::new(None))
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,45 +107,280 @@ pub fn public_ip(ip: Option<&str>) -> Option<Ipv4Addr> {
     reachable.then_some(address)
 }
 
-/// Detect the Roblox datacenter region code (`FRA`, `AMS`, `PAR`, `LON`, etc.)
-/// from the public UDMUX IPv4 address and optional measured ping.
-pub fn detect_region(udmux: Option<Ipv4Addr>, ping_ms: Option<u32>) -> Option<String> {
-    if let Some(ip) = udmux {
-        let [a, b, c, _] = ip.octets();
-        let known = match (a, b, c) {
-            (128, 116, 5 | 44 | 119 | 122) => Some("FRA"),
-            (128, 116, 21 | 116) => Some("AMS"),
-            (128, 116, 13) => Some("PAR"),
-            (128, 116, 31 | 35) => Some("LON"),
-            (128, 116, 102 | 123) => Some("WAR"),
-            (128, 116, 30 | 32) => Some("NYC"),
-            (128, 116, 53 | 117) => Some("IAD"),
-            (128, 116, 48 | 84) => Some("ORD"),
-            (128, 116, 56 | 95) => Some("DFW"),
-            (128, 116, 45 | 127) => Some("MIA"),
-            (128, 116, 2) => Some("ATL"),
-            (128, 116, 1 | 63) => Some("LAX"),
-            (128, 116, 54 | 104) => Some("SJC"),
-            (128, 116, 115) | (34, 222, _) => Some("SEA"),
-            (128, 116, 46 | 50 | 97) => Some("SIN"),
-            (128, 116, 55 | 120) => Some("TYO"),
-            (128, 116, 99) => Some("HKG"),
-            (128, 116, 47) => Some("BOM"),
-            (128, 116, 51) => Some("SYD"),
-            (128, 116, 86) => Some("GRU"),
-            (96, 0, 18) => Some("LIM"),
-            _ => None,
-        };
-        if let Some(code) = known {
-            return Some(code.to_string());
+/// Fast static lookup for known Roblox datacenter `/24` subnets.
+pub fn known_region_info(ip: Ipv4Addr) -> Option<RegionInfo> {
+    let [a, b, c, _] = ip.octets();
+    let mapped = match (a, b, c) {
+        (128, 116, 5 | 44 | 119 | 122) => Some(("eu", "EU", "FRA")),
+        (128, 116, 21 | 116) => Some(("eu", "EU", "AMS")),
+        (128, 116, 13) => Some(("eu", "EU", "PAR")),
+        (128, 116, 31 | 35) => Some(("eu", "EU", "LON")),
+        (128, 116, 102 | 123) => Some(("eu", "EU", "WAR")),
+        (128, 116, 30 | 32) => Some(("us-east", "US", "NYC")),
+        (128, 116, 53 | 117) => Some(("us-east", "US", "IAD")),
+        (128, 116, 48 | 84) => Some(("us-east", "US", "ORD")),
+        (128, 116, 56 | 95) => Some(("us-east", "US", "DFW")),
+        (128, 116, 45 | 127) => Some(("us-east", "US", "MIA")),
+        (128, 116, 2) => Some(("us-east", "US", "ATL")),
+        (128, 116, 1 | 63) => Some(("us-west", "US", "LAX")),
+        (128, 116, 54 | 104) => Some(("us-west", "US", "SJC")),
+        (128, 116, 115) | (34, 222, _) => Some(("us-west", "US", "SEA")),
+        (128, 116, 46 | 50 | 97) => Some(("asia", "ASIA", "SIN")),
+        (128, 116, 55 | 120) => Some(("asia", "ASIA", "TYO")),
+        (128, 116, 99) => Some(("asia", "ASIA", "HKG")),
+        (128, 116, 47) => Some(("asia", "ASIA", "BOM")),
+        (128, 116, 51) => Some(("au", "AU", "SYD")),
+        (128, 116, 86) => Some(("sa", "SA", "GRU")),
+        (96, 0, 18) => Some(("sa", "SA", "LIM")),
+        _ => None,
+    };
+    mapped.map(|(group, prefix, code)| RegionInfo::new(group, prefix, code))
+}
+
+fn city_to_iata_code(city: &str, country: &str) -> String {
+    let lower = city.trim().to_ascii_lowercase();
+    let known = match lower.as_str() {
+        "frankfurt" | "frankfurt am main" => Some("FRA"),
+        "amsterdam" | "haarlem" => Some("AMS"),
+        "paris" => Some("PAR"),
+        "london" | "slough" => Some("LON"),
+        "warsaw" | "warszawa" => Some("WAR"),
+        "dublin" => Some("DUB"),
+        "stockholm" => Some("ARN"),
+        "madrid" => Some("MAD"),
+        "milan" | "milano" => Some("MIL"),
+        "zurich" | "zürich" => Some("ZRH"),
+        "new york" | "secaucus" | "newark" | "jersey city" | "clifton" | "piscataway" => Some("NYC"),
+        "ashburn" | "washington" | "reston" | "sterling" | "manassas" => Some("IAD"),
+        "chicago" | "elk grove village" => Some("ORD"),
+        "dallas" | "richardson" | "plano" => Some("DFW"),
+        "miami" | "doral" => Some("MIA"),
+        "atlanta" => Some("ATL"),
+        "los angeles" | "el segundo" => Some("LAX"),
+        "san jose" | "santa clara" | "san francisco" | "fremont" | "san mateo" => Some("SJC"),
+        "seattle" | "tukwila" | "quincy" => Some("SEA"),
+        "boardman" | "hillsboro" | "portland" => Some("PDX"),
+        "singapore" => Some("SIN"),
+        "tokyo" | "osaka" => Some("TYO"),
+        "hong kong" => Some("HKG"),
+        "mumbai" | "navi mumbai" => Some("BOM"),
+        "seoul" => Some("ICN"),
+        "taipei" => Some("TPE"),
+        "sydney" => Some("SYD"),
+        "melbourne" => Some("MEL"),
+        "são paulo" | "sao paulo" | "barueri" | "cotia" | "santana de parnaíba" => Some("GRU"),
+        "rio de janeiro" => Some("GIG"),
+        "lima" => Some("LIM"),
+        "santiago" => Some("SCL"),
+        "buenos aires" => Some("EZE"),
+        "bogota" | "bogotá" => Some("BOG"),
+        _ => None,
+    };
+    if let Some(code) = known {
+        return code.to_string();
+    }
+    let letters: String = city
+        .chars()
+        .filter(|ch| ch.is_ascii_alphabetic())
+        .take(3)
+        .collect::<String>()
+        .to_ascii_uppercase();
+    if letters.len() == 3 {
+        letters
+    } else if !country.trim().is_empty() {
+        country.trim().to_ascii_uppercase()
+    } else {
+        "RBLX".to_string()
+    }
+}
+
+/// Map GeoIP fields (`continent`, `country`, `city`, `region_name`, `lon`) into
+/// the unified Vortex `RegionInfo` used by both the Servers tab and the Overlay.
+pub fn region_info_from_geo(
+    continent: &str,
+    country: &str,
+    city: &str,
+    region_name: &str,
+    lon: Option<f64>,
+) -> RegionInfo {
+    let cont = continent.trim().to_ascii_uppercase();
+    let cc = country.trim().to_ascii_uppercase();
+    let reg = region_name.trim().to_ascii_lowercase();
+    let code = city_to_iata_code(city, &cc);
+
+    let (group, prefix) = if cont == "SA"
+        || matches!(
+            cc.as_str(),
+            "BR" | "AR" | "CL" | "CO" | "PE" | "UY" | "EC" | "VE" | "PY" | "BO"
+        ) {
+        ("sa", "SA")
+    } else if cont == "OC" || matches!(cc.as_str(), "AU" | "NZ") {
+        ("au", "AU")
+    } else if cont == "EU"
+        || matches!(
+            cc.as_str(),
+            "DE" | "NL"
+                | "FR"
+                | "GB"
+                | "PL"
+                | "SE"
+                | "FI"
+                | "IE"
+                | "ES"
+                | "IT"
+                | "CZ"
+                | "AT"
+                | "CH"
+                | "BE"
+                | "NO"
+                | "DK"
+                | "PT"
+                | "RO"
+                | "HU"
+                | "RU"
+                | "UA"
+                | "BG"
+                | "SK"
+                | "LT"
+                | "LV"
+                | "EE"
+        )
+    {
+        ("eu", "EU")
+    } else if cont == "NA" || matches!(cc.as_str(), "US" | "CA" | "MX") {
+        let west_state = matches!(
+            reg.as_str(),
+            "california"
+                | "washington"
+                | "oregon"
+                | "nevada"
+                | "arizona"
+                | "utah"
+                | "idaho"
+                | "hawaii"
+                | "alaska"
+                | "british columbia"
+                | "alberta"
+        );
+        let is_west = west_state || lon.is_some_and(|l| l < -100.0);
+        if is_west {
+            ("us-west", "US")
+        } else {
+            ("us-east", "US")
+        }
+    } else if cont == "AS"
+        || matches!(
+            cc.as_str(),
+            "SG" | "JP"
+                | "HK"
+                | "IN"
+                | "KR"
+                | "TW"
+                | "MY"
+                | "TH"
+                | "ID"
+                | "PH"
+                | "VN"
+                | "AE"
+                | "IL"
+                | "CN"
+        )
+    {
+        ("asia", "ASIA")
+    } else {
+        ("other", cc.as_str())
+    };
+    RegionInfo::new(group, prefix, &code)
+}
+
+/// Resolve the real geographic datacenter region for any public Roblox server IPv4.
+/// Uses the static `/24` table first, then a `/24`-cached HTTPS GeoIP lookup.
+pub async fn resolve_region_info(ip: Ipv4Addr) -> Option<RegionInfo> {
+    if let Some(known) = known_region_info(ip) {
+        return Some(known);
+    }
+    let [a, b, c, _] = ip.octets();
+    let key = (a, b, c);
+    if let Ok(cache) = geo_cache().lock() {
+        if let Some(cached) = cache.get(&key) {
+            return cached.clone();
         }
     }
-    match ping_ms {
-        Some(ms) if ms <= 105 => Some("EU".to_string()),
-        Some(ms) if ms <= 185 => Some("US".to_string()),
-        Some(_) => Some("ASIA".to_string()),
-        None => udmux.map(|_| "RBLX".to_string()),
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(3))
+        .user_agent("Vortex-Place-Launcher")
+        .build()
+        .ok()?;
+
+    let mut resolved: Option<RegionInfo> = None;
+
+    // Primary: ipwho.is (HTTPS, clean JSON, includes continent_code & longitude)
+    if let Ok(resp) = client.get(format!("https://ipwho.is/{ip}")).send().await {
+        if resp.status().is_success() {
+            if let Ok(json) = resp.json::<Value>().await {
+                if json.get("success").and_then(Value::as_bool) != Some(false) {
+                    let country = json.get("country_code").and_then(Value::as_str).unwrap_or("");
+                    if !country.is_empty() {
+                        let continent = json
+                            .get("continent_code")
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        let city = json.get("city").and_then(Value::as_str).unwrap_or("");
+                        let region = json.get("region").and_then(Value::as_str).unwrap_or("");
+                        let lon = json.get("longitude").and_then(Value::as_f64);
+                        resolved = Some(region_info_from_geo(continent, country, city, region, lon));
+                    }
+                }
+            }
+        }
     }
+
+    // Fallback: ipinfo.io (HTTPS)
+    if resolved.is_none() {
+        if let Ok(resp) = client.get(format!("https://ipinfo.io/{ip}/json")).send().await {
+            if resp.status().is_success() {
+                if let Ok(json) = resp.json::<Value>().await {
+                    let country = json.get("country").and_then(Value::as_str).unwrap_or("");
+                    if !country.is_empty() {
+                        let city = json.get("city").and_then(Value::as_str).unwrap_or("");
+                        let region = json.get("region").and_then(Value::as_str).unwrap_or("");
+                        let lon = json
+                            .get("loc")
+                            .and_then(Value::as_str)
+                            .and_then(|loc| loc.split(',').nth(1))
+                            .and_then(|v| v.trim().parse::<f64>().ok());
+                        resolved = Some(region_info_from_geo("", country, city, region, lon));
+                    }
+                }
+            }
+        }
+    }
+
+    if let Ok(mut cache) = geo_cache().lock() {
+        if cache.len() > 512 {
+            cache.clear();
+        }
+        cache.insert(key, resolved.clone());
+    }
+    resolved
+}
+
+/// Detect the Roblox datacenter region code (`FRA`, `AMS`, `PAR`, `LON`, etc.)
+/// from the public UDMUX IPv4 address (synchronous fast path; does not guess from ping).
+pub fn detect_region(udmux: Option<Ipv4Addr>, _ping_ms: Option<u32>) -> Option<String> {
+    if let Some(ip) = udmux {
+        if let Some(info) = known_region_info(ip) {
+            return Some(info.code);
+        }
+        let [a, b, c, _] = ip.octets();
+        if let Ok(cache) = geo_cache().lock() {
+            if let Some(Some(info)) = cache.get(&(a, b, c)) {
+                return Some(info.code.clone());
+            }
+        }
+    }
+    None
 }
 
 /// The edge load balancer in the same `/24` datacenter subnet as the UDMUX IP.
@@ -316,6 +592,33 @@ fn measure_datacenter_ping(
     proxy_http_ping_ms(edge, TIMEOUT)
 }
 
+/// Measure the user's real ping (physical-NIC TCP handshake RTT + Roblox
+/// 21 ms DataPing offset) to a Roblox datacenter `/24` edge, cached per `/24`
+/// subnet for 60 seconds so resolving a server list is fast.
+pub fn measure_datacenter_ping_cached(udmux: Ipv4Addr) -> Option<u32> {
+    let [a, b, c, _] = udmux.octets();
+    let key = (a, b, c);
+    if let Ok(cache) = ping_subnet_cache().lock() {
+        if let Some((at, ms)) = cache.get(&key) {
+            if at.elapsed() < Duration::from_secs(60) {
+                return Some(*ms);
+            }
+        }
+    }
+    let mut local = shared_local_ipv4().lock().ok().and_then(|g| *g);
+    let measured = measure_datacenter_ping(udmux, &mut local)?;
+    if let Ok(mut guard) = shared_local_ipv4().lock() {
+        *guard = local;
+    }
+    if let Ok(mut cache) = ping_subnet_cache().lock() {
+        if cache.len() > 256 {
+            cache.clear();
+        }
+        cache.insert(key, (Instant::now(), measured));
+    }
+    Some(measured)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Target {
     pub place_id: String,
@@ -351,6 +654,20 @@ impl Probe {
             let mut cached_local: Option<Ipv4Addr> = None;
             let mut listed: Option<u32> = None;
             let mut listed_at: Option<tokio::time::Instant> = None;
+            let mut resolved_region = detect_region(udmux, None);
+            if resolved_region.is_none() {
+                if let Some(address) = udmux {
+                    let geo_req = resolve_region_info(address);
+                    let info = tokio::select! {
+                        biased;
+                        _ = &mut cancel => return,
+                        value = geo_req => value,
+                    };
+                    if let Some(info) = info {
+                        resolved_region = Some(info.code);
+                    }
+                }
+            }
             loop {
                 let mut raw_sample = None;
                 if let Some(address) = udmux {
@@ -399,7 +716,9 @@ impl Probe {
                     history.push(sample_for_history);
                 }
                 let jitter = compute_jitter(&history);
-                let region = detect_region(udmux, value);
+                let region = resolved_region
+                    .clone()
+                    .or_else(|| detect_region(udmux, value));
                 let bad_server = value.is_some_and(|ms| ms >= BAD_PING_THRESHOLD_MS)
                     || jitter.is_some_and(|j| j >= BAD_JITTER_THRESHOLD_MS);
                 let snapshot = PingSnapshot {

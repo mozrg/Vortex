@@ -22,6 +22,7 @@
   font-size: .8rem;
   line-height: 1.4;
   overflow-wrap: anywhere;
+  pointer-events: none;
 }
 .vortex-tooltip[inert] { pointer-events: none; }
 .vortex-tooltip[hidden], .vortex-dropdown-panel[hidden] { display: none; }

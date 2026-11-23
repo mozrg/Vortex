@@ -2382,3 +2382,75 @@ body.sidebar-hidden .app-shell:has(.sidebar-hover-zone:hover)::after {
 .tray-limit-toggle { display: inline-flex; align-items: center; gap: 7px; }
 .tray-limit-toggle small { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .tray-limit-control input[type="range"]:disabled { opacity: .45; }
+
+/* Topbar Robux balance badge next to account avatar */
+.topbar-robux {
+  display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 9px;
+  border: 1px solid var(--line); border-radius: 9px; background: transparent;
+  color: var(--text); font: 600 12px/1 var(--font-ui); font-variant-numeric: tabular-nums;
+  white-space: nowrap; user-select: none;
+  animation: ui-surface-in .2s cubic-bezier(.22, 1, .36, 1) both;
+  transition: border-color .16s ease, background-color .16s ease;
+}
+.topbar-robux[hidden] { display: none; }
+.topbar-robux:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.topbar-robux .robux-icon { color: #d8b25c; flex: 0 0 auto; opacity: .92; }
+
+/* Multi-release updates history list */
+.release-log-list { display: grid; gap: 0; }
+.release-log-entry {
+  padding: 18px 0; border-bottom: 1px solid var(--line);
+}
+.release-log-entry:first-child { padding-top: 6px; }
+.release-log-entry:last-child { border-bottom: 0; padding-bottom: 0; }
+.release-log-entry.is-highlighted {
+  padding-left: 14px; border-left: 2px solid var(--accent);
+}
+.release-log-entry-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.release-log-entry-title { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.release-log-entry-title h2 { margin: 0; font: 650 16px/1.3 var(--font-ui); color: var(--text); }
+.release-log-tag {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 6px;
+  border: 1px solid var(--accent-border); background: var(--accent-wash); color: var(--accent-text);
+  font: 600 11.5px/1.3 var(--font-ui); font-variant-numeric: tabular-nums;
+}
+.release-log-entry-head time { color: var(--muted); font-size: 12px; }
+
+/* Missing UI animations and tactile micro-interactions across the app */
+.settings-card, .activity-now-playing, .friend-log-card, .home-banner-card {
+  animation: ui-surface-in .22s cubic-bezier(.22, 1, .36, 1) both;
+}
+.settings-card, .friend-row, .friend-log-item, .activity-session-row, .filter-chip, .control-button, .ghost-button, .primary-button {
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .15s cubic-bezier(.22, 1, .36, 1), box-shadow .16s ease;
+}
+.filter-chip:hover, .friend-row:hover { transform: translateY(-1px); }
+.filter-chip:active, .ghost-button:active:not(:disabled), .control-button:active:not(:disabled), .primary-button:active:not(:disabled) {
+  transform: scale(.97);
+}
+.vortex-select-menu {
+  transform-origin: top center;
+  animation: ui-menu-pop .16s cubic-bezier(.22, 1, .36, 1) both;
+}
+.toggle::after {
+  transition: transform .2s cubic-bezier(.22, 1, .36, 1), background-color .16s ease;
+}
+@keyframes ui-surface-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ui-menu-pop {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+body.no-motion *, body.reduce-motion * {
+  animation-duration: 0.001ms !important;
+  transition-duration: 0.001ms !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-card, .activity-now-playing, .friend-log-card, .home-banner-card, .vortex-select-menu {
+    animation: none !important;
+  }
+}

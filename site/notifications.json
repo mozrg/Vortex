@@ -2,20 +2,36 @@
   "version": 1,
   "items": [
     {
-      "id": "2026-11-09-1-2-1",
-      "title": "1.2.1",
-      "body": "Доступна новая версия 1.2.1, по ссылке весь список изменений с 1.2.0-1.2.1",
-      "level": "info",
-      "url": "https://vortex-site-orpin.vercel.app/",
-      "date": "2026-11-09T17:54:05.415Z"
-    },
-    {
       "id": "2026-11-21-1-2-4",
       "title": "1.2.4",
       "body": "Большое обновление",
       "level": "success",
       "url": "https://vortex-site-orpin.vercel.app/",
       "date": "2026-11-21T11:26:49.599Z"
+    },
+    {
+      "id": "2026-11-21-1-2-5",
+      "title": "1.2.5",
+      "body": "Небольшое обновление",
+      "level": "info",
+      "url": "https://vortex-site-orpin.vercel.app/updates.html?tag=1.2.5",
+      "date": "2026-11-21T16:13:04.350Z"
+    },
+    {
+      "id": "2026-11-22-1-2-6",
+      "title": "1.2.6",
+      "body": "2 новые функции в версии 1.2.6",
+      "level": "info",
+      "url": "https://vortex-site-orpin.vercel.app/updates.html?tag=1.2.6",
+      "date": "2026-11-22T23:36:26.072Z"
+    },
+    {
+      "id": "2026-11-23-1-2-7",
+      "title": "1.2.7",
+      "body": "Обновление оверлея и хоткеев",
+      "level": "info",
+      "url": "https://vortex-site-orpin.vercel.app/updates.html?tag=1.2.7",
+      "date": "2026-11-23T13:07:36.071Z"
     }
   ]
 }

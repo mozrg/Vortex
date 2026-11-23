@@ -13,6 +13,367 @@ let dashboardDirty = true;
 let breakReminderSession = '';
 let breakReminderCount = 0;
 let breakReminderElapsed = 0;
+let rebindingInviteHotkey = false;
+
+const LAST_EXITED_SESSION_KEY = 'vortex.lastExitedSession';
+let cachedLastExitedSession = null;
+
+const activityInviteLabels = [
+  ['activity.nowPlaying.title', 'Текущая сессия', 'Current session'],
+  ['activity.nowPlaying.live', 'Сейчас в игре', 'Playing now'],
+  ['activity.nowPlaying.lastExitedBadge', 'Последний сервер, с которого вы вышли', 'Last server you exited from'],
+  ['activity.nowPlaying.rejoinSame', 'Перезайти на тот же сервер', 'Rejoin same server'],
+  ['activity.nowPlaying.rejoinExited', 'Зайти на тот же сервер', 'Join the same server'],
+  ['activity.nowPlaying.idleTitle', 'Сейчас вы не в игре', 'No active game right now'],
+  ['activity.nowPlaying.idleHint', 'Запустите любой плейс в Roblox — здесь появится текущая игра, кнопка копирования инвайт-ссылки и быстрый возврат на последний сервер после выхода.', 'Join any Roblox experience to see your live session, copy a direct invite link, or rejoin the last server you exited from.'],
+  ['activity.nowPlaying.connecting', 'Определяем сервер…', 'Detecting server…'],
+  ['activity.nowPlaying.copyInvite', 'Скопировать инвайт-ссылку', 'Copy invite link'],
+  ['activity.nowPlaying.hotkeyLabel', 'Хоткей инвайта', 'Invite hotkey'],
+  ['activity.nowPlaying.changeHotkey', 'Изменить', 'Rebind'],
+  ['activity.nowPlaying.pressKeys', 'Нажмите клавиши…', 'Press keys…'],
+  ['activity.nowPlaying.hotkeyHint', 'Работает прямо внутри Roblox и в лаунчере. Нажмите, чтобы переназначить.', 'Works right inside Roblox and in the launcher. Click to rebind.'],
+  ['activity.nowPlaying.hotkeySaved', 'Хоткей инвайт-ссылки: {hotkey}', 'Invite link hotkey: {hotkey}'],
+  ['activity.nowPlaying.inviteCopied', 'Инвайт-ссылка на сервер скопирована!', 'Server invite link copied!'],
+  ['activity.nowPlaying.notInGame', 'Сначала зайдите в игру в Roblox.', 'Join a Roblox game first.']
+];
+for (const [key, ru, en] of activityInviteLabels) {
+  translations.ru[key] = ru;
+  translations.en[key] = en;
+}
+
+function rememberLastActiveServerSession(placeId, serverId = '', startedAt = Date.now()) {
+  const place = String(placeId || '').trim();
+  if (!gameIdPattern.test(place)) return;
+  const server = validSessionServer(serverId);
+  const existing = readStored(LAST_EXITED_SESSION_KEY, null);
+  const known = getGame(place);
+  const nextServer = server || (existing?.placeId === place ? validSessionServer(existing?.serverId) : '');
+  const record = {
+    placeId: place,
+    serverId: nextServer,
+    title: known?.title || nowPlayingSnapshot?.title || recordingSession?.title || existing?.title || ('Roblox #' + place),
+    thumbnail: safeThumbnail(known?.thumbnail || nowPlayingSnapshot?.thumbnail || existing?.thumbnail) || '',
+    startedAt: Number(startedAt) || Date.now(),
+    updatedAt: Date.now()
+  };
+  cachedLastExitedSession = record;
+  try {
+    accountStorage.setItem(LAST_EXITED_SESSION_KEY, JSON.stringify(record));
+  } catch { /* ignore storage quota */ }
+}
+
+function getLastExitedSession() {
+  const stored = cachedLastExitedSession || readStored(LAST_EXITED_SESSION_KEY, null);
+  let placeId = String(stored?.placeId || '').trim();
+  let serverId = validSessionServer(stored?.serverId);
+  let updatedAt = Number(stored?.updatedAt || stored?.startedAt) || 0;
+  let fallbackTitle = stored?.title || '';
+  let fallbackThumb = stored?.thumbnail || '';
+
+  // Also check recentMetadata() and loaded journal/dashboard rows in case a newer server was recorded there.
+  if (typeof recentMetadata === 'function') {
+    const meta = recentMetadata();
+    for (const [id, entry] of Object.entries(meta || {})) {
+      const srv = validSessionServer(entry?.serverId);
+      const at = Number(entry?.at) || 0;
+      if (gameIdPattern.test(id) && srv && (!serverId || at > updatedAt)) {
+        placeId = id;
+        serverId = srv;
+        updatedAt = at;
+      }
+    }
+  }
+  const rows = (Array.isArray(journalRows) && journalRows.length ? journalRows : Array.isArray(dashboardRows) ? dashboardRows : []);
+  for (const row of rows) {
+    const srv = validSessionServer(row?.serverId);
+    const at = Number(row?.seenAt || row?.startedAt) || 0;
+    if (row && gameIdPattern.test(String(row.gameId)) && srv && (!serverId || at > updatedAt)) {
+      placeId = String(row.gameId);
+      serverId = srv;
+      updatedAt = at;
+      fallbackTitle = row.title || fallbackTitle;
+    }
+  }
+
+  if (!gameIdPattern.test(placeId)) return null;
+  const known = getGame(placeId);
+  const title = known?.title || fallbackTitle || ('Roblox #' + placeId);
+  const thumbnail = safeThumbnail(known?.thumbnail || fallbackThumb) || '';
+  const game = known || { id: placeId, title, thumbnail };
+  const url = buildServerInviteUrl(placeId, serverId);
+  return { placeId, serverId, title, thumbnail, updatedAt, game, url };
+}
+
+function formatInviteHotkey(spec) {
+  const clean = String(spec || 'Alt+C').trim() || 'Alt+C';
+  return clean.split('+').map(part => part.trim()).filter(Boolean).join(' + ');
+}
+
+function formatNowPlayingClock(startedAt) {
+  const seconds = Math.max(0, Math.floor((Date.now() - (Number(startedAt) || Date.now())) / 1000));
+  const units = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60];
+  return units.map(unit => String(unit).padStart(2, '0')).join(':');
+}
+
+function buildServerInviteUrl(placeId, serverId = '') {
+  const place = String(placeId || '').trim();
+  if (!gameIdPattern.test(place)) return '';
+  const server = validSessionServer(serverId);
+  return server
+    ? `https://www.roblox.com/games/start?placeId=${encodeURIComponent(place)}&gameInstanceId=${encodeURIComponent(server)}`
+    : `https://www.roblox.com/games/start?placeId=${encodeURIComponent(place)}`;
+}
+
+function currentPlayingInviteState() {
+  const placeId = String(playSessionGameId || gameOverlaySession?.placeId || '').trim();
+  if (!gameIdPattern.test(placeId)) return null;
+  const serverId = validSessionServer(gameOverlaySession?.serverId)
+    || validSessionServer(recordingSession?.serverId)
+    || validSessionServer(runtimeSample?.serverId)
+    || '';
+  const known = getGame(placeId);
+  const title = known?.title || nowPlayingSnapshot?.title || recordingSession?.title || ('Roblox #' + placeId);
+  const thumbnail = safeThumbnail(known?.thumbnail || nowPlayingSnapshot?.thumbnail) || '';
+  const startedAt = Number(gameOverlaySession?.startedAt || nowPlayingSnapshot?.startedAt || playSessionStart) || Date.now();
+  const game = known || { id: placeId, title, thumbnail };
+  const url = buildServerInviteUrl(placeId, serverId);
+  rememberLastActiveServerSession(placeId, serverId, startedAt);
+  return { placeId, serverId, title, thumbnail, startedAt, game, url };
+}
+
+async function writeInviteToClipboard(url) {
+  if (!url) return false;
+  if (window.vortexDesktop?.copyToClipboard) {
+    try {
+      await window.vortexDesktop.copyToClipboard(url);
+      return true;
+    } catch { /* Fall back to the browser clipboard API. */ }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function copyServerInviteUrl(placeId, serverId = '') {
+  const url = buildServerInviteUrl(placeId, serverId);
+  if (!url) {
+    showToast(t('activity.nowPlaying.notInGame'));
+    return false;
+  }
+  if (await writeInviteToClipboard(url)) {
+    showToast(t('activity.nowPlaying.inviteCopied'));
+    return true;
+  }
+  showToast(t('place.copyFailed'));
+  return false;
+}
+
+async function copyActiveServerInviteLink() {
+  const active = currentPlayingInviteState();
+  if (!active) {
+    showToast(t('activity.nowPlaying.notInGame'));
+    return false;
+  }
+  return copyServerInviteUrl(active.placeId, active.serverId);
+}
+
+let lastActivityNowPlayingSignature = '';
+
+function activityNowPlayingSignature(active = currentPlayingInviteState(), lastExited = !active ? getLastExitedSession() : null) {
+  return JSON.stringify([
+    active?.placeId || '',
+    active?.serverId || '',
+    active?.title || '',
+    active?.thumbnail || '',
+    active?.startedAt || 0,
+    lastExited?.placeId || '',
+    lastExited?.serverId || '',
+    lastExited?.title || '',
+    lastExited?.thumbnail || '',
+    rebindingInviteHotkey,
+    preferences.inviteHotkey,
+    preferences.language,
+    preferences.streamMode
+  ]);
+}
+
+function renderActivityNowPlayingCard() {
+  const active = currentPlayingInviteState();
+  const lastExited = !active ? getLastExitedSession() : null;
+  lastActivityNowPlayingSignature = activityNowPlayingSignature(active, lastExited);
+  const hotkeyText = rebindingInviteHotkey
+    ? t('activity.nowPlaying.pressKeys')
+    : formatInviteHotkey(preferences.inviteHotkey);
+  const hotkeyButton = `<div class="activity-invite-hotkey">
+      <span class="activity-invite-hotkey-label">${icon('keyboard', 14)} ${t('activity.nowPlaying.hotkeyLabel')}</span>
+      <button type="button" class="control-button activity-hotkey-trigger ${rebindingInviteHotkey ? 'is-recording' : ''}"
+        data-library-action="rebind-invite-hotkey" aria-pressed="${rebindingInviteHotkey}"
+        data-tooltip="${escapeHtml(t('activity.nowPlaying.hotkeyHint'))}">
+        <kbd>${escapeHtml(hotkeyText)}</kbd>
+        <span>${t(rebindingInviteHotkey ? 'common.cancel' : 'activity.nowPlaying.changeHotkey')}</span>
+      </button>
+    </div>`;
+  if (!active && lastExited) {
+    const showLastServer = lastExited.serverId && !preferences.streamMode;
+    return `<section class="library-panel activity-now-playing is-exited" id="activity-now-playing">
+      <div class="activity-now-main">
+        <button type="button" class="library-game-link activity-now-game" data-action="open-details" data-id="${escapeHtml(lastExited.placeId)}">
+          ${libraryArt(lastExited.game)}
+          <span>
+            <span class="activity-now-topline">
+              <span class="activity-now-badge">${icon('history', 13)} ${t('activity.nowPlaying.lastExitedBadge')}</span>
+              ${showLastServer ? `<span class="library-server" data-tooltip="${escapeHtml(lastExited.serverId)}">${t('library.server')} ${escapeHtml(lastExited.serverId.slice(0, 8))}</span>` : ''}
+            </span>
+            <strong>${escapeHtml(lastExited.title)}</strong>
+          </span>
+        </button>
+      </div>
+      <div class="activity-now-actions">
+        ${hotkeyButton}
+        <button type="button" class="control-button activity-copy-invite" data-library-action="copy-last-invite">
+          ${icon('link', 14)} ${t('activity.nowPlaying.copyInvite')}
+        </button>
+        <button type="button" class="primary-button activity-rejoin-server" data-library-action="rejoin-last-server">
+          ${icon('rotate', 14)} ${t('activity.nowPlaying.rejoinExited')}
+        </button>
+      </div>
+    </section>`;
+  }
+  if (!active) {
+    return `<section class="library-panel activity-now-playing is-idle" id="activity-now-playing">
+      <div class="activity-now-main">
+        <span class="library-art activity-now-art">${icon('gamepad', 20)}</span>
+        <div class="activity-now-copy">
+          <div class="activity-now-topline">
+            <span class="activity-now-badge">${icon('pulse', 13)} ${t('activity.nowPlaying.title')}</span>
+          </div>
+          <strong>${t('activity.nowPlaying.idleTitle')}</strong>
+          <p>${t('activity.nowPlaying.idleHint')}</p>
+        </div>
+      </div>
+      <div class="activity-now-actions">
+        ${hotkeyButton}
+        <button type="button" class="primary-button activity-copy-invite" data-library-action="copy-active-invite" disabled
+          data-tooltip="${escapeHtml(t('activity.nowPlaying.notInGame'))}">
+          ${icon('link', 14)} ${t('activity.nowPlaying.copyInvite')}
+        </button>
+      </div>
+    </section>`;
+  }
+  const showServer = active.serverId && !preferences.streamMode;
+  return `<section class="library-panel activity-now-playing is-live" id="activity-now-playing">
+    <div class="activity-now-main">
+      <button type="button" class="library-game-link activity-now-game" data-action="open-details" data-id="${escapeHtml(active.placeId)}">
+        ${libraryArt(active.game)}
+        <span>
+          <span class="activity-now-topline">
+            <span class="activity-now-badge is-live"><i class="activity-now-dot" aria-hidden="true"></i>${t('activity.nowPlaying.live')}</span>
+            <span class="activity-now-clock" data-activity-now-duration data-started-at="${active.startedAt}">${formatNowPlayingClock(active.startedAt)}</span>
+            ${showServer ? `<span class="library-server" data-tooltip="${escapeHtml(active.serverId)}">${t('library.server')} ${escapeHtml(active.serverId.slice(0, 8))}</span>`
+              : !preferences.streamMode ? `<small class="activity-now-connecting">${t('activity.nowPlaying.connecting')}</small>` : ''}
+          </span>
+          <strong>${escapeHtml(active.title)}</strong>
+        </span>
+      </button>
+    </div>
+    <div class="activity-now-actions">
+      ${hotkeyButton}
+      <button type="button" class="control-button activity-rejoin-server" data-library-action="rejoin-active-server">
+        ${icon('rotate', 14)} ${t('activity.nowPlaying.rejoinSame')}
+      </button>
+      <button type="button" class="primary-button activity-copy-invite" data-library-action="copy-active-invite">
+        ${icon('link', 14)} ${t('activity.nowPlaying.copyInvite')}
+      </button>
+    </div>
+  </section>`;
+}
+
+function updateActivityNowPlayingCard(force = false) {
+  const node = document.getElementById('activity-now-playing');
+  if (!node) return;
+  const signature = activityNowPlayingSignature();
+  if (!force && signature === lastActivityNowPlayingSignature) {
+    tickActivityNowPlayingClock();
+    return;
+  }
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = renderActivityNowPlayingCard();
+  const next = wrapper.firstElementChild;
+  if (next) node.replaceWith(next);
+}
+
+function tickActivityNowPlayingClock() {
+  const clock = document.querySelector('[data-activity-now-duration]');
+  if (!clock) return;
+  const startedAt = Number(clock.dataset.startedAt);
+  if (startedAt > 0) clock.textContent = formatNowPlayingClock(startedAt);
+}
+window.setInterval(tickActivityNowPlayingClock, 1000);
+
+function normalizeKeyTokenFromEvent(event) {
+  const code = String(event.code || '');
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (/^F([1-9]|1[0-2])$/.test(code)) return code;
+  const allowed = [
+    'Insert', 'Delete', 'Home', 'End', 'PageUp', 'PageDown',
+    'Minus', 'Equal', 'BracketLeft', 'BracketRight', 'Backslash',
+    'Semicolon', 'Quote', 'Backquote', 'Comma', 'Period', 'Slash'
+  ];
+  if (allowed.includes(code)) return code;
+  const key = String(event.key || '');
+  if (/^[a-zA-Z0-9]$/.test(key)) return key.toUpperCase();
+  if (/^F([1-9]|1[0-2])$/i.test(key)) return key.toUpperCase();
+  return '';
+}
+
+function hotkeySpecFromEvent(event) {
+  if (['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) return '';
+  const token = normalizeKeyTokenFromEvent(event);
+  if (!token) return '';
+  const parts = [];
+  if (event.ctrlKey) parts.push('Ctrl');
+  if (event.altKey) parts.push('Alt');
+  if (event.shiftKey) parts.push('Shift');
+  const isFunctionOrNav = /^(F([1-9]|1[0-2])|Insert|Delete|Home|End|PageUp|PageDown)$/.test(token);
+  if (!parts.length && !isFunctionOrNav) return '';
+  parts.push(token);
+  return parts.join('+');
+}
+
+document.addEventListener('keydown', event => {
+  if (rebindingInviteHotkey) {
+    if (['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === 'Escape' && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+      rebindingInviteHotkey = false;
+      updateActivityNowPlayingCard();
+      return;
+    }
+    const spec = hotkeySpecFromEvent(event);
+    if (!spec) return;
+    rebindingInviteHotkey = false;
+    preferences.inviteHotkey = spec;
+    savePreferences();
+    updateActivityNowPlayingCard();
+    showToast(t('activity.nowPlaying.hotkeySaved', { hotkey: formatInviteHotkey(spec) }));
+    return;
+  }
+  if (event.repeat || event.defaultPrevented) return;
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || document.activeElement?.isContentEditable) return;
+  const configured = String(preferences.inviteHotkey || 'Alt+C').trim();
+  if (!configured) return;
+  const pressed = hotkeySpecFromEvent(event);
+  if (pressed && pressed.toLowerCase() === configured.toLowerCase()) {
+    event.preventDefault();
+    void copyActiveServerInviteLink();
+  }
+}, true);
 
 function libraryPeriodRange(period = libraryPeriod, offset = libraryPeriodOffset) {
   const today = activityDateKey();
@@ -53,7 +414,7 @@ function renderLibraryActivity() {
       <label class="library-check"><input type="checkbox" data-library-select="record-history" ${preferences.saveHistory ? 'checked' : ''}> ${t('library.recordHistory')}</label>
       ${libraryAction('export-csv', 'library.csv', 'fileDown')}
     </div></div>`;
-  return tabs + (libraryActivityPane === 'overview' ? renderLibraryActivityDashboard() + renderActivity() : `<div class="library-history">
+  return tabs + renderActivityNowPlayingCard() + (libraryActivityPane === 'overview' ? renderLibraryActivityDashboard() + renderActivity() : `<div class="library-history">
     ${renderSessionJournal()}
     <aside class="library-history-aside">${renderLibraryAchievementPreview()}
       <section class="library-panel library-recap"><h2>${t('library.yearRecap')}</h2>
@@ -422,6 +783,29 @@ function handleLibraryActivityAction(action, button) {
     case 'journal-friends': journalFriendsOnly = !journalFriendsOnly; break;
     case 'journal-hour': journalHourOnly = !journalHourOnly; break;
     case 'export-csv': void exportLibraryCsv(button); return;
+    case 'copy-active-invite': void copyActiveServerInviteLink(); return;
+    case 'copy-last-invite': {
+      const last = getLastExitedSession();
+      if (last) void copyServerInviteUrl(last.placeId, last.serverId);
+      else showToast(t('activity.nowPlaying.notInGame'));
+      return;
+    }
+    case 'rejoin-active-server':
+      if (typeof triggerServerRejoin === 'function') void triggerServerRejoin(currentPlayingInviteState());
+      return;
+    case 'rejoin-last-server': {
+      const last = getLastExitedSession();
+      if (last && typeof triggerServerRejoin === 'function') void triggerServerRejoin(last);
+      else if (last) void openGame(last.placeId, last.serverId);
+      else showToast(t('hotkeys.rejoin.noServer'));
+      return;
+    }
+    case 'copy-session-invite': void copyServerInviteUrl(button.dataset.id, button.dataset.server); return;
+    case 'rebind-invite-hotkey':
+      rebindingInviteHotkey = !rebindingInviteHotkey;
+      updateActivityNowPlayingCard();
+      document.querySelector('[data-library-action="rebind-invite-hotkey"]')?.focus({ preventScroll: true });
+      return;
     case 'year-recap': void openLibraryRecap(); return;
     case 'all-achievements': openLauncherDialog(t('activity.achievementsTitle'), renderAchievements(activityMetrics())); return;
     case 'goal-settings':

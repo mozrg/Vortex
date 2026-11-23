@@ -89,6 +89,12 @@ const preferenceDefaults = {
   homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal',
   homeSectionTitles: {}, homeSectionScale: 1, catalogView: 'grid', catalogGenre: 'all', catalogAccess: 'all', cardAspect: 'wide', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern',
   discordPresence: false, friendFavoriteAlerts: false, discordClientId: '', streamMode: false, gamingMode: true, textScale: 100,
+  gameOverlay: false, gameOverlayCorner: 'top-right', gameOverlayCustomX: 96, gameOverlayCustomY: 4,
+  gameOverlayScale: 100, gameOverlayGap: 5, gameOverlayOpacity: 74,
+  gameOverlayTimer: true, gameOverlayFps: true, gameOverlayPing: true, gameOverlayStability: false,
+  gameOverlayRegion: true, gameOverlayClock: false, gameOverlayFriends: true,
+  inviteHotkey: 'Alt+C', overlayToggleHotkey: '', muteRobloxHotkey: '',
+  serverHopHotkey: '', serverHopMode: 'low-ping', serverHopRegion: 'any', rejoinHotkey: '',
   diskCache: true, lazyImages: true, onlineHistoryLimit: 'week', trayMiniPlayer: true,
   trayFavoritesLimit: 5, trayQuickLimit: 3, trayFavoritesUnlimited: false, trayQuickUnlimited: false,
   catalogGroupByGenre: false,
@@ -457,6 +463,7 @@ function savePreferences() {
   // Any preference change may affect the tray's look, so it re-reports its
   // style payload together with the recent games on every save.
   reportRecentGamesToTray();
+  reportGameOverlay();
 }
 
 // Compact color field: the full picker lives in a popover that opens on click,
@@ -774,7 +781,7 @@ async function refreshRobloxAccount() {
 function applyPreferences() {
   applyLauncherModes();
   if (!['ru', 'en'].includes(preferences.language)) preferences.language = 'ru';
-  if (!['home', 'accent', 'cards', 'effects', 'interface', 'general', 'integrations', 'tray', 'data', 'version'].includes(preferences.settingsTab)) preferences.settingsTab = 'home';
+  if (!settingsTabsList.some(([tab]) => tab === preferences.settingsTab)) preferences.settingsTab = 'home';
   if (!['off', 'week', 'month'].includes(preferences.onlineHistoryLimit)) preferences.onlineHistoryLimit = 'week';
   if (!['all', 'paid'].includes(preferences.catalogAccess)) preferences.catalogAccess = 'all';
   if (!preferences.hotkeys || typeof preferences.hotkeys !== 'object') preferences.hotkeys = {};
@@ -1850,7 +1857,7 @@ function renderFriends() {
 
 async function loadFriends(username, force = false) {
   if (friendsLoading) return;
-  if (!force && friendsCache.data && Date.now() - friendsCache.at <= FRIENDS_TTL) return;
+  if (!force && friendsCache.username === username && friendsCache.data && Date.now() - friendsCache.at <= FRIENDS_TTL) return;
   friendsLoading = true;
   const refresh = pageContent.querySelector('[data-action="refresh-friends"]');
   if (refresh) { refresh.disabled = true; refresh.setAttribute('aria-busy', 'true'); }
@@ -1858,14 +1865,15 @@ async function loadFriends(username, force = false) {
   try {
     const data = await window.vortexDesktop?.listFriends(username);
     if (username !== String(preferences.robloxUsername || '').trim()) return;
-    friendsCache = { at: Date.now(), data: data || { ok: false, error: 'unavailable' } };
+    friendsCache = { at: Date.now(), username, data: data || { ok: false, error: 'unavailable' } };
     if (data?.ok) { notifyFriendsInFavorites(data.friends); notifyPinnedFriends(data.friends || []); }
   } catch {
     if (username === String(preferences.robloxUsername || '').trim()) {
-      friendsCache = { at: Date.now(), data: { ok: false, error: 'network' } };
+      friendsCache = { at: Date.now(), username, data: { ok: false, error: 'network' } };
     }
   } finally {
     friendsLoading = false;
+    reportGameOverlay();
     if (currentView === 'friends' || shouldRefreshCatalogFriends() || isCurrentGamePage(detailGame?.id, 'overview') ||
         isCurrentGamePage(detailGame?.id, 'friends') || isCurrentGamePage(detailGame?.id, 'servers')) renderPage();
     renderFriendsDrawer();
@@ -2110,8 +2118,8 @@ async function loadRoadmap() {
 
 const settingsTabsList = [
   ['home', 'board'], ['accent', 'palette'], ['cards', 'cards'], ['effects', 'wand'],
-  ['interface', 'panels'], ['general', 'slidersHorizontal'], ['integrations', 'plug'],
-  ['tray', 'tray'], ['data', 'database'], ['version', 'package']
+  ['interface', 'panels'], ['general', 'slidersHorizontal'], ['in-game', 'monitor'], ['hotkeys', 'keyboard'],
+  ['integrations', 'plug'], ['tray', 'tray'], ['data', 'database'], ['version', 'package']
 ];
 
 function settingsTabs() {
@@ -3153,11 +3161,13 @@ function renderSettings() {
       : preferences.settingsTab === 'effects' ? renderEffectSettings()
         : preferences.settingsTab === 'interface' ? renderInterfaceSettings()
           : preferences.settingsTab === 'general' ? renderGeneralSettings()
-            : preferences.settingsTab === 'tray' ? renderTraySettings()
-            : preferences.settingsTab === 'integrations' ? renderIntegrationSettings()
-              : preferences.settingsTab === 'data' ? renderDataSettings()
-                : preferences.settingsTab === 'version' ? `${renderUpdateSettings()}${renderAnnouncementSettings()}`
-                  : renderAccentSettings();
+            : preferences.settingsTab === 'in-game' ? renderGameOverlaySettings()
+              : preferences.settingsTab === 'hotkeys' ? renderHotkeySettings()
+                : preferences.settingsTab === 'tray' ? renderTraySettings()
+                : preferences.settingsTab === 'integrations' ? renderIntegrationSettings()
+                  : preferences.settingsTab === 'data' ? renderDataSettings()
+                    : preferences.settingsTab === 'version' ? `${renderUpdateSettings()}${renderAnnouncementSettings()}`
+                      : renderAccentSettings();
   return `${pageHeading('', t('page.settings.title'), t('page.settings.description'))}
     ${renderSettingsSearch()}<div class="settings-layout">${settingsTabs()}<div class="settings-panel" data-panel="${preferences.settingsTab}">${panel}${renderLauncherSettings(preferences.settingsTab)}</div></div>`;
 }
@@ -3400,6 +3410,7 @@ function renderPage() {
   applyPreferences();
   searchInput.placeholder = t(currentView === 'catalog' ? 'chart.searchPlaceholder' : 'search.placeholder');
   reportRecentGamesToTray();
+  reportGameOverlay();
   document.body.classList.toggle('sidebar-compact', readStored('vortex.sidebarCompact', window.innerWidth <= 940));
   updateSidebarCollapse();
   updateSidebar();
@@ -3921,6 +3932,10 @@ function bankPlaySession(through = runtimeConfirmedAt) {
 }
 
 function finishDetectedSession(through) {
+  if (playSessionGameId && typeof rememberLastActiveServerSession === 'function') {
+    const srv = validSessionServer(recordingSession?.serverId) || validSessionServer(gameOverlaySession?.serverId) || validSessionServer(runtimeSample?.serverId) || '';
+    rememberLastActiveServerSession(playSessionGameId, srv, playSessionStart || through);
+  }
   bankPlaySession(through);
   if (recordingSession) writeJournalInterval(Math.max(playSessionStart, activityData.confirmedThrough), through, true);
   recordingSession = null;
@@ -3933,6 +3948,9 @@ function finishDetectedSession(through) {
 
 function recordGameLaunch(game, serverId = '') {
   pendingLaunch = { ...game, at: Date.now() };
+  if (typeof rememberLastActiveServerSession === 'function' && game?.id) {
+    rememberLastActiveServerSession(game.id, serverId, pendingLaunch.at);
+  }
   if (preferences.saveHistory) {
     saveRecentGames([game.id, ...recentGames]);
     saveRecentDetails({ ...recentMetadata(), [game.id]: { at: pendingLaunch.at, serverId } });
@@ -3975,6 +3993,9 @@ function startDetectedSession(id, key, start, joinedAt, serverId) {
   runtimeSessionKey = key;
   nowPlayingSnapshot = { id, title: known?.title || t('activity.unknownGame'),
     thumbnail: safeThumbnail(known?.thumbnail) || '', startedAt: joinedAt || start };
+  if (typeof rememberLastActiveServerSession === 'function') {
+    rememberLastActiveServerSession(id, serverId, joinedAt || start);
+  }
   if (preferences.saveHistory) {
     saveRecentGames([id, ...recentGames]);
     const recent = recentMetadata()[id];
@@ -4035,11 +4056,13 @@ function observeRobloxRuntime(data) {
   }
   runtimeSample = sample;
   if (!valid) {
+    updateGameOverlaySession(null, '', 0);
     if (currentView === 'activity' && !previous?.unknown) paintJournal();
     return;
   }
   const id = data.running && /^\d{1,20}$/.test(String(data.placeId)) ? String(data.placeId) : '';
   const joined = Number.isSafeInteger(data.startedAt) && data.startedAt > 0 && data.startedAt <= at ? data.startedAt : 0;
+  updateGameOverlaySession(data, id, joined);
   const key = id ? id + '/' + joined : '';
   const continuedSession = runtimeSessionKey === key;
   if (runtimeSessionKey !== key) {
@@ -4069,6 +4092,7 @@ function observeRobloxRuntime(data) {
     }
     checkLibraryBreakReminder(continuous && continuedSession ? at - floor : 0);
     if (currentView === 'activity') {
+      updateActivityNowPlayingCard();
       if (previous?.unknown) paintJournal();
       else tickJournalClock();
     }
@@ -4107,6 +4131,7 @@ function monitorRobloxRuntime() {
     window.addEventListener('focus', pollRobloxRuntime);
     await new Promise(resolve => window.addEventListener('pagehide', resolve, { once: true }));
     runtimeOwner = false;
+    updateGameOverlaySession(null, '', 0);
     window.clearInterval(runtimePollTimer);
     window.removeEventListener('focus', pollRobloxRuntime);
     bankPlaySession();
@@ -6251,6 +6276,21 @@ monitorRobloxRuntime();
 window.addEventListener('focus', () => { if (currentView === 'activity') journalChanged(); });
 window.vortexDesktop?.onWindowState?.(({ isMaximized }) => setWindowMaximized(Boolean(isMaximized)));
 window.vortexDesktop?.onUpdateState?.(renderUpdateBanner);
+window.vortexDesktop?.onGameOverlayFps?.(setGameOverlayFpsState);
+window.vortexDesktop?.onGameOverlayInviteCopied?.(() => showToast(t('activity.nowPlaying.inviteCopied')));
+window.vortexDesktop?.onGameOverlayToggled?.(() => {
+  if (typeof triggerOverlayToggle === 'function') triggerOverlayToggle();
+});
+window.vortexDesktop?.onGameOverlayMuteToggled?.((res) => {
+  if (res && res.sessions > 0) showToast(t(res.muted ? 'hotkeys.mute.toastMuted' : 'hotkeys.mute.toastUnmuted'));
+  else showToast(t('hotkeys.mute.toastNotRunning'));
+});
+window.vortexDesktop?.onGameOverlayServerHop?.(() => {
+  if (typeof triggerServerHop === 'function') void triggerServerHop();
+});
+window.vortexDesktop?.onGameOverlayRejoin?.(() => {
+  if (typeof triggerServerRejoin === 'function') void triggerServerRejoin();
+});
 window.vortexDesktop?.onTrayLaunch?.(({ kind, id }) => {
   if (kind === 'quick') void launchQuickGame(String(id));
   else if (kind === 'favorite') openGame(String(id));

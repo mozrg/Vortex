@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
@@ -11,7 +11,7 @@ async function readAsset(name) {
   return readFile(path.join(assetsPath, name), 'utf8');
 }
 
-function renderPng(svg, width, height) {
+function renderPng(svg, width) {
   return new Resvg(svg, { fitTo: { mode: 'width', value: width } }).render().asPng();
 }
 
@@ -70,25 +70,30 @@ function toIco(pngFrames) {
   return Buffer.concat([header, ...pngFrames.map((frame) => frame.data)]);
 }
 
-const appIcon = await readAsset('vortex-app-icon.svg');
 const appLogo = await readAsset('vortex-logo.svg');
 const sidebarTemplate = await readAsset('installer-sidebar.svg');
 const headerTemplate = await readAsset('installer-header.svg');
 const logoMarkup = appLogo.match(/<svg[^>]*>([\s\S]*?)<\/svg>/i)?.[1];
 if (!logoMarkup) throw new Error('Could not read the Vortex SVG logo markup.');
 
-for (const [template, width, height, output] of [
-  [sidebarTemplate, 164, 314, 'installer-sidebar.bmp'],
-  [headerTemplate, 150, 57, 'installer-header.bmp']
+for (const [template, width, output] of [
+  [sidebarTemplate, 164, 'installer-sidebar.bmp'],
+  [headerTemplate, 150, 'installer-header.bmp']
 ]) {
   const svg = template.replace('{{APP_LOGO}}', logoMarkup);
   if (svg.includes('{{APP_LOGO}}')) throw new Error(`The app logo placeholder in ${output} was not replaced.`);
-  await writeFile(path.join(assetsPath, output), toBmp(renderPng(svg, width, height)));
+  await writeFile(path.join(assetsPath, output), toBmp(renderPng(svg, width)));
 }
 
-const icoFrames = [];
-for (const size of [16, 24, 32, 48, 64, 128, 256]) {
-  icoFrames.push({ size, data: renderPng(appIcon, size, size) });
+for (const output of ['assets/vortex-app-icon.svg', 'src/assets/vortex-logo.svg', 'src/assets/vortex-app-icon.svg', 'site/assets/vortex-logo.svg', 'src-tauri/icons/icon.svg']) {
+  await copyFile(path.join(assetsPath, 'vortex-logo.svg'), path.join(projectRoot, output));
 }
-await writeFile(path.join(assetsPath, 'vortex-app-icon.ico'), toIco(icoFrames));
+const icoFrames = [16, 24, 32, 48, 64, 128, 256].map(size => ({ size, data: renderPng(appLogo, size) }));
+const ico = toIco(icoFrames);
+await writeFile(path.join(assetsPath, 'vortex-app-icon.ico'), ico);
+const tauriIcons = path.join(projectRoot, 'src-tauri', 'icons');
+await writeFile(path.join(tauriIcons, 'icon.ico'), ico);
+for (const [name, size] of [['32x32.png', 32], ['128x128.png', 128], ['128x128@2x.png', 256], ['256x256.png', 256]]) {
+  await writeFile(path.join(tauriIcons, name), icoFrames.find(frame => frame.size === size).data);
+}
 console.log('Generated the Vortex app icon and installer artwork.');

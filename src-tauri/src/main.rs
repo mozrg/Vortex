@@ -10,6 +10,10 @@ mod shortcut_icon;
 mod discord;
 mod friends;
 mod legacy_storage;
+mod overlay;
+mod overlay_audio;
+mod overlay_fps;
+mod overlay_ping;
 mod plans;
 mod roblox;
 mod runtime;
@@ -2577,7 +2581,9 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .manage(app_state)
+        .manage(Arc::new(overlay::OverlayState::default()))
         .setup(|app| {
+            tauri::async_runtime::spawn(overlay::run(app.handle().clone(), app.state::<Arc<overlay::OverlayState>>().inner().clone()));
             let state = app.state::<Arc<AppState>>().inner().clone();
             let (discord_tx, discord_rx) = tokio::sync::mpsc::unbounded_channel();
             *state.discord_commands.lock().unwrap() = Some(discord_tx);
@@ -2684,6 +2690,11 @@ fn main() {
             tray_launch_game,
             roblox_api_status,
             roblox_runtime_status,
+            overlay::game_overlay_configure,
+            overlay::game_overlay_ready,
+            overlay::copy_to_clipboard,
+            overlay::roblox_toggle_mute,
+            overlay::roblox_terminate_player,
             roblox_account,
             friends_detect_account,
             friends_list,

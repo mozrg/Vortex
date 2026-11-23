@@ -225,7 +225,7 @@
             <summary>Лог обновления</summary>
             <div class="field">
               <label for="release-tag">Тег релиза GitHub (необязательно)</label>
-              <input type="text" id="release-tag" maxlength="80" placeholder="1.2.5" />
+              <input type="text" id="release-tag" maxlength="80" placeholder="1.2.7" />
               <p class="hint">Если оставить лог пустым, Vortex подставит описание релиза с GitHub.</p>
             </div>
             <div class="field">
@@ -482,7 +482,7 @@
         if (url && !/^https?:\/\//i.test(url)) throw new Error('Ссылка должна начинаться с http:// или https://');
         const releaseTag = $('release-tag').value.trim();
         if (releaseTag && !/^v?\d+\.\d+\.\d+(?:[-+][\da-z.+-]+)?$/i.test(releaseTag)) {
-          throw new Error('Укажи тег релиза, например 1.2.5 или v1.2.5.');
+          throw new Error('Укажи тег релиза, например 1.2.6 или v1.2.6.');
         }
         const updateLog = $('update-log').value;
         return {

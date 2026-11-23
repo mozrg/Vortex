@@ -44,6 +44,8 @@ const settingIndex = [
   ['accent', 'theme', 'tools.themePreview', 'цвет тема theme предпросмотр'],
   ['effects', 'motion', 'settings.motion.title', 'анимация анимации эффекты motion animation'],
   ['effects', 'gamingMode', 'tools.gaming', 'игра режим game mode'],
+  ['in-game', 'gameOverlay', 'overlay.title', 'fps фпс ping пинг overlay оверлей таймер счетчик кадров друзья онлайн регион время jitter стабильность прозрачность размер hud'],
+  ['hotkeys', 'muteRobloxHotkey', 'hotkeys.gameTitle', 'хоткеи горячие клавиши звук роблокс mute server hop смена сервера перезайти rejoin инвайт'],
   ['interface', 'textScale', 'tools.textScale', 'шрифт размер масштаб интерфейс text font zoom'],
   ['interface', 'sidebarAutoHide', 'settings.ui.autoHide', 'боковая панель sidebar'],
   ['interface', 'uiTooltips', 'settings.ui.tooltips', 'подсказки tooltip hover наведение предпросмотр'],
@@ -79,9 +81,10 @@ let cachedSettingsIndex;
 function completeSettingsIndex() {
   if (cachedSettingsIndex?.language === preferences.language) return cachedSettingsIndex.rows;
   const isolated = document.createElement('div');
-  const controls = '[data-pref], [data-toggle], [data-setting], [data-pref-toggle], [data-tray-limit], [data-text-scale], [data-action], [data-color-open], [data-presence-cookie]';
+  const controls = '[data-pref], [data-toggle], [data-setting], [data-pref-toggle], [data-tray-limit], [data-text-scale], [data-action], [data-color-open], [data-presence-cookie], [data-overlay-range], [data-hotkey-pref]';
   const sections = { home: renderHomeSettings, cards: renderCardSettings, effects: renderEffectSettings,
-    interface: renderInterfaceSettings, general: renderGeneralSettings, tray: renderTraySettings,
+    interface: renderInterfaceSettings, general: renderGeneralSettings, 'in-game': renderGameOverlaySettings,
+    hotkeys: renderHotkeySettings, tray: renderTraySettings,
     integrations: renderIntegrationSettings, data: renderDataSettings, version: renderUpdateSettings, accent: renderAccentSettings };
   const rows = [];
   for (const [tab, render] of Object.entries(sections)) {

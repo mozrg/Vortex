@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vortex Overlay</title>
+    <link rel="stylesheet" href="./game-overlay.css" />
+    <script defer src="./js/game-overlay.js"></script>
+  </head>
+  <body>
+    <main class="game-hud" hidden>
+      <div class="game-hud-metric" data-metric="timer" hidden><strong></strong><span></span></div>
+      <div class="game-hud-metric" data-metric="fps" hidden><strong></strong><span>FPS</span></div>
+      <div class="game-hud-metric" data-metric="ping" hidden><strong></strong><span>ms</span></div>
+      <div class="game-hud-metric" data-metric="stability" hidden>
+        <strong></strong>
+        <svg class="game-hud-spark" viewBox="0 0 38 14" preserveAspectRatio="none" aria-hidden="true">
+          <polyline fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" points="1,7 37,7" />
+        </svg>
+        <span hidden></span>
+      </div>
+      <div class="game-hud-metric" data-metric="region" hidden><strong></strong><span></span></div>
+      <div class="game-hud-metric" data-metric="clock" hidden><strong></strong><span></span></div>
+      <div class="game-hud-metric" data-metric="friends" hidden><strong></strong><span></span></div>
+    </main>
+  </body>
+</html>

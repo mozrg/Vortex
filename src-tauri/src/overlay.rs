@@ -1,0 +1,860 @@
+use crate::overlay_fps::{Capture, Fps};
+use crate::overlay_ping::{Ping, PingSnapshot, Probe};
+use serde::{Deserialize, Serialize};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    time::Duration,
+};
+use tauri::{AppHandle, Emitter, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use windows::Win32::{
+    Foundation::{HWND, POINT, RECT},
+    Graphics::Gdi::{
+        ClientToScreen, GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    },
+    UI::{
+        HiDpi::GetDpiForWindow,
+        WindowsAndMessaging::{
+            GetClientRect, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, SetWindowPos,
+            HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE,
+            SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
+        },
+    },
+};
+
+const LABEL: &str = "game-overlay";
+const HEIGHT: i32 = 26;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum Corner {
+    TopLeft,
+    TopCenter,
+    #[default]
+    TopRight,
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+    Custom,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct LayoutSpec {
+    corner: Corner,
+    custom_x: i32,
+    custom_y: i32,
+    scale: i32,
+    gap: i32,
+}
+
+impl Default for LayoutSpec {
+    fn default() -> Self {
+        Self {
+            corner: Corner::TopRight,
+            custom_x: 96,
+            custom_y: 4,
+            scale: 100,
+            gap: 5,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn positions_overlay_inside_all_corners_and_custom_coordinates() {
+        let rect = RECT {
+            left: -1000,
+            top: -200,
+            right: 200,
+            bottom: 500,
+        };
+        for (corner, x, y) in [
+            (Corner::TopLeft, -976, -176),
+            (Corner::TopRight, -310, -176),
+            (Corner::BottomLeft, -976, 437),
+            (Corner::BottomRight, -310, 437),
+        ] {
+            assert_eq!(
+                position(rect, 144, corner, 3),
+                Some(Placement {
+                    x,
+                    y,
+                    width: 486,
+                    height: 39
+                })
+            );
+        }
+        let custom = position_with_spec(
+            rect,
+            96,
+            LayoutSpec {
+                corner: Corner::Custom,
+                custom_x: 50,
+                custom_y: 50,
+                scale: 120,
+                gap: 8,
+            },
+            3,
+        );
+        assert!(custom.is_some());
+        assert!(position(
+            RECT {
+                right: -900,
+                ..rect
+            },
+            144,
+            Corner::TopLeft,
+            3
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn rejects_the_launcher_as_a_game_target() {
+        assert!(!crate::runtime::is_player_pid(std::process::id()));
+    }
+
+    #[test]
+    fn parses_hotkeys_and_formats_server_invite_urls() {
+        assert_eq!(
+            Hotkey::parse("Alt+C"),
+            Some(Hotkey {
+                ctrl: false,
+                alt: true,
+                shift: false,
+                vkey: 0x43
+            })
+        );
+        assert_eq!(
+            Hotkey::parse("ctrl + shift + f8"),
+            Some(Hotkey {
+                ctrl: true,
+                alt: false,
+                shift: true,
+                vkey: 0x77
+            })
+        );
+        assert_eq!(Hotkey::parse(""), None);
+        assert_eq!(Hotkey::parse("Alt+"), None);
+        assert_eq!(
+            invite_url(
+                "8304191830",
+                Some("1003496f-b5f0-416a-ad22-f03f6056de76")
+            ),
+            Some("https://www.roblox.com/games/start?placeId=8304191830&gameInstanceId=1003496f-b5f0-416a-ad22-f03f6056de76".into())
+        );
+        assert_eq!(
+            invite_url("8304191830", None),
+            Some("https://www.roblox.com/games/start?placeId=8304191830".into())
+        );
+        assert_eq!(invite_url("invalid", None), None);
+    }
+}
+
+#[link(name = "user32")]
+extern "system" {
+    fn OpenClipboard(hwnd: isize) -> i32;
+    fn EmptyClipboard() -> i32;
+    fn SetClipboardData(format: u32, mem: isize) -> isize;
+    fn CloseClipboard() -> i32;
+    fn GetAsyncKeyState(vkey: i32) -> i16;
+}
+
+#[link(name = "kernel32")]
+extern "system" {
+    fn GlobalAlloc(flags: u32, bytes: usize) -> isize;
+    fn GlobalLock(mem: isize) -> *mut u16;
+    fn GlobalUnlock(mem: isize) -> i32;
+    fn GlobalFree(mem: isize) -> isize;
+}
+
+const CF_UNICODETEXT: u32 = 13;
+const GMEM_MOVEABLE: u32 = 0x0002;
+const VK_SHIFT: i32 = 0x10;
+const VK_CONTROL: i32 = 0x11;
+const VK_MENU: i32 = 0x12;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Hotkey {
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+    vkey: i32,
+}
+
+impl Hotkey {
+    fn parse(spec: &str) -> Option<Self> {
+        let mut ctrl = false;
+        let mut alt = false;
+        let mut shift = false;
+        let mut vkey = None;
+        for raw in spec.split('+') {
+            let token = raw.trim();
+            if token.is_empty() {
+                return None;
+            }
+            if token.eq_ignore_ascii_case("ctrl") || token.eq_ignore_ascii_case("control") {
+                ctrl = true;
+            } else if token.eq_ignore_ascii_case("alt") {
+                alt = true;
+            } else if token.eq_ignore_ascii_case("shift") {
+                shift = true;
+            } else if vkey.is_none() {
+                vkey = parse_vkey(token);
+                vkey?;
+            } else {
+                return None;
+            }
+        }
+        Some(Self {
+            ctrl,
+            alt,
+            shift,
+            vkey: vkey?,
+        })
+    }
+
+    fn is_down(&self) -> bool {
+        let down = |vk: i32| unsafe { (GetAsyncKeyState(vk) as u16 & 0x8000) != 0 };
+        down(self.vkey)
+            && down(VK_CONTROL) == self.ctrl
+            && down(VK_MENU) == self.alt
+            && down(VK_SHIFT) == self.shift
+    }
+}
+
+fn parse_vkey(token: &str) -> Option<i32> {
+    let bytes = token.as_bytes();
+    if bytes.len() == 1 {
+        let ch = bytes[0].to_ascii_uppercase();
+        if ch.is_ascii_uppercase() || ch.is_ascii_digit() {
+            return Some(i32::from(ch));
+        }
+    }
+    let upper = token.to_ascii_uppercase();
+    if let Some(num) = upper.strip_prefix("KEY") {
+        if num.len() == 1 && num.as_bytes()[0].is_ascii_uppercase() {
+            return Some(i32::from(num.as_bytes()[0]));
+        }
+    }
+    if let Some(num) = upper.strip_prefix("DIGIT") {
+        if num.len() == 1 && num.as_bytes()[0].is_ascii_digit() {
+            return Some(i32::from(num.as_bytes()[0]));
+        }
+    }
+    if let Some(num) = upper.strip_prefix('F') {
+        if let Ok(index) = num.parse::<i32>() {
+            if (1..=12).contains(&index) {
+                return Some(0x6F + index);
+            }
+        }
+    }
+    match upper.as_str() {
+        "INSERT" | "INS" => Some(0x2D),
+        "DELETE" | "DEL" => Some(0x2E),
+        "HOME" => Some(0x24),
+        "END" => Some(0x23),
+        "PAGEUP" | "PGUP" => Some(0x21),
+        "PAGEDOWN" | "PGDN" => Some(0x22),
+        "MINUS" | "-" => Some(0xBD),
+        "EQUAL" | "=" => Some(0xBB),
+        "BRACKETLEFT" | "[" => Some(0xDB),
+        "BRACKETRIGHT" | "]" => Some(0xDD),
+        "BACKSLASH" | "\\" => Some(0xDC),
+        "SEMICOLON" | ";" => Some(0xBA),
+        "QUOTE" | "'" => Some(0xDE),
+        "BACKQUOTE" | "`" => Some(0xC0),
+        "COMMA" | "," => Some(0xBC),
+        "PERIOD" | "." => Some(0xBE),
+        "SLASH" | "/" => Some(0xBF),
+        _ => None,
+    }
+}
+
+pub fn invite_url(place_id: &str, server_id: Option<&str>) -> Option<String> {
+    if !(1..=20).contains(&place_id.len())
+        || place_id == "0"
+        || !place_id.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let server = server_id.map(str::trim).filter(|id| {
+        (5..=64).contains(&id.len())
+            && *id != "00000000-0000-0000-0000-000000000000"
+            && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    });
+    Some(match server {
+        Some(id) => format!(
+            "https://www.roblox.com/games/start?placeId={place_id}&gameInstanceId={id}"
+        ),
+        None => format!("https://www.roblox.com/games/start?placeId={place_id}"),
+    })
+}
+
+pub fn set_clipboard_text(text: &str) -> Result<(), String> {
+    if text.is_empty() || text.len() > 8192 {
+        return Err("Invalid clipboard text length".into());
+    }
+    let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    let bytes = wide.len() * std::mem::size_of::<u16>();
+    unsafe {
+        if OpenClipboard(0) == 0 {
+            return Err("Could not open the Windows clipboard".into());
+        }
+        let _ = EmptyClipboard();
+        let mem = GlobalAlloc(GMEM_MOVEABLE, bytes);
+        if mem == 0 {
+            let _ = CloseClipboard();
+            return Err("Could not allocate clipboard memory".into());
+        }
+        let ptr = GlobalLock(mem);
+        if ptr.is_null() {
+            let _ = GlobalFree(mem);
+            let _ = CloseClipboard();
+            return Err("Could not lock clipboard memory".into());
+        }
+        std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
+        let _ = GlobalUnlock(mem);
+        if SetClipboardData(CF_UNICODETEXT, mem) == 0 {
+            let _ = GlobalFree(mem);
+            let _ = CloseClipboard();
+            return Err("Could not set clipboard data".into());
+        }
+        let _ = CloseClipboard();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn copy_to_clipboard(text: String) -> Result<(), String> {
+    set_clipboard_text(&text)
+}
+
+#[tauri::command]
+pub fn roblox_toggle_mute(muted: Option<bool>) -> Result<bool, String> {
+    crate::overlay_audio::set_or_toggle_roblox_mute(muted).map(|(state, _)| state)
+}
+
+#[tauri::command]
+pub fn roblox_terminate_player() -> Result<usize, String> {
+    Ok(crate::runtime::terminate_player_processes())
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct Session {
+    pid: u32,
+    started_at: u64,
+    place_id: Option<String>,
+    server_id: Option<String>,
+    server_ip: Option<String>,
+    server_port: Option<u16>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Config {
+    enabled: bool,
+    corner: Corner,
+    #[serde(default)]
+    custom_x: Option<i32>,
+    #[serde(default)]
+    custom_y: Option<i32>,
+    #[serde(default)]
+    scale: Option<u32>,
+    #[serde(default)]
+    gap: Option<u32>,
+    #[serde(default)]
+    opacity: Option<u32>,
+    timer: bool,
+    fps: bool,
+    ping: bool,
+    #[serde(default)]
+    stability: bool,
+    #[serde(default)]
+    region: bool,
+    #[serde(default)]
+    clock: bool,
+    friends: bool,
+    friend_count: Option<u32>,
+    language: String,
+    accent: String,
+    motion: bool,
+    #[serde(default)]
+    invite_hotkey: String,
+    #[serde(default)]
+    toggle_hotkey: String,
+    #[serde(default)]
+    mute_hotkey: String,
+    #[serde(default)]
+    server_hop_hotkey: String,
+    #[serde(default)]
+    rejoin_hotkey: String,
+    session: Option<Session>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Content {
+    started_at: Option<u64>,
+    fps: Option<Fps>,
+    ping: Option<Ping>,
+    show_stability: bool,
+    jitter: Option<u32>,
+    ping_history: Vec<u32>,
+    show_region: bool,
+    region: Option<String>,
+    bad_server: bool,
+    show_clock: bool,
+    show_friends: bool,
+    friend_count: Option<u32>,
+    scale: u32,
+    gap: u32,
+    opacity: u32,
+    language: String,
+    accent: String,
+    motion: bool,
+}
+
+#[derive(Default)]
+pub struct OverlayState {
+    config: Mutex<Config>,
+    ready: AtomicBool,
+    content: Mutex<Content>,
+}
+
+#[tauri::command]
+pub fn game_overlay_configure(
+    config: Config,
+    window: WebviewWindow,
+    state: tauri::State<'_, Arc<OverlayState>>,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("Only the main window can configure the overlay.".into());
+    }
+    *state.config.lock().map_err(|error| error.to_string())? = config;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn game_overlay_ready(
+    window: WebviewWindow,
+    state: tauri::State<'_, Arc<OverlayState>>,
+) -> Result<Content, String> {
+    if window.label() != LABEL {
+        return Err("Only the overlay window can read its content.".into());
+    }
+    let content = state
+        .content
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone();
+    state.ready.store(true, Ordering::Release);
+    Ok(content)
+}
+
+fn create_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("game-overlay.html".into()))
+        .title("Vortex Overlay")
+        .inner_size(324.0, f64::from(HEIGHT))
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(false)
+        .focused(false)
+        .focusable(false)
+        .build()?;
+    if let Err(error) = window.set_ignore_cursor_events(true) {
+        let _ = window.destroy();
+        return Err(error);
+    }
+    Ok(window)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Placement {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+}
+
+#[cfg(test)]
+fn position(rect: RECT, dpi: u32, corner: Corner, metrics: i32) -> Option<Placement> {
+    position_with_spec(
+        rect,
+        dpi,
+        LayoutSpec {
+            corner,
+            ..LayoutSpec::default()
+        },
+        metrics,
+    )
+}
+
+fn position_with_spec(
+    rect: RECT,
+    dpi: u32,
+    spec: LayoutSpec,
+    metrics: i32,
+) -> Option<Placement> {
+    if metrics <= 0 {
+        return None;
+    }
+    let hud_scale = spec.scale.clamp(70, 150);
+    let gap_bonus = (spec.gap.clamp(0, 24) - 5) * 3;
+    let scale = |size: i32| size * dpi as i32 / 96;
+    let scale_hud = |size: i32| size * hud_scale * dpi as i32 / (96 * 100);
+    let margin = scale(16);
+    let room = rect.right - rect.left - 2 * margin;
+    let height = scale_hud(HEIGHT).max(20);
+    let min_cell = (82 + gap_bonus).max(68);
+    let cell = (108 + gap_bonus).max(84);
+    if room < scale_hud(min_cell * metrics) || rect.bottom - rect.top < height + 2 * margin {
+        return None;
+    }
+    let width = scale_hud(cell * metrics).min(room);
+    let avail_x = (rect.right - rect.left - 2 * margin - width).max(0);
+    let avail_y = (rect.bottom - rect.top - 2 * margin - height).max(0);
+    let x = match spec.corner {
+        Corner::TopLeft | Corner::BottomLeft => rect.left + margin,
+        Corner::TopCenter | Corner::BottomCenter => rect.left + margin + avail_x / 2,
+        Corner::TopRight | Corner::BottomRight => rect.right - width - margin,
+        Corner::Custom => rect.left + margin + avail_x * spec.custom_x.clamp(0, 100) / 100,
+    };
+    let y = match spec.corner {
+        Corner::TopLeft | Corner::TopCenter | Corner::TopRight => rect.top + margin,
+        Corner::BottomLeft | Corner::BottomCenter | Corner::BottomRight => {
+            rect.bottom - height - margin
+        }
+        Corner::Custom => rect.top + margin + avail_y * spec.custom_y.clamp(0, 100) / 100,
+    };
+    Some(Placement {
+        x,
+        y,
+        width,
+        height,
+    })
+}
+
+fn foreground_placement(pid: u32, spec: LayoutSpec, metrics: i32) -> Option<Placement> {
+    unsafe {
+        let game = GetForegroundWindow();
+        let mut active_pid = 0;
+        GetWindowThreadProcessId(game, Some(&mut active_pid));
+        if pid != active_pid || IsIconic(game).as_bool() || !crate::runtime::is_player_pid(pid) {
+            return None;
+        }
+        let mut rect = RECT::default();
+        GetClientRect(game, &mut rect).ok()?;
+        let mut origin = POINT::default();
+        if !ClientToScreen(game, &mut origin).as_bool() {
+            return None;
+        }
+        rect.left += origin.x;
+        rect.right += origin.x;
+        rect.top += origin.y;
+        rect.bottom += origin.y;
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        let monitor = MonitorFromWindow(game, MONITOR_DEFAULTTONEAREST);
+        if GetMonitorInfoW(monitor, &mut info).as_bool() {
+            rect.left = rect.left.max(info.rcMonitor.left);
+            rect.top = rect.top.max(info.rcMonitor.top);
+            rect.right = rect.right.min(info.rcMonitor.right);
+            rect.bottom = rect.bottom.min(info.rcMonitor.bottom);
+        }
+        position_with_spec(rect, GetDpiForWindow(game).max(96), spec, metrics)
+    }
+}
+
+fn show(window: &WebviewWindow, placement: Placement) -> tauri::Result<()> {
+    let handle = HWND(window.hwnd()?.0);
+    let Placement {
+        x,
+        y,
+        width,
+        height,
+    } = placement;
+    unsafe {
+        SetWindowPos(
+            handle,
+            HWND_TOPMOST,
+            x,
+            y,
+            width,
+            height,
+            SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS | SWP_SHOWWINDOW,
+        )
+        .map_err(|error| tauri::Error::Anyhow(error.into()))
+    }
+}
+
+fn hide(window: &WebviewWindow) {
+    if let Ok(handle) = window.hwnd() {
+        let _ = unsafe {
+            SetWindowPos(
+                HWND(handle.0),
+                None,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOACTIVATE
+                    | SWP_NOZORDER
+                    | SWP_NOSIZE
+                    | SWP_NOMOVE
+                    | SWP_ASYNCWINDOWPOS
+                    | SWP_HIDEWINDOW,
+            )
+        };
+    }
+}
+
+fn update_content(app: &AppHandle, state: &OverlayState, content: Content) {
+    if let Ok(mut current) = state.content.lock() {
+        if *current != content {
+            let _ = app.emit_to(LABEL, "game-overlay:content", &content);
+            *current = content;
+        }
+    }
+}
+
+const FPS_RETRY: Duration = Duration::from_secs(5);
+
+fn is_foreground_player(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    unsafe {
+        let game = GetForegroundWindow();
+        let mut active_pid = 0;
+        GetWindowThreadProcessId(game, Some(&mut active_pid));
+        pid == active_pid && !IsIconic(game).as_bool() && crate::runtime::is_player_pid(pid)
+    }
+}
+
+fn check_edge(spec: &str, was_down: &mut bool) -> bool {
+    let Some(hotkey) = Hotkey::parse(spec) else {
+        *was_down = false;
+        return false;
+    };
+    let down = hotkey.is_down();
+    let triggered = down && !*was_down;
+    *was_down = down;
+    triggered
+}
+
+pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
+    let mut window = None;
+    let mut placement = None;
+    let mut capture: Option<Capture> = None;
+    let mut reported_fps = Fps::Idle;
+    let mut probe: Option<Probe> = None;
+    let mut fps_retry_at: Option<std::time::Instant> = None;
+    let mut opened_at = None;
+    let mut invite_down = false;
+    let mut toggle_down = false;
+    let mut mute_down = false;
+    let mut hop_down = false;
+    let mut rejoin_down = false;
+    let mut ticker = tokio::time::interval(Duration::from_millis(80));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        ticker.tick().await;
+        let mut config = state
+            .config
+            .lock()
+            .map(|config| config.clone())
+            .unwrap_or_default();
+        let in_foreground = config
+            .session
+            .as_ref()
+            .is_some_and(|s| is_foreground_player(s.pid));
+        if in_foreground {
+            if check_edge(&config.invite_hotkey, &mut invite_down) {
+                if let Some(session) = config.session.as_ref() {
+                    if let Some(place_id) = session.place_id.as_deref() {
+                        if let Some(url) = invite_url(place_id, session.server_id.as_deref()) {
+                            if set_clipboard_text(&url).is_ok() {
+                                let _ = app.emit_to("main", "game-overlay:invite-copied", &url);
+                                let _ = app.emit_to(LABEL, "game-overlay:invite-copied", &url);
+                            }
+                        }
+                    }
+                }
+            }
+            if check_edge(&config.toggle_hotkey, &mut toggle_down) {
+                config.enabled = !config.enabled;
+                if let Ok(mut guard) = state.config.lock() {
+                    guard.enabled = config.enabled;
+                }
+                let _ = app.emit_to("main", "game-overlay:toggled", config.enabled);
+            }
+            if check_edge(&config.mute_hotkey, &mut mute_down) {
+                if let Ok((muted, _)) = crate::overlay_audio::set_or_toggle_roblox_mute(None) {
+                    let _ = app.emit_to("main", "game-overlay:mute-toggled", muted);
+                    let _ = app.emit_to(LABEL, "game-overlay:mute-toggled", muted);
+                }
+            }
+            if check_edge(&config.server_hop_hotkey, &mut hop_down) {
+                let _ = app.emit_to("main", "game-overlay:server-hop", ());
+                let _ = app.emit_to(LABEL, "game-overlay:server-hop", ());
+            }
+            if check_edge(&config.rejoin_hotkey, &mut rejoin_down) {
+                let _ = app.emit_to("main", "game-overlay:rejoin", ());
+                let _ = app.emit_to(LABEL, "game-overlay:rejoin", ());
+            }
+        } else {
+            invite_down = false;
+            toggle_down = false;
+            mute_down = false;
+            hop_down = false;
+            rejoin_down = false;
+        }
+
+        // We probe ping whenever the overlay is enabled (to detect the server
+        // region and bad-ping warning even if the ping metric itself isn't checked).
+        let need_ping = config.ping || config.stability || config.region || config.enabled;
+        let active_session = config
+            .session
+            .as_ref()
+            .filter(|session| config.enabled && session.pid != 0);
+        let ping_target = active_session.filter(|_| need_ping).and_then(|session| {
+            Some(crate::overlay_ping::Target {
+                place_id: session.place_id.clone()?,
+                server_id: session.server_id.clone().unwrap_or_default(),
+                ip: session.server_ip.clone(),
+                port: session.server_port,
+            })
+        });
+        if probe
+            .as_ref()
+            .is_some_and(|probe| ping_target.as_ref() != Some(&probe.target))
+        {
+            if let Some(probe) = probe.take() {
+                probe.stop().await;
+            }
+        }
+        if probe.is_none() {
+            if let Some(target) = ping_target.filter(|_| in_foreground) {
+                probe = Some(Probe::start(target));
+            }
+        }
+        let ping_snapshot: PingSnapshot = probe
+            .as_ref()
+            .map_or_else(PingSnapshot::default, |probe| probe.samples.borrow().clone());
+
+        let show_region_slot = config.region || ping_snapshot.bad_server;
+        let count = i32::from(config.timer)
+            + i32::from(config.fps)
+            + i32::from(config.ping)
+            + i32::from(config.stability)
+            + i32::from(show_region_slot)
+            + i32::from(config.clock)
+            + i32::from(config.friends);
+        let active = active_session.filter(|_| count != 0);
+        let layout_spec = LayoutSpec {
+            corner: config.corner,
+            custom_x: config.custom_x.unwrap_or(96),
+            custom_y: config.custom_y.unwrap_or(4),
+            scale: config.scale.unwrap_or(100) as i32,
+            gap: config.gap.unwrap_or(5) as i32,
+        };
+        let next = active.and_then(|session| foreground_placement(session.pid, layout_spec, count));
+        if next.is_none() && placement.take().is_some() {
+            if let Some(window) = &window {
+                hide(window);
+                update_content(&app, &state, Content::default());
+            }
+        }
+
+        let fps_pid = active.filter(|_| config.fps).map(|session| session.pid);
+        if capture
+            .as_ref()
+            .is_some_and(|capture| Some(capture.pid) != fps_pid)
+        {
+            if let Some(capture) = capture.take() {
+                capture.stop().await;
+            }
+        }
+        let mut fps_state = capture
+            .as_ref()
+            .map_or(Fps::Idle, |capture| *capture.samples.borrow());
+        if matches!(fps_state, Fps::Idle | Fps::Unavailable) {
+            if let Some(finished) = capture.take() {
+                finished.stop().await;
+            }
+        }
+        if let Some(pid) = fps_pid.filter(|_| {
+            capture.is_none()
+                && next.is_some()
+                && fps_retry_at.is_none_or(|at| at.elapsed() >= FPS_RETRY)
+        }) {
+            fps_retry_at = Some(std::time::Instant::now());
+            capture = Some(Capture::start(pid));
+            fps_state = Fps::Collecting;
+        }
+        if reported_fps != fps_state {
+            let _ = app.emit_to("main", "game-overlay:fps", fps_state);
+            reported_fps = fps_state;
+        }
+
+        if next.is_none() {
+            continue;
+        }
+        let Some(session) = active else { continue };
+        if window.is_none()
+            && opened_at.is_none_or(|at: std::time::Instant| at.elapsed().as_secs() >= 10)
+        {
+            opened_at = Some(std::time::Instant::now());
+            window = create_window(&app).ok();
+        }
+        let Some(window) = &window else { continue };
+        let content = Content {
+            started_at: config
+                .timer
+                .then_some(session.started_at)
+                .filter(|start| *start > 0),
+            fps: config.fps.then_some(fps_state),
+            ping: config.ping.then_some(ping_snapshot.state),
+            show_stability: config.stability,
+            jitter: ping_snapshot.jitter,
+            ping_history: ping_snapshot.history,
+            show_region: config.region,
+            region: ping_snapshot.region,
+            bad_server: ping_snapshot.bad_server,
+            show_clock: config.clock,
+            show_friends: config.friends,
+            friend_count: config.friend_count,
+            scale: config.scale.unwrap_or(100).clamp(70, 150),
+            gap: config.gap.unwrap_or(5).clamp(0, 24),
+            opacity: config.opacity.unwrap_or(74).clamp(20, 100),
+            language: config.language,
+            accent: config.accent,
+            motion: config.motion,
+        };
+        update_content(&app, &state, content);
+        if state.ready.load(Ordering::Acquire) && placement != next {
+            let Some(current) = foreground_placement(session.pid, layout_spec, count) else {
+                hide(window);
+                update_content(&app, &state, Content::default());
+                placement = None;
+                continue;
+            };
+            if show(window, current).is_ok() {
+                placement = Some(current);
+            }
+        }
+    }
+}

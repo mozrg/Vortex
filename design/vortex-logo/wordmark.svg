@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="458" height="128" viewBox="0 0 458 128" role="img">
+  <title>Vortex</title>
+  <path fill="#e5d9ff" d="M9 31h23l26 42q10 18 31 11l-13 22q-11 18-23-1Z"/>
+  <path fill="#a582ff" d="M119 22 93 64c-9 15-24 18-34 6l-7-12c12 5 22 0 30-12l16-24Z"/>
+  <g fill="#f6f2ff" fill-rule="evenodd" transform="translate(154 41) scale(.91)">
+    <path d="M0 0h10l14 41L38 0h10L29 56H19Z"/>
+    <path transform="translate(56)" d="M16 0h16q16 0 16 16v24q0 16-16 16H16Q0 56 0 40V16Q0 0 16 0Zm0 9q-7 0-7 7v24q0 7 7 7h16q7 0 7-7V16q0-7-7-7Z"/>
+    <path transform="translate(114)" d="M0 0h31c11 0 17 7 17 18 0 9-5 15-12 17l13 21H38L25 36H10v20H0Zm10 9v18h20q8 0 8-9t-8-9Z"/>
+    <path transform="translate(168)" d="M0 0h48v9H29v47H19V9H0Z"/>
+    <path transform="translate(225)" d="M0 0h42v9H10v14h27v9H10v15h32v9H0Z"/>
+    <path transform="translate(274)" d="M0 0h12l13 20L38 0h12L31 28l20 28H39L25 36 11 56H0l19-28Z"/>
+  </g>
+</svg>

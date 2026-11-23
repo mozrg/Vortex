@@ -2,7 +2,7 @@
 
 Vortex — лаунчер Roblox для Windows. Он помогает находить игры, собирать свою библиотеку, запускать сохранённые серверы и следить за игровым временем.
 
-![Версия 1.2.5](https://img.shields.io/badge/version-1.2.5-9b7cff) ![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
+![Версия 1.2.7](https://img.shields.io/badge/version-1.2.7-9b7cff) ![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
 
 ## Установка и обновление
 

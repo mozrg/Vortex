@@ -228,6 +228,8 @@ function journalContent() {
         ${friends.slice(0, 3).map(friend => friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="${escapeHtml(friend.name || friend.id)}" loading="lazy">` :
           `<i aria-label="${escapeHtml(friend.name || friend.id)}">${escapeHtml((friend.name || friend.id).charAt(0))}</i>`).join('')}${friends.length > 3 ? `<small>+${friends.length - 3}</small>` : ''}</span>` : '—'}</td>
       <td><div class="library-row-actions">
+        ${server ? `<button class="icon-button" type="button" data-library-action="copy-session-invite" data-id="${row.gameId}" data-server="${server}"
+          data-tooltip="${t('activity.nowPlaying.copyInvite')}" aria-label="${t('activity.nowPlaying.copyInvite')}">${icon('link', 14)}</button>` : ''}
         ${server ? `<button class="icon-button" type="button" data-library-action="rejoin" data-id="${row.gameId}" data-server="${server}"
           data-tooltip="${t('library.rejoin')}" aria-label="${t('library.rejoin')}">${icon('rotate', 14)}</button>` : ''}
         <button class="icon-button" type="button" data-action="play" data-id="${row.gameId}" data-tooltip="${t('card.play')}" aria-label="${t('card.play')}">${icon('play', 14)}</button>

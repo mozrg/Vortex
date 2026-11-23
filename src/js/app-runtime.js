@@ -336,14 +336,6 @@ function normalizeDiscoveredGame(game, query = '') {
 
 
 
-function createSearchSessionId() {
-  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
-    const random = Math.random() * 16 | 0;
-    return (character === 'x' ? random : (random & 3 | 8)).toString(16);
-  });
-}
-
 async function fetchLiveSearch(append = false) {
   const query = searchQuery.trim();
   if (query.length < 2) return;

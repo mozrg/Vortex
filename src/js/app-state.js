@@ -91,6 +91,7 @@ const preferenceDefaults = {
   discordPresence: false, friendFavoriteAlerts: false, discordClientId: '', streamMode: false, gamingMode: true, textScale: 100,
   gameOverlay: false, gameOverlayCorner: 'top-right', gameOverlayCustomX: 96, gameOverlayCustomY: 4,
   gameOverlayScale: 100, gameOverlayGap: 5, gameOverlayOpacity: 74,
+  gameOverlayHideFullscreen: false, gameOverlayMinimal: false,
   gameOverlayTimer: true, gameOverlayFps: true, gameOverlayPing: true, gameOverlayStability: false,
   gameOverlayRegion: true, gameOverlayBadPingPrompt: true, gameOverlaySystem: false, gameOverlayFriendJoin: true,
   gameOverlayClock: false, gameOverlayFriends: true,
@@ -384,6 +385,14 @@ let discoverySorts = readStored('vortex.discoverySorts', []);
 let discoveryCatalog = readStored('vortex.discoveryCatalog', {});
 let activeDiscoverySort = readStored('vortex.activeDiscoverySort', 'top-trending');
 if (activeDiscoverySort === 'gems') activeDiscoverySort = 'like-percentage';
+function createSearchSessionId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
+    const random = Math.random() * 16 | 0;
+    return (character === 'x' ? random : (random & 3 | 8)).toString(16);
+  });
+}
+
 let discoverySessionId = readStored('vortex.discoverySessionId', '') || createSearchSessionId();
 let discoveryStatus = 'idle';
 let discoveryRequestId = 0;

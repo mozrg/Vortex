@@ -8,7 +8,8 @@
     "tauri:build": "cargo tauri build --ci",
     "rust:check": "cargo check --manifest-path src-tauri/Cargo.toml",
     "rust:fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
-    "prepare:assets": "node scripts/prepare-assets.mjs"
+    "prepare:assets": "node scripts/prepare-assets.mjs",
+    "test": "node --test tests/app-modules.test.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",

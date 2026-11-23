@@ -481,6 +481,8 @@ pub struct Config {
     gap: Option<u32>,
     #[serde(default)]
     opacity: Option<u32>,
+    #[serde(default)]
+    hide_fullscreen: bool,
     timer: bool,
     fps: bool,
     ping: bool,
@@ -664,7 +666,12 @@ fn position_with_spec(
     })
 }
 
-fn foreground_placement(pid: u32, spec: LayoutSpec, metrics: i32) -> Option<Placement> {
+fn foreground_placement(
+    pid: u32,
+    spec: LayoutSpec,
+    metrics: i32,
+    hide_fullscreen: bool,
+) -> Option<Placement> {
     unsafe {
         let game = GetForegroundWindow();
         let mut active_pid = 0;
@@ -688,6 +695,13 @@ fn foreground_placement(pid: u32, spec: LayoutSpec, metrics: i32) -> Option<Plac
         };
         let monitor = MonitorFromWindow(game, MONITOR_DEFAULTTONEAREST);
         if GetMonitorInfoW(monitor, &mut info).as_bool() {
+            let is_fullscreen = rect.left <= info.rcMonitor.left
+                && rect.top <= info.rcMonitor.top
+                && rect.right >= info.rcMonitor.right
+                && rect.bottom >= info.rcMonitor.bottom;
+            if hide_fullscreen && is_fullscreen {
+                return None;
+            }
             rect.left = rect.left.max(info.rcMonitor.left);
             rect.top = rect.top.max(info.rcMonitor.top);
             rect.right = rect.right.min(info.rcMonitor.right);
@@ -894,7 +908,9 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
             scale: config.scale.unwrap_or(100) as i32,
             gap: config.gap.unwrap_or(5) as i32,
         };
-        let next = active.and_then(|session| foreground_placement(session.pid, layout_spec, count));
+        let next = active.and_then(|session| {
+            foreground_placement(session.pid, layout_spec, count, config.hide_fullscreen)
+        });
         if next.is_none() && placement.take().is_some() {
             if let Some(window) = &window {
                 hide(window);
@@ -979,7 +995,9 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
         };
         update_content(&app, &state, content);
         if state.ready.load(Ordering::Acquire) && placement != next {
-            let Some(current) = foreground_placement(session.pid, layout_spec, count) else {
+            let Some(current) =
+                foreground_placement(session.pid, layout_spec, count, config.hide_fullscreen)
+            else {
                 hide(window);
                 update_content(&app, &state, Content::default());
                 placement = None;

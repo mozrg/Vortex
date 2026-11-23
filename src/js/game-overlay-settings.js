@@ -17,6 +17,10 @@ const overlayLabels = [
   ['overlay.title', 'Оверлей Roblox «В игре»', 'In-game Roblox overlay'],
   ['overlay.description', 'Показывает выбранные метрики поверх активного окна Roblox. Клики проходят сквозь оверлей прямо в игру.', 'Shows selected metrics over the active Roblox window. Clicks pass through to the game.'],
   ['overlay.enabled', 'Показывать оверлей в игре', 'Show in-game overlay'],
+  ['overlay.hideFullscreen', 'Автоскрытие в полноэкранном режиме', 'Auto-hide in fullscreen'],
+  ['overlay.hideFullscreenHint', 'Автоматически скрывает оверлей, когда Roblox развёрнут на весь экран.', 'Automatically hides the overlay while Roblox covers the full monitor.'],
+  ['overlay.minimalProfile', 'Профиль «Минимальный» (только FPS)', 'Minimal profile (FPS only)'],
+  ['overlay.minimalProfileHint', 'Режим для слабых ПК: показывает только FPS и отключает сетевые и системные замеры.', 'Low-end PC preset: shows only FPS and stops network and system probes.'],
   ['overlay.toggleHotkey', 'Хоткей включения / выключения оверлея', 'Overlay toggle hotkey'],
   ['overlay.toggleHotkeyHint', 'Позволяет быстро скрыть или показать HUD прямо во время игры.', 'Quickly hide or show the HUD while in game.'],
   ['overlay.corner', 'Расположение на экране', 'Screen position'],
@@ -212,14 +216,16 @@ function clampOverlayNumber(value, min, max, fallback) {
 function reportGameOverlay() {
   const configure = window.vortexDesktop?.configureGameOverlay;
   if (!configure) return;
-  const fps = Boolean(preferences.gameOverlayFps);
-  const ping = Boolean(preferences.gameOverlayPing);
-  const stability = Boolean(preferences.gameOverlayStability);
-  const region = Boolean(preferences.gameOverlayRegion);
-  const badPingPrompt = preferences.gameOverlayBadPingPrompt !== false;
-  const system = Boolean(preferences.gameOverlaySystem);
-  const clock = Boolean(preferences.gameOverlayClock);
-  const friends = Boolean(preferences.gameOverlayFriends);
+  const minimal = Boolean(preferences.gameOverlayMinimal);
+  const fps = minimal ? true : Boolean(preferences.gameOverlayFps);
+  const timer = minimal ? false : Boolean(preferences.gameOverlayTimer);
+  const ping = minimal ? false : Boolean(preferences.gameOverlayPing);
+  const stability = minimal ? false : Boolean(preferences.gameOverlayStability);
+  const region = minimal ? false : Boolean(preferences.gameOverlayRegion);
+  const badPingPrompt = minimal ? false : preferences.gameOverlayBadPingPrompt !== false;
+  const system = minimal ? false : Boolean(preferences.gameOverlaySystem);
+  const clock = minimal ? false : Boolean(preferences.gameOverlayClock);
+  const friends = minimal ? false : Boolean(preferences.gameOverlayFriends);
   const corner = overlayCorners.includes(preferences.gameOverlayCorner) ? preferences.gameOverlayCorner : 'top-right';
   const config = {
     enabled: Boolean(preferences.gameOverlay),
@@ -229,7 +235,8 @@ function reportGameOverlay() {
     scale: clampOverlayNumber(preferences.gameOverlayScale, 70, 150, 100),
     gap: clampOverlayNumber(preferences.gameOverlayGap, 0, 24, 5),
     opacity: clampOverlayNumber(preferences.gameOverlayOpacity, 20, 100, 74),
-    timer: Boolean(preferences.gameOverlayTimer),
+    hideFullscreen: Boolean(preferences.gameOverlayHideFullscreen),
+    timer,
     fps,
     ping,
     stability,
@@ -331,6 +338,9 @@ function overlayPreviewStyle() {
 }
 
 function renderOverlayPreviewMetrics() {
+  if (preferences.gameOverlayMinimal) {
+    return `<span><strong>120</strong><small>FPS</small></span>`;
+  }
   const now = new Date();
   const timeStr = [now.getHours(), now.getMinutes()].map(v => String(v).padStart(2, '0')).join(':');
   const items = [];
@@ -364,6 +374,8 @@ function renderGameOverlaySettings() {
   return `<section class="settings-card game-overlay-settings">
     <div class="settings-card-head"><div><h2>${t('overlay.title')}</h2><p>${t('overlay.description')}</p></div>${icon('monitor', 18)}</div>
     ${toggle('gameOverlay', 'overlay.enabled')}
+    ${toggle('gameOverlayHideFullscreen', 'overlay.hideFullscreen', t('overlay.hideFullscreenHint'))}
+    ${toggle('gameOverlayMinimal', 'overlay.minimalProfile', t('overlay.minimalProfileHint'))}
     <div class="setting-line">
       <div class="setting-label"><strong>${t('overlay.toggleHotkey')}</strong><small>${t('overlay.toggleHotkeyHint')}</small></div>
       ${renderActionHotkeyControl('overlayToggleHotkey')}

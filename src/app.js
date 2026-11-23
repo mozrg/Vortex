@@ -269,6 +269,7 @@ mountIcons();
 renderSidebar();
 applyPreferences();
 renderPage();
+window.__VORTEX_BOOTED__ = true;
 // Hovering the thin left strip peeks the rail; leaving the rail hides it again.
 document.querySelector('.sidebar-hover-zone')?.addEventListener('mouseenter', () => {
   document.body.classList.add('sidebar-peek');

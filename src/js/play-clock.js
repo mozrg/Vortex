@@ -1,6 +1,26 @@
 const playClockVersion = 1;
 const maxRuntimeGapMs = 90000;
 
+function activityDateKey(timestamp = Date.now()) {
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function shiftActivityDate(dateKey, days) {
+  const [year, month, day] = String(dateKey).split('-').map(Number);
+  const date = new Date(year, month - 1, day + days, 12);
+  return activityDateKey(date.getTime());
+}
+
+function activityDayDistance(fromKey, toKey) {
+  if (!fromKey || !toKey) return Infinity;
+  const toUtc = (key) => {
+    const [year, month, day] = key.split('-').map(Number);
+    return Date.UTC(year, month - 1, day);
+  };
+  return Math.round((toUtc(toKey) - toUtc(fromKey)) / 86400000);
+}
+
 function normalizeActivityData(value) {
   const data = value && typeof value === 'object' ? value : {};
   return {

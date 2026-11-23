@@ -13,6 +13,27 @@
     return currentValue;
   }
 
+  const bootErrors = [];
+  function showBootError() {
+    if (window.__VORTEX_BOOTED__) return;
+    const host = document.getElementById('page-content');
+    if (!host) return;
+    host.innerHTML = `<div style="margin:24px;padding:16px 18px;border:1px solid #f27272;border-radius:12px;background:#1a1520;color:#f3f2f8;font:13px/1.55 monospace;white-space:pre-wrap;">` +
+      `Vortex boot error:\n` + bootErrors.join('\n\n') + `</div>`;
+  }
+  window.addEventListener('error', (event) => {
+    if (window.__VORTEX_BOOTED__) return;
+    const detail = `${event.message || 'Script error'} (${event.filename || '?'}:${event.lineno || 0}:${event.colno || 0})\n${event.error?.stack || ''}`.trim();
+    bootErrors.push(detail);
+    showBootError();
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    if (window.__VORTEX_BOOTED__) return;
+    const detail = `Unhandled rejection: ${event.reason?.stack || event.reason || 'unknown'}`;
+    bootErrors.push(detail);
+    showBootError();
+  });
+
   const appScripts = [
     './js/app-state.js',
     './js/app-home.js',
@@ -27,9 +48,15 @@
   function loadApplication(index = 0) {
     if (index >= appScripts.length) return;
     const script = document.createElement('script');
+    script.async = false;
     script.src = appScripts[index];
     script.onload = () => loadApplication(index + 1);
-    script.onerror = (error) => console.error('Failed to load Vortex module:', appScripts[index], error);
+    script.onerror = (error) => {
+      bootErrors.push(`Failed to load module: ${appScripts[index]}`);
+      showBootError();
+      console.error('Failed to load Vortex module:', appScripts[index], error);
+      loadApplication(index + 1);
+    };
     document.body.appendChild(script);
   }
 

@@ -326,10 +326,21 @@ function renderAccentSettings() {
       <div class="setting-line"><div class="setting-label"><strong>${t('settings.theme.glass')}</strong><small>${t('settings.theme.glassHint')}</small></div><label class="range-control"><input type="range" min="0" max="100" value="${preferences.glassStrength}" data-glass-strength /><span class="range-value" data-glass-strength-value>${preferences.glassStrength}%</span></label></div>
        <div class="setting-line"><div class="setting-label"><strong>${t('settings.theme.schedule')}</strong><small>${t('settings.theme.scheduleHint')}</small></div><div class="segmented">${[['manual',t('settings.theme.scheduleManual')],['system',t('settings.theme.scheduleSystem')],['clock',t('settings.theme.scheduleClock')]].map(([v,l])=>`<button class="segment ${preferences.themeSchedule===v?'active':''}" data-pref="themeSchedule" data-value="${v}">${l}</button>`).join('')}</div></div>
       <div class="theme-io">
-        <button class="control-button" data-action="export-theme">${icon('fileDown', 14)} ${t('settings.themeExport')}</button>
-        <button class="control-button" data-action="import-theme">${icon('fileUp', 14)} ${t('settings.themeImport')}</button>
+        <button class="control-button" data-action="export-theme" data-tooltip="${preferences.language === 'en' ? 'Save current colors and theme to a .json file' : 'Сохранить текущие цвета и тему в файл .json'}">${icon('fileDown', 14)} ${t('settings.themeExport')}</button>
+        <button class="control-button" data-action="import-theme" data-tooltip="${preferences.language === 'en' ? 'Load colors and theme from a .json file' : 'Загрузить цвета и тему из файла .json'}">${icon('fileUp', 14)} ${t('settings.themeImport')}</button>
         <input type="file" accept=".json,application/json" data-theme-file hidden />
-        <button class="control-button control-button-quiet" data-action="reset-theme-colors">${icon('rotate', 14)} ${t('settings.themeReset')}</button>
+        <button class="control-button control-button-quiet" data-action="reset-theme-colors" data-tooltip="${preferences.language === 'en' ? 'Restore default theme colors' : 'Вернуть стандартные цвета темы'}">${icon('rotate', 14)} ${t('settings.themeReset')}</button>
+      </div>
+      <div class="theme-code-bar">
+        <div class="setting-label">
+          <strong>${preferences.language === 'en' ? 'Share theme via code' : 'Поделиться темой через код'}</strong>
+          <small>${preferences.language === 'en' ? 'Copy a short VORTEXTH1- code of your colors, theme, and corners or paste one to apply' : 'Скопируй короткий код VORTEXTH1- со своими цветами, темой и скруглением или вставь чужой'}</small>
+        </div>
+        <div class="theme-code-controls">
+          <input class="control-field" type="text" autocomplete="off" placeholder="VORTEXTH1-..." data-theme-code-input />
+          <button class="control-button" type="button" data-action="import-theme-code" data-tooltip="${preferences.language === 'en' ? 'Apply pasted theme code' : 'Применить вставленный код темы'}">${icon('check', 14)} ${preferences.language === 'en' ? 'Apply' : 'Применить'}</button>
+          <button class="control-button control-button-primary" type="button" data-action="copy-theme-code" data-tooltip="${preferences.language === 'en' ? 'Copy shareable code of your current theme' : 'Скопировать код текущей темы'}">${icon('copy', 14)} ${preferences.language === 'en' ? 'Copy code' : 'Скопировать код'}</button>
+        </div>
       </div>
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.accent.title')}</h2><p>${t('settings.accent.body')}</p></div>${icon('drop', 18)}</div>
@@ -1022,14 +1033,43 @@ function renderApiStatus(result) {
   return (result?.services || []).map((service) => `<div class="api-status-row ${service.ok ? 'ok' : 'bad'}"><span class="api-status-dot"></span><span><strong>${labels[service.id] || service.id}</strong><small>${service.ok ? t('settings.api.online', { ms: String(service.ms) }) : t('settings.api.offline')}</small></span></div>`).join('');
 }
 
-async function checkApiStatus() {
+function updateTopbarApiIndicator(result) {
+  const pill = document.getElementById('topbar-api-status');
+  if (!pill) return;
+  const services = Array.isArray(result?.services) ? result.services : [];
+  if (!services.length) { pill.hidden = true; return; }
+  const bad = services.filter((s) => !s.ok);
+  if (!bad.length) {
+    pill.hidden = true;
+    return;
+  }
+  const allDown = bad.length === services.length;
+  pill.hidden = false;
+  pill.dataset.state = allDown ? 'down' : 'degraded';
+  const tip = preferences.language === 'en'
+    ? `Roblox API issues (${bad.length}/${services.length} unavailable) — click for details`
+    : `Сбой Roblox API (недоступно ${bad.length} из ${services.length}) — нажмите для подробностей`;
+  pill.dataset.tooltip = tip;
+  pill.setAttribute('aria-label', tip);
+}
+
+async function checkApiStatus(silent = false) {
   const host = document.querySelector('[data-api-status]');
-  if (host) host.innerHTML = `<p class="catalog-disclaimer">${t('settings.api.checking')}</p>`;
+  if (host && !silent) host.innerHTML = `<p class="catalog-disclaimer">${t('settings.api.checking')}</p>`;
   try {
     apiStatusCache = await window.vortexDesktop?.getRobloxApiStatus?.();
   } catch { apiStatusCache = null; }
+  updateTopbarApiIndicator(apiStatusCache);
   if (host) host.innerHTML = apiStatusCache ? renderApiStatus(apiStatusCache) : `<p class="catalog-disclaimer">${t('settings.api.failed')}</p>`;
 }
+
+// Quiet background health check shortly after launch so the topbar indicator
+// only lights up if Roblox APIs are actually degraded.
+window.setTimeout(() => {
+  if (window.vortexDesktop?.getRobloxApiStatus && !apiStatusCache) {
+    void checkApiStatus(true);
+  }
+}, 8000);
 
 function renderGeneralSettings() {
   return `${renderWindowsAutostart()}
@@ -1165,8 +1205,8 @@ function renderDataSettings() {
     </section>
     <section class="settings-card"><div class="settings-card-head"><div><h2>${t('settings.data.title')}</h2><p>${t('settings.data.body')}</p></div>${icon('share', 18)}</div>
       <div class="data-actions">
-        <button class="control-button" data-action="export-data">${icon('fileDown', 14)} ${t('settings.data.export')}</button>
-        <button class="control-button" data-action="import-data">${icon('fileUp', 14)} ${t('settings.data.import')}</button>
+        <button class="control-button control-button-primary" data-action="export-data" data-tooltip="${preferences.language === 'en' ? 'Save full backup (settings, favorites, notes, quick launch, playtime — never includes cookies)' : 'Сохранить полную резервную копию (настройки, избранное, заметки, быстрый запуск, история — без cookie)'}">${icon('fileDown', 14)} ${t('settings.data.export')}</button>
+        <button class="control-button" data-action="import-data" data-tooltip="${preferences.language === 'en' ? 'Restore settings and library from a Vortex backup file' : 'Восстановить настройки и библиотеку из файла резервной копии Vortex'}">${icon('fileUp', 14)} ${t('settings.data.import')}</button>
       </div>
     </section>`;
 }

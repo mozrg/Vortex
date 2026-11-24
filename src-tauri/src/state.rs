@@ -277,6 +277,7 @@ impl UpdateState {
 
 #[derive(Clone, Default)]
 pub struct PendingUpdate {
+    #[allow(dead_code)]
     pub version: String,
     pub asset_name: String,
     pub asset_url: String,

@@ -144,6 +144,27 @@
 .game-overlay-preview-metrics > span + span {
   border-inline-start: 1px solid var(--line);
 }
+.game-overlay-preview-frame[data-style="frameless"] .game-overlay-preview-metrics {
+  background: transparent;
+  border-color: transparent;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .92), 0 0 2px rgba(0, 0, 0, .95);
+}
+.game-overlay-preview-frame[data-style="frameless"] .game-overlay-preview-metrics > span + span {
+  border-inline-start-color: rgba(255, 255, 255, .18);
+}
+.game-overlay-preview-frame[data-style="vertical"] .game-overlay-preview-metrics {
+  flex-direction: column;
+  align-items: stretch;
+  padding: calc(3px * var(--preview-hud-scale, 1)) 0;
+}
+.game-overlay-preview-frame[data-style="vertical"] .game-overlay-preview-metrics > span {
+  justify-content: space-between;
+  padding: calc(2px * var(--preview-hud-scale, 1)) calc(8px * var(--preview-hud-scale, 1));
+}
+.game-overlay-preview-frame[data-style="vertical"] .game-overlay-preview-metrics > span + span {
+  border-inline-start: 0;
+  border-top: 1px solid var(--line);
+}
 .game-overlay-preview-metrics strong {
   color: var(--text);
   font-size: calc(11px * var(--preview-hud-scale, 1));

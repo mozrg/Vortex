@@ -1,13 +1,7 @@
 use serde_json::{json, Value};
-use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::windows::named_pipe::ClientOptions;
-use uuid::Uuid;
 
 use crate::roblox;
 use crate::state::AppState;
-
-const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Resolve a Roblox username to a { id, name, displayName } object.
 pub async fn resolve_roblox_user_id(username: &str) -> Result<Option<Value>, String> {
@@ -178,6 +172,83 @@ pub async fn fetch_roblox_user_names(
         }
     }
     result
+}
+
+/// Batch-fetch original (untranslated) Roblox game titles and square game icons
+/// for a set of universe IDs so the Friends drawer, Friends page and hover
+/// previews show real game names and art immediately.
+pub async fn fetch_playing_game_meta(
+    state: &AppState,
+    universe_ids: &[String],
+) -> std::collections::HashMap<String, (String, String)> {
+    let mut unique: Vec<String> = universe_ids
+        .iter()
+        .filter(|id| !id.is_empty() && id.len() <= 20 && id.chars().all(|c| c.is_ascii_digit()))
+        .cloned()
+        .collect();
+    unique.sort();
+    unique.dedup();
+    if unique.is_empty() {
+        return std::collections::HashMap::new();
+    }
+
+    let mut titles = std::collections::HashMap::<String, String>::new();
+    let mut icons = std::collections::HashMap::<String, String>::new();
+
+    for chunk in unique.chunks(50) {
+        let joined = chunk.join(",");
+        let games_url = format!("https://games.roblox.com/v1/games?universeIds={joined}");
+        let icons_url = format!(
+            "https://thumbnails.roblox.com/v1/games/icons?universeIds={joined}&returnPolicy=PlaceHolder&size=150x150&format=Png&isCircular=false"
+        );
+        let (games_res, icons_res) = tokio::join!(
+            roblox::fetch_cached_json(state, &games_url),
+            roblox::fetch_cached_json(state, &icons_url)
+        );
+        if let Ok(payload) = games_res {
+            if let Some(rows) = payload.get("data").and_then(Value::as_array) {
+                for row in rows {
+                    let uid = row
+                        .get("id")
+                        .map(|v| v.to_string().trim_matches('"').to_string())
+                        .unwrap_or_default();
+                    let name = row
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .unwrap_or("");
+                    if !uid.is_empty() && !name.is_empty() {
+                        titles.insert(uid, name.to_string());
+                    }
+                }
+            }
+        }
+        if let Ok(payload) = icons_res {
+            if let Some(rows) = payload.get("data").and_then(Value::as_array) {
+                for row in rows {
+                    let uid = row
+                        .get("targetId")
+                        .map(|v| v.to_string().trim_matches('"').to_string())
+                        .unwrap_or_default();
+                    let url = row.get("imageUrl").and_then(Value::as_str).unwrap_or("");
+                    let clean = crate::cache::clean_thumbnail(url);
+                    if !uid.is_empty() && !clean.is_empty() {
+                        icons.insert(uid, clean);
+                    }
+                }
+            }
+        }
+    }
+
+    let mut out = std::collections::HashMap::new();
+    for uid in unique {
+        let title = titles.remove(&uid).unwrap_or_default();
+        let icon = icons.remove(&uid).unwrap_or_default();
+        if !title.is_empty() || !icon.is_empty() {
+            out.insert(uid, (title, icon));
+        }
+    }
+    out
 }
 
 /// Fetch live presence (what game a user is playing). Requires the cookie for

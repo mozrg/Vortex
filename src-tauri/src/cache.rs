@@ -113,6 +113,7 @@ pub async fn read_cached_thumbnail(universe_id: &str) -> Option<String> {
 }
 
 /// Get the last-modified time of a file as a Unix timestamp (ms), if available.
+#[allow(dead_code)]
 pub async fn file_mtime_ms(path: &Path) -> Option<u64> {
     let metadata = fs::metadata(path).await.ok()?;
     let modified = metadata.modified().ok()?;
@@ -120,6 +121,7 @@ pub async fn file_mtime_ms(path: &Path) -> Option<u64> {
 }
 
 /// Time helpers for the response cache.
+#[allow(dead_code)]
 pub fn now_instant() -> Instant {
     Instant::now()
 }

@@ -39,6 +39,33 @@ body {
   border-color: rgba(242, 114, 114, .44);
   border-top-color: #f27272;
 }
+.game-hud[data-style="frameless"] {
+  background: transparent;
+  border-color: transparent;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .92), 0 0 2px rgba(0, 0, 0, .95);
+}
+.game-hud[data-style="frameless"] .game-hud-metric + .game-hud-metric {
+  border-inline-start-color: rgba(255, 255, 255, .18);
+}
+.game-hud[data-style="vertical"] {
+  flex-direction: column;
+  align-items: stretch;
+  height: auto;
+  padding: calc(4px * var(--hud-scale, 1)) 0;
+  gap: calc(var(--hud-gap, 5px) * .5);
+}
+.game-hud[data-style="vertical"] .game-hud-metric {
+  justify-content: space-between;
+  padding: calc(3px * var(--hud-scale, 1)) calc(9px * var(--hud-scale, 1));
+}
+.game-hud[data-style="vertical"] .game-hud-metric + .game-hud-metric {
+  border-inline-start: 0;
+  border-top: 1px solid rgba(232, 225, 255, .08);
+}
+.game-hud-metric[data-low="true"] strong,
+.game-hud-metric[data-bad="true"] strong {
+  color: #ff9494;
+}
 .game-hud-metric {
   display: flex;
   flex: 1 1 auto;

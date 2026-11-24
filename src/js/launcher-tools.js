@@ -393,8 +393,8 @@ async function pinPastedLink(target) {
   if (!target) return;
   const known = getGame(target.placeId);
   const item = { ...target, id: quickLaunchId(), type: 'game',
-    title: known?.title || (target.placeId ? 'Roblox #' + target.placeId : t('tools.serverLink')),
-    thumbnail: known?.thumbnail, autoTitle: Boolean(target.placeId && !known) };
+    title: target.title || known?.title || (target.placeId ? 'Roblox #' + target.placeId : t('tools.serverLink')),
+    thumbnail: known?.thumbnail, autoTitle: Boolean(!target.title && target.placeId && !known) };
   const fields = ['method','placeId','linkCode','shareCode','shareType','serverId','accessCode'];
   if (quickLaunchGames().some(game => fields.every(key => !item[key] || item[key] === game[key]))) {
     showToast(t('tools.alreadyPinned'));

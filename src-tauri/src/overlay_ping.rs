@@ -307,11 +307,7 @@ pub async fn resolve_region_info(ip: Ipv4Addr) -> Option<RegionInfo> {
         }
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(3))
-        .user_agent("Vortex-Place-Launcher")
-        .build()
-        .ok()?;
+    let client = crate::roblox::shared_http_client();
 
     let mut resolved: Option<RegionInfo> = None;
 
@@ -758,6 +754,56 @@ impl Probe {
         let _ = self.stop.send(());
         let _ = self.task.await;
     }
+}
+
+/// Representative Roblox UDMUX datacenter edge IPs for the one-click region ping test.
+const DATACENTER_PROBES: &[(&str, &str, &str, &str, Ipv4Addr)] = &[
+    ("FRA", "Франкфурт", "eu", "EU · FRA", Ipv4Addr::new(128, 116, 5, 3)),
+    ("AMS", "Амстердам", "eu", "EU · AMS", Ipv4Addr::new(128, 116, 21, 3)),
+    ("PAR", "Париж", "eu", "EU · PAR", Ipv4Addr::new(128, 116, 13, 3)),
+    ("LON", "Лондон", "eu", "EU · LON", Ipv4Addr::new(128, 116, 31, 3)),
+    ("WAR", "Варшава", "eu", "EU · WAR", Ipv4Addr::new(128, 116, 102, 3)),
+    ("NYC", "Нью-Йорк", "us-east", "US · NYC", Ipv4Addr::new(128, 116, 30, 3)),
+    ("IAD", "Вирджиния", "us-east", "US · IAD", Ipv4Addr::new(128, 116, 53, 3)),
+    ("ORD", "Чикаго", "us-east", "US · ORD", Ipv4Addr::new(128, 116, 48, 3)),
+    ("LAX", "Лос-Анджелес", "us-west", "US · LAX", Ipv4Addr::new(128, 116, 1, 3)),
+    ("SEA", "Сиэтл", "us-west", "US · SEA", Ipv4Addr::new(128, 116, 115, 3)),
+    ("SIN", "Сингапур", "asia", "ASIA · SIN", Ipv4Addr::new(128, 116, 46, 3)),
+    ("TYO", "Токио", "asia", "ASIA · TYO", Ipv4Addr::new(128, 116, 55, 3)),
+    ("GRU", "Сан-Паулу", "sa", "SA · GRU", Ipv4Addr::new(128, 116, 86, 3)),
+    ("SYD", "Сидней", "au", "AU · SYD", Ipv4Addr::new(128, 116, 51, 3)),
+];
+
+/// Probe all major Roblox datacenter regions in parallel and return results
+/// sorted by lowest ping first.
+pub async fn probe_all_regions() -> Vec<Value> {
+    let mut handles = Vec::with_capacity(DATACENTER_PROBES.len());
+    for &(code, city, group, label, ip) in DATACENTER_PROBES {
+        handles.push(tokio::task::spawn_blocking(move || {
+            let ping = measure_datacenter_ping_cached(ip);
+            (code, city, group, label, ip, ping)
+        }));
+    }
+    let mut results = Vec::with_capacity(handles.len());
+    for handle in handles {
+        if let Ok(item) = handle.await {
+            results.push(item);
+        }
+    }
+    results.sort_by_key(|item| item.5.unwrap_or(u32::MAX));
+    results
+        .into_iter()
+        .map(|(code, city, group, label, ip, ping)| {
+            serde_json::json!({
+                "code": code,
+                "city": city,
+                "group": group,
+                "label": label,
+                "ip": ip.to_string(),
+                "ping": ping,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

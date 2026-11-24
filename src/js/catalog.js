@@ -184,9 +184,16 @@ async function loadDiscoveryCatalog(sortId = activeDiscoverySort, { force = fals
     try {
       localStorage.setItem('vortex.discoverySessionId', JSON.stringify(discoverySessionId));
       localStorage.setItem('vortex.discoverySorts', JSON.stringify(discoverySorts));
-      localStorage.setItem('vortex.discoveryCatalog', JSON.stringify(discoveryCatalog));
-      localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames));
-    } catch { /* The current chart is still available in the session. */ }
+    } catch { /* Small metadata keys. */ }
+    if (window.vortexIdbCache?.persistCache) {
+      window.vortexIdbCache.persistCache('vortex.discoveryCatalog', discoveryCatalog);
+      window.vortexIdbCache.persistCache('vortex.discovered', dynamicGames);
+    } else {
+      try {
+        localStorage.setItem('vortex.discoveryCatalog', JSON.stringify(discoveryCatalog));
+        localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames));
+      } catch { /* The current chart is still available in the session. */ }
+    }
     discoveryStatus = 'success';
   } catch {
     if (requestId !== discoveryRequestId) return;

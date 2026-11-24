@@ -78,11 +78,34 @@ function gamePageMedia(game) {
 
 function gamePageTabs(view) {
   const glyphs = { overview: 'board', media: 'image', servers: 'server', friends: 'users', launch: 'sliders', other: 'dots' };
+  const isEn = preferences.language === 'en';
+  const tips = isEn ? {
+    overview: 'Playtime stats, description, personal notes and game info',
+    media: 'Game screenshots and trailers',
+    servers: 'Public & private servers, real regions and region ping test',
+    friends: 'Friends currently playing this experience',
+    launch: 'Choose preferred server, region and launcher behavior on launch',
+    other: 'Desktop shortcut, Quick Launch pin, Place ID and Roblox link'
+  } : {
+    overview: 'Статистика времени, описание, личная заметка и факты об игре',
+    media: 'Скриншоты и видеоматериалы игры',
+    servers: 'Публичные и приватные серверы, регионы и тест пинга',
+    friends: 'Друзья, которые сейчас играют в этот плейс',
+    launch: 'Сервер по умолчанию, регион и поведение окна при запуске',
+    other: 'Ярлык на рабочий стол, закрепление, Place ID и страница Roblox'
+  };
   return `<nav class="game-page-tabs" role="tablist" aria-label="${t('place.tabs')}">
     ${gamePanes.map(pane => `<button type="button" role="tab" id="game-pane-${pane}" data-game-pane="${pane}"
+      data-tooltip="${escapeHtml(tips[pane] || '')}"
       aria-selected="${view.pane === pane}" aria-controls="game-page-panel" tabindex="${view.pane === pane ? 0 : -1}">
       ${icon(glyphs[pane], 14)} ${t('place.' + pane)}<span class="game-page-tab-line" aria-hidden="true"></span></button>`).join('')}
   </nav>`;
+}
+
+function gameDisplayTitle(game) {
+  if (!game) return '';
+  const alias = String(preferences.gameAliases?.[String(game.id)] || '').trim();
+  return alias || String(game.title || '');
 }
 
 function renderGameDetail() {
@@ -112,15 +135,18 @@ function renderGameDetail() {
   return `<article class="game-detail game-page">
     <div class="game-page-heading">
     <header class="game-page-hero" ${art ? `style="--place-hero-art:url('${escapeHtml(art)}')"` : ''}>
-      <button class="game-page-back" type="button" data-action="detail-back">${icon('arrowLeft', 15)} ${t('game.backToCatalog')}</button>
+      <button class="game-page-back" type="button" data-action="detail-back" data-tooltip="${preferences.language === 'en' ? 'Return to previous page' : 'Вернуться на предыдущую страницу'}">${icon('arrowLeft', 15)} ${t('game.backToCatalog')}</button>
       <div class="game-page-hero-main">
-        <div class="game-page-title"><h1>${escapeHtml(game.title)}</h1>
-          <span>${escapeHtml(game.creator || t('game.unknownCreator'))}${renderVerifiedCreatorBadge(game)}</span>
+        <div class="game-page-title"><h1>${escapeHtml(gameDisplayTitle(game))}</h1>
+          <span>${preferences.gameAliases?.[id] ? `${escapeHtml(game.title)} · ` : ''}${escapeHtml(game.creator || t('game.unknownCreator'))}${renderVerifiedCreatorBadge(game)}</span>
         </div>
         <div class="game-page-hero-actions">${voteMarkup}
           <button type="button" class="ghost-button game-page-favorite" data-action="favorite" data-id="${escapeHtml(id)}"
+            data-tooltip="${escapeHtml(preferences.language === 'en' ? (favorites.has(id) ? 'Remove from Favorites' : 'Add to Favorites') : (favorites.has(id) ? 'Убрать игру из избранного' : 'Добавить игру в избранное'))}"
             aria-pressed="${favorites.has(id)}">${icon('star', 15)} ${t(favorites.has(id) ? 'place.favorited' : 'place.favorite')}</button>
-          <button type="button" class="primary-button game-page-play" data-game-page-action="play" ${unavailable || !official || view.launching ? 'disabled' : ''}>
+          <button type="button" class="primary-button game-page-play" data-game-page-action="play"
+            data-tooltip="${escapeHtml(preferences.language === 'en' ? 'Launch this experience in Roblox' : 'Запустить игру в клиенте Roblox')}"
+            ${unavailable || !official || view.launching ? 'disabled' : ''}>
             ${icon('play', 15)} ${t(unavailable ? 'game.notAvailable' : view.launching ? 'tools.loading' : 'card.play')}
           </button>
         </div>
@@ -156,6 +182,26 @@ function gamePageFacts(game) {
     `<div><dt>${label}</dt><dd>${escapeHtml(value)}${badge}</dd></div>`).join('')}</dl></section>`;
 }
 
+function renderGamePersonalNoteCard(game) {
+  const id = String(game.id);
+  const alias = String(preferences.gameAliases?.[id] || '');
+  const note = String(preferences.gameNotes?.[id] || '');
+  const isEn = preferences.language === 'en';
+  return `<section class="game-page-card game-personal-note-card">
+    <header class="game-page-card-head"><h2>${isEn ? 'Personal note & alias' : 'Заметка и своё название'}</h2></header>
+    <div class="game-note-fields">
+      <label class="game-note-field">
+        <span>${isEn ? 'Local title' : 'Локальное название'}</span>
+        <input type="text" maxlength="64" data-game-alias-input="${escapeHtml(id)}" value="${escapeHtml(alias)}" placeholder="${escapeHtml(game.title || '')}" />
+      </label>
+      <label class="game-note-field">
+        <span>${isEn ? 'Note (builds, tips, server info)' : 'Заметка'}</span>
+        <textarea rows="3" maxlength="500" data-game-note-input="${escapeHtml(id)}" placeholder="${isEn ? 'Write a personal note for this game...' : 'Запиши что-нибудь важное для этой игры...'}">${escapeHtml(note)}</textarea>
+      </label>
+    </div>
+  </section>`;
+}
+
 function renderGameOverview(game, likes, dislikes) {
   const { total, weekly, lastLaunch } = gamePageStats(game);
   const ratio = likes + dislikes ? Math.round(likes / (likes + dislikes) * 100) : null;
@@ -176,7 +222,7 @@ function renderGameOverview(game, likes, dislikes) {
       </section>
       ${renderGameExtraInfo(game)}
     </div>
-    <aside>${renderGameFriendSection(game, true)}${gamePageFacts(game)}</aside>
+    <aside>${renderGameFriendSection(game, true)}${renderGamePersonalNoteCard(game)}${gamePageFacts(game)}</aside>
   </div>`;
 }
 

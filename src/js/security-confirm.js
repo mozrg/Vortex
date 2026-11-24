@@ -231,3 +231,41 @@ function decodeQuickFolderCode(raw) {
     return null;
   }
 }
+
+const THEME_SHARE_KEYS = [
+  'theme', 'accent', 'accentSecondary', 'accentMode', 'gradientAngle',
+  'themeBackground', 'themeSurface', 'themeText', 'themeMuted', 'themeLine',
+  'corners', 'density', 'cardRadius', 'customCardRadius', 'glow', 'glassStrength', 'uiFont'
+];
+
+function encodeThemeCode(prefs) {
+  if (!prefs || typeof prefs !== 'object') return '';
+  const data = {};
+  for (const key of THEME_SHARE_KEYS) {
+    if (prefs[key] !== undefined && prefs[key] !== '') data[key] = prefs[key];
+  }
+  const payload = { app: 'vortex-theme', version: 1, data };
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return 'VORTEXTH1-' + btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+}
+
+function decodeThemeCode(raw) {
+  const trimmed = String(raw || '').trim();
+  if (!/^VORTEXTH1-/i.test(trimmed)) return null;
+  const code = trimmed.replace(/^VORTEXTH1-/i, '').replace(/-/g, '+').replace(/_/g, '/');
+  if (!code || code.length > 4096) return null;
+  try {
+    const binary = atob(code + '='.repeat((4 - code.length % 4) % 4));
+    const payload = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, (ch) => ch.charCodeAt(0))));
+    if (payload?.app !== 'vortex-theme' || payload?.version !== 1 || !payload.data || typeof payload.data !== 'object') return null;
+    const clean = {};
+    for (const key of THEME_SHARE_KEYS) {
+      if (Object.hasOwn(payload.data, key)) clean[key] = payload.data[key];
+    }
+    return Object.keys(clean).length ? clean : null;
+  } catch {
+    return null;
+  }
+}

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vortex Launcher</title>
+    <link rel="stylesheet" href="./splash.css" />
+  </head>
+  <body>
+    <main class="splash-card" id="splash-card">
+      <div class="splash-glow" aria-hidden="true"></div>
+      <div class="splash-emblem" aria-hidden="true">
+        <span class="splash-ring"></span>
+        <span class="splash-ring splash-ring-inner"></span>
+        <img src="./assets/vortex-logo.svg" alt="" class="splash-logo" draggable="false" />
+      </div>
+      <div class="splash-brand">
+        <h1>VORTEX</h1>
+        <span class="splash-version" id="splash-version">v1.3.0</span>
+      </div>
+      <p class="splash-status" id="splash-status">Запуск лаунчера…</p>
+      <div class="splash-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="25">
+        <div class="splash-bar" id="splash-bar"></div>
+      </div>
+    </main>
+    <script src="./js/splash.js"></script>
+  </body>
+</html>

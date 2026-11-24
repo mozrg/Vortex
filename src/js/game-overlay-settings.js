@@ -235,6 +235,9 @@ function reportGameOverlay() {
     scale: clampOverlayNumber(preferences.gameOverlayScale, 70, 150, 100),
     gap: clampOverlayNumber(preferences.gameOverlayGap, 0, 24, 5),
     opacity: clampOverlayNumber(preferences.gameOverlayOpacity, 20, 100, 74),
+    style: ['capsule', 'frameless', 'vertical'].includes(preferences.gameOverlayStyle) ? preferences.gameOverlayStyle : 'capsule',
+    badPingMs: clampOverlayNumber(preferences.gameOverlayBadPing, 50, 500, 130),
+    lowFps: clampOverlayNumber(preferences.gameOverlayLowFps, 10, 120, 30),
     hideFullscreen: Boolean(preferences.gameOverlayHideFullscreen),
     timer,
     fps,
@@ -364,6 +367,7 @@ function renderGameOverlaySettings() {
       <button class="toggle" type="button" role="switch" aria-checked="${Boolean(preferences[key])}" data-toggle="${key}" aria-label="${text}"></button></div>`;
   };
   const corner = overlayCorners.includes(preferences.gameOverlayCorner) ? preferences.gameOverlayCorner : 'top-right';
+  const style = ['capsule', 'frameless', 'vertical'].includes(preferences.gameOverlayStyle) ? preferences.gameOverlayStyle : 'capsule';
   const scale = clampOverlayNumber(preferences.gameOverlayScale, 70, 150, 100);
   const gap = clampOverlayNumber(preferences.gameOverlayGap, 0, 24, 5);
   const opacity = clampOverlayNumber(preferences.gameOverlayOpacity, 20, 100, 74);
@@ -401,6 +405,14 @@ function renderGameOverlaySettings() {
 
         <p class="ui-section-title">${t('overlay.appearanceTitle')}</p>
         <div class="setting-line">
+          <div class="setting-label"><strong>${preferences.language === 'en' ? 'Overlay style' : 'Стиль оверлея'}</strong><small>${preferences.language === 'en' ? 'Capsule bar, frameless text, or vertical column' : 'Капсула, чистый текст без фона или вертикальная колонка'}</small></div>
+          <div class="segmented">
+            ${[['capsule', preferences.language === 'en' ? 'Capsule' : 'Капсула'], ['frameless', preferences.language === 'en' ? 'Frameless' : 'Без фона'], ['vertical', preferences.language === 'en' ? 'Vertical' : 'Вертикальный']].map(([val, lbl]) =>
+              `<button type="button" class="segment ${(preferences.gameOverlayStyle || 'capsule') === val ? 'active' : ''}" data-pref="gameOverlayStyle" data-value="${val}">${lbl}</button>`
+            ).join('')}
+          </div>
+        </div>
+        <div class="setting-line">
           <div class="setting-label"><strong>${t('overlay.scale')}</strong><small>${t('overlay.scaleHint')}</small></div>
           <label class="range-control"><input type="range" min="70" max="150" step="5" value="${scale}" data-overlay-range="gameOverlayScale" /><span class="range-value" data-overlay-range-value="gameOverlayScale">${scale}%</span></label>
         </div>
@@ -411,6 +423,14 @@ function renderGameOverlaySettings() {
         <div class="setting-line">
           <div class="setting-label"><strong>${t('overlay.opacity')}</strong><small>${t('overlay.opacityHint')}</small></div>
           <label class="range-control"><input type="range" min="20" max="100" step="5" value="${opacity}" data-overlay-range="gameOverlayOpacity" /><span class="range-value" data-overlay-range-value="gameOverlayOpacity">${opacity}%</span></label>
+        </div>
+        <div class="setting-line">
+          <div class="setting-label"><strong>${preferences.language === 'en' ? 'High ping threshold' : 'Порог высокого пинга'}</strong><small>${preferences.language === 'en' ? 'Warn and highlight ping above this value' : 'Подсвечивать пинг и предупреждать выше этого значения'}</small></div>
+          <label class="range-control"><input type="range" min="50" max="400" step="10" value="${clampOverlayNumber(preferences.gameOverlayBadPing, 50, 500, 130)}" data-overlay-range="gameOverlayBadPing" /><span class="range-value" data-overlay-range-value="gameOverlayBadPing">${clampOverlayNumber(preferences.gameOverlayBadPing, 50, 500, 130)} ms</span></label>
+        </div>
+        <div class="setting-line">
+          <div class="setting-label"><strong>${preferences.language === 'en' ? 'Low FPS threshold' : 'Порог низкого FPS'}</strong><small>${preferences.language === 'en' ? 'Highlight FPS counter below this value' : 'Подсвечивать счётчик FPS ниже этого значения'}</small></div>
+          <label class="range-control"><input type="range" min="10" max="120" step="5" value="${clampOverlayNumber(preferences.gameOverlayLowFps, 10, 120, 30)}" data-overlay-range="gameOverlayLowFps" /><span class="range-value" data-overlay-range-value="gameOverlayLowFps">${clampOverlayNumber(preferences.gameOverlayLowFps, 10, 120, 30)} FPS</span></label>
         </div>
 
         <p class="ui-section-title">${t('overlay.metricsTitle')}</p>
@@ -427,9 +447,9 @@ function renderGameOverlaySettings() {
       </div>
       <div class="game-overlay-preview">
         <span>${t('overlay.preview')}</span>
-        <div class="game-overlay-preview-frame" data-overlay-preview-frame data-corner="${corner}" style="${overlayPreviewStyle()}">
+        <div class="game-overlay-preview-frame" data-overlay-preview-frame data-corner="${corner}" data-style="${style}" style="${overlayPreviewStyle()}">
           <img src="./assets/vortex-logo.svg" alt="" draggable="false" />
-          ${preview ? `<div class="game-overlay-preview-metrics" data-overlay-preview-bar aria-hidden="true">${preview}</div>` : ''}
+          ${preview ? `<div class="game-overlay-preview-metrics" data-overlay-preview-bar data-style="${style}" aria-hidden="true">${preview}</div>` : ''}
         </div>
       </div>
     </div>
@@ -763,7 +783,9 @@ document.addEventListener('input', event => {
     gameOverlayGap: [0, 24, 5, ' px'],
     gameOverlayOpacity: [20, 100, 74, '%'],
     gameOverlayCustomX: [0, 100, 96, '%'],
-    gameOverlayCustomY: [0, 100, 4, '%']
+    gameOverlayCustomY: [0, 100, 4, '%'],
+    gameOverlayBadPing: [50, 500, 130, ' ms'],
+    gameOverlayLowFps: [10, 120, 30, ' FPS']
   }[key];
   if (!limits) return;
   const [min, max, fallback, suffix] = limits;
@@ -773,7 +795,7 @@ document.addEventListener('input', event => {
   if (label) label.textContent = `${val}${suffix}`;
   const frame = document.querySelector('[data-overlay-preview-frame]');
   if (frame) frame.setAttribute('style', overlayPreviewStyle());
-  savePreferences();
+  savePreferencesDebounced();
   reportGameOverlay();
 });
 
@@ -794,7 +816,7 @@ function updateCustomPositionFromPreviewEvent(event, frame) {
   preferences.gameOverlayCorner = 'custom';
   preferences.gameOverlayCustomX = pctX;
   preferences.gameOverlayCustomY = pctY;
-  savePreferences();
+  savePreferencesDebounced();
   reportGameOverlay();
   if (!wasCustom) {
     renderPage();

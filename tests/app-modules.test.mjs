@@ -97,7 +97,7 @@ function bootVortexInVm(initialStorage = {}) {
   ctx.globalThis = ctx;
 
   const scripts = [
-    'src/js/icons.js', 'src/js/overlays.js', 'src/js/library-storage.js', 'src/js/color.js',
+    'src/js/icons.js', 'src/js/overlays.js', 'src/js/cache-idb.js', 'src/js/library-storage.js', 'src/js/color.js',
     'src/js/i18n.js', 'src/js/desktop.js', 'src/js/markdown.js', 'src/js/release-log.js',
     'src/js/session-journal.js', 'src/js/activity.js', 'src/js/activity-overview.js', 'src/js/play-clock.js',
     'src/js/launcher-tools.js', 'src/js/launcher-options.js', 'src/js/launcher-files.js', 'src/js/launcher-tools-i18n.js',
@@ -254,4 +254,89 @@ test('security domain checker detects spoofed & homograph domains and VORTEXFD1 
   assert.equal(decoded.title, 'Evening Pack');
   assert.equal(decoded.games.length, 2);
   assert.equal(decoded.games[0].placeId, '2753915549');
+});
+
+test('VORTEXTH1 theme share codes, overlay styles/thresholds, game aliases and IDB cache work', () => {
+  const { ctx, invoked } = bootVortexInVm();
+
+  // Theme code round-trip
+  const themeCode = ctx.encodeThemeCode({
+    theme: 'oled',
+    accent: '#ff6b9d',
+    accentMode: 'gradient',
+    gradientAngle: 135,
+    corners: 'sharp',
+    density: 'compact',
+    glow: 40,
+    robloxUsername: 'should_not_leak'
+  });
+  assert.ok(themeCode.startsWith('VORTEXTH1-'));
+  const decodedTheme = ctx.decodeThemeCode(themeCode);
+  assert.equal(decodedTheme.theme, 'oled');
+  assert.equal(decodedTheme.accent, '#ff6b9d');
+  assert.equal(decodedTheme.corners, 'sharp');
+  assert.equal(decodedTheme.robloxUsername, undefined);
+  assert.equal(ctx.decodeThemeCode('VORTEXFD1-invalid'), null);
+
+  // Overlay style & custom thresholds
+  vm.runInContext(`
+    preferences.gameOverlay = true;
+    preferences.gameOverlayMinimal = false;
+    preferences.gameOverlayStyle = 'vertical';
+    preferences.gameOverlayBadPing = 180;
+    preferences.gameOverlayLowFps = 45;
+    gameOverlayReport = '';
+    reportGameOverlay();
+  `, ctx);
+  const call = invoked.findLast(entry => entry.cmd === 'game_overlay_configure');
+  assert.equal(call.args.config.style, 'vertical');
+  assert.equal(call.args.config.badPingMs, 180);
+  assert.equal(call.args.config.lowFps, 45);
+
+  // Custom game alias + IDB cache + debounced save
+  vm.runInContext(`preferences.gameAliases = { '2753915549': 'My Blox' };`, ctx);
+  assert.equal(ctx.gameDisplayTitle({ id: '2753915549', title: 'Blox Fruits' }), 'My Blox');
+  assert.equal(ctx.gameDisplayTitle({ id: '999', title: 'Other' }), 'Other');
+  assert.equal(typeof ctx.savePreferencesDebounced, 'function');
+  assert.equal(typeof ctx.vortexIdbCache.persistCache, 'function');
+});
+
+test('full backup export excludes cookies, IDB hydration restores caches, and Command Palette exposes new actions', async () => {
+  const { ctx } = bootVortexInVm();
+
+  // Full backup export includes profiles/notes/aliases and strips any cookie field
+  vm.runInContext(`
+    preferences.gameNotes = { '2753915549': 'Farm build' };
+    preferences.gameAliases = { '2753915549': 'Blox Main' };
+    preferences.robloxCookie = 'SECRET_SHOULD_NOT_EXPORT';
+    preferences.quickLaunchItems = [
+      { id: 'ql1', type: 'game', method: 'access', placeId: '2753915549', accessCode: 'abcd-1234-efgh', title: 'VIP Grind' }
+    ];
+  `, ctx);
+  const backup = await ctx.buildDataExport();
+  assert.equal(backup.app, 'vortex');
+  assert.equal(backup.data.preferences.gameNotes['2753915549'], 'Farm build');
+  assert.equal(backup.data.preferences.robloxCookie, undefined);
+  assert.ok(Object.hasOwn(backup.data, 'profiles'));
+  assert.ok(Object.hasOwn(backup.data, 'friendPins'));
+
+  // Command palette includes new v1.3.0 quick commands + quick-launch items
+  const cmds = ctx.paletteCommands();
+  assert.ok(cmds.some(c => /пинг|ping/i.test(c.title)));
+  assert.ok(cmds.some(c => /VORTEXTH1/i.test(c.title)));
+  assert.ok(cmds.some(c => c.title === 'VIP Grind'));
+
+  // IDB startup hydration merges cached games when localStorage was empty
+  vm.runInContext(`
+    dynamicGames = [];
+    window.vortexIdbCache = {
+      get: async (key) => key === 'vortex.discovered' ? [{ id: '2753915549', title: 'Blox Fruits' }] : null,
+      set: async () => true,
+      delete: async () => true,
+      persistCache() {}
+    };
+  `, ctx);
+  const hydrated = await ctx.hydrateIdbCaches();
+  assert.equal(hydrated, true);
+  assert.equal(vm.runInContext('dynamicGames.length', ctx), 1);
 });

@@ -102,11 +102,16 @@ pub async fn games_resolve_servers(
         }));
     }
 
-    let client = reqwest::Client::builder()
-        .user_agent("Roblox/WinInet")
-        .timeout(Duration::from_secs(6))
-        .build()
-        .map_err(|e| e.to_string())?;
+    static WININET_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    let client = WININET_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent("Roblox/WinInet")
+            .timeout(Duration::from_secs(6))
+            .pool_max_idle_per_host(4)
+            .pool_idle_timeout(Duration::from_secs(60))
+            .build()
+            .expect("failed to build WinInet HTTP client")
+    });
 
     let sem = Arc::new(Semaphore::new(2));
     let mut join_handles = Vec::with_capacity(to_fetch.len());
@@ -249,7 +254,6 @@ pub async fn games_resolve_servers(
     Ok(json!({ "ok": true, "reason": null, "resolved": resolved_map }))
 }
 
-const BROWSER_UA: &str = crate::roblox::BROWSER_UA;
 
 fn normalize_private_server(row: &Value, my_user_id: Option<u64>) -> Option<Value> {
     let vip_server_id = row.get("vipServerId").and_then(Value::as_u64).unwrap_or(0);
@@ -401,11 +405,7 @@ pub async fn games_private_servers(
         url.push_str(&super::encode_query(&cursor));
     }
 
-    let client = reqwest::Client::builder()
-        .user_agent(BROWSER_UA)
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = roblox::shared_http_client();
     let cookie_header = format!(".ROBLOSECURITY={clean_cookie}");
 
     let servers_req = async {
@@ -661,18 +661,14 @@ pub async fn games_private_server_create(
     if clean_cookie.is_empty() {
         return Ok(json!({ "ok": false, "reason": "auth-required" }));
     }
-    let client = reqwest::Client::builder()
-        .user_agent(BROWSER_UA)
-        .timeout(Duration::from_secs(12))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = roblox::shared_http_client();
     let cookie_header = format!(".ROBLOSECURITY={clean_cookie}");
     let url = format!("https://games.roblox.com/v1/games/vip-servers/{universe_id}");
     let body = json!({
         "name": trimmed,
         "expectedPrice": expected_price
     });
-    let resp = post_json_with_csrf(&client, &url, &cookie_header, &body).await?;
+    let resp = post_json_with_csrf(client, &url, &cookie_header, &body).await?;
     let status = resp.status().as_u16();
     let payload: Value = resp.json().await.unwrap_or(Value::Null);
     if !(200..300).contains(&status) {
@@ -755,11 +751,7 @@ pub async fn games_private_server_get(
     if clean_cookie.is_empty() {
         return Ok(json!({ "ok": false, "reason": "auth-required" }));
     }
-    let client = reqwest::Client::builder()
-        .user_agent(BROWSER_UA)
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = roblox::shared_http_client();
     let cookie_header = format!(".ROBLOSECURITY={clean_cookie}");
     let url = format!("https://games.roblox.com/v1/vip-servers/{vip_server_id}");
     let resp = client
@@ -820,11 +812,7 @@ pub async fn games_private_server_update(
     if body.is_empty() {
         return Err("No changes provided".into());
     }
-    let client = reqwest::Client::builder()
-        .user_agent(BROWSER_UA)
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = roblox::shared_http_client();
     let cookie_header = format!(".ROBLOSECURITY={clean_cookie}");
     let url = format!("https://games.roblox.com/v1/vip-servers/{vip_server_id}");
     let resp = patch_json_with_csrf(&client, &url, &cookie_header, &Value::Object(body)).await?;
@@ -890,11 +878,7 @@ pub async fn games_private_server_permissions(
         return Err("No permission changes provided".into());
     }
 
-    let client = reqwest::Client::builder()
-        .user_agent(BROWSER_UA)
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = roblox::shared_http_client();
     let cookie_header = format!(".ROBLOSECURITY={clean_cookie}");
     let url = format!("https://games.roblox.com/v1/vip-servers/{vip_server_id}/permissions");
     let resp = patch_json_with_csrf(&client, &url, &cookie_header, &Value::Object(body)).await?;
@@ -908,6 +892,12 @@ pub async fn games_private_server_permissions(
         }));
     }
     Ok(json!({ "ok": true, "permissions": payload }))
+}
+
+#[tauri::command]
+pub async fn games_ping_regions() -> Result<Value, String> {
+    let regions = overlay_ping::probe_all_regions().await;
+    Ok(json!({ "ok": true, "regions": regions }))
 }
 
 #[tauri::command]
@@ -954,17 +944,13 @@ pub async fn public_server_ping(place_id: &str, server_id: &str) -> Option<u32> 
     if !super::valid_numeric_id(place_id) {
         return None;
     }
-    let client = reqwest::Client::builder()
-        .user_agent("Vortex-Place-Launcher")
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .ok()?;
-    if let Some(ping) = lookup_place_ping(&client, place_id, server_id).await {
+    let client = roblox::shared_http_client();
+    if let Some(ping) = lookup_place_ping(client, place_id, server_id).await {
         return Some(ping);
     }
-    let root_place = resolve_root_place(&client, place_id).await?;
+    let root_place = resolve_root_place(client, place_id).await?;
     if root_place != place_id {
-        return lookup_place_ping(&client, &root_place, server_id).await;
+        return lookup_place_ping(client, &root_place, server_id).await;
     }
     None
 }

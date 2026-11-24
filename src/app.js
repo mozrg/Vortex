@@ -85,9 +85,41 @@ function paletteCommands() {
   toggle('friendFavoriteAlerts', 'settings.integrations.friendAlerts', 'bell', 'notifications уведомления');
   toggle('gamingMode', 'tools.gaming', 'gamepad', 'performance производительность');
   add('eyeOff', t('tools.stream'), t('palette.toggle'), () => setLauncherStreamMode(!preferences.streamMode), 'stream приватность');
+  add('monitor', preferences.language === 'en' ? 'Toggle in-game overlay' : 'Вкл / выкл оверлей «В игре»', t('palette.toggle'), () => {
+    if (typeof triggerOverlayToggle === 'function') triggerOverlayToggle();
+  }, 'overlay hud fps ping оверлей');
+  add('zap', preferences.language === 'en' ? 'Roblox Datacenter Ping Test' : 'Пинг до регионов Roblox', action, () => {
+    if (typeof openRegionPingModal === 'function') void openRegionPingModal();
+  }, 'ping regions datacenter тест пинга регионы серверы');
+  add('rotate', preferences.language === 'en' ? 'Rejoin last server' : 'Перезайти на последний сервер', action, () => {
+    if (typeof triggerServerRejoin === 'function') void triggerServerRejoin();
+  }, 'rejoin server перезайти сервер');
+  add('copy', preferences.language === 'en' ? 'Copy theme share code (VORTEXTH1-)' : 'Скопировать код темы (VORTEXTH1-)', action, () => {
+    const code = typeof encodeThemeCode === 'function' ? encodeThemeCode(preferences) : '';
+    if (!code) return;
+    const done = () => showToast(preferences.language === 'en' ? 'Theme code copied' : 'Код темы скопирован');
+    if (window.vortexDesktop?.copyToClipboard) window.vortexDesktop.copyToClipboard(code).then(done).catch(() => {});
+    else navigator.clipboard?.writeText?.(code).then(done).catch(() => {});
+  }, 'theme code share VORTEXTH1 тема код скопировать');
+  add('fileDown', preferences.language === 'en' ? 'Export full Vortex backup' : 'Создать резервную копию Vortex', action, () => {
+    setting('data');
+    pageContent.querySelector('[data-action=export-data]')?.click();
+  }, 'backup export бэкап резервная копия экспорт');
   add('pulse', t('settings.api.title'), action, () => { setting('data'); void checkApiStatus(); }, 'проверить соединение api network');
   add('trash', t('settings.cacheClear'), action, () => { setting('data'); pageContent.querySelector('[data-action=clear-cache]')?.click(); }, 'clear cache очистка');
   add('download', t('updates.checkNow'), action, () => { setting('version'); pageContent.querySelector('[data-action=retry-update]')?.click(); }, 'version update версия');
+
+  // Direct launch of pinned Quick Launch games & private servers.
+  const quickItems = typeof quickLaunchGames === 'function' ? quickLaunchGames() : [];
+  const quickHint = preferences.language === 'en' ? 'Quick Launch' : 'Быстрый запуск';
+  for (const item of quickItems.slice(0, 24)) {
+    if (preferences.streamMode && item.method !== 'public') continue;
+    const title = String(item.title || '').trim();
+    if (!title) continue;
+    add(item.method === 'public' ? 'play' : 'lock', title, quickHint, () => {
+      void launchQuickGame(item.id);
+    }, `quick launch ${item.placeId || ''} ${item.method || ''} быстрый запуск приватный сервер`);
+  }
   return commands;
 }
 
@@ -198,6 +230,32 @@ function runPaletteIndex(index) {
 // join action. Sits above the grid and follows the hovered card.
 let friendPreviewEl = null;
 let friendPreviewCard = null;
+const friendGameMetaCache = new Map();
+
+function positionFriendPreview(card, el) {
+  if (!card || !el) return;
+  const rect = card.getBoundingClientRect();
+  const panel = el.getBoundingClientRect();
+  let left = Math.min(rect.left, window.innerWidth - panel.width - 14);
+  let top = rect.top - panel.height - 10;
+  if (top < 8) top = rect.bottom + 10;
+  el.style.left = Math.max(8, left) + 'px';
+  el.style.top = top + 'px';
+}
+
+function renderFriendPreviewMarkup(name, avatar, status, gameName, gameThumb) {
+  return `
+    <span class="friend-preview-avatar">${avatar ? `<img src="${escapeHtml(avatar)}" alt="" />` : escapeHtml(name[0].toLocaleUpperCase())}</span>
+    <div class="friend-preview-copy">
+      <strong>${escapeHtml(name)}</strong>
+      <small>${status}</small>
+    </div>
+    ${gameName ? `<div class="friend-preview-game">
+      <span class="friend-preview-game-art">${gameThumb ? `<img src="${escapeHtml(gameThumb)}" alt="" />` : icon('gamepad', 15)}</span>
+      <span class="friend-preview-game-copy"><em>${t('friends.inGame')}</em><small>${escapeHtml(gameName)}</small></span>
+    </div>` : ''}`;
+}
+
 function showFriendPreview(card) {
   if (!preferences.uiTooltips || !card || card.classList.contains('offline')) {
     hideFriendPreview();
@@ -208,31 +266,37 @@ function showFriendPreview(card) {
   friendPreviewCard = card;
   const name = card.dataset.friendName || '?';
   const avatar = card.dataset.friendAvatar || '';
-  const game = card.dataset.gameName || '';
-  const gameThumb = card.dataset.gameThumb || '';
+  const placeId = String(card.dataset.placeId || '').trim();
+  const cachedMeta = placeId ? friendGameMetaCache.get(placeId) : null;
+  const knownGame = placeId ? getGame(placeId) : null;
+  const gameName = cachedMeta?.title || knownGame?.title || card.dataset.gameName || '';
+  const gameThumb = cachedMeta?.thumbnail || safeThumbnail(knownGame?.icon || knownGame?.thumbnail) || card.dataset.gameThumb || '';
   const status = card.classList.contains('playing') ? t('friends.inGame') : card.classList.contains('online') ? t('friends.online') : t('friends.offline');
   friendPreviewEl = document.createElement('div');
   friendPreviewEl.className = 'friend-preview';
-  // Preview is informational only: friend avatar, game art, game name.
-  // Joining happens through the explicit button on the friend card itself.
-  friendPreviewEl.innerHTML = `
-    <span class="friend-preview-avatar">${avatar ? `<img src="${escapeHtml(avatar)}" alt="" />` : escapeHtml(name[0].toLocaleUpperCase())}</span>
-    <div class="friend-preview-copy">
-      <strong>${escapeHtml(name)}</strong>
-      <small>${status}</small>
-    </div>
-    ${game ? `<div class="friend-preview-game">
-      <span class="friend-preview-game-art">${gameThumb ? `<img src="${escapeHtml(gameThumb)}" alt="" />` : icon('play', 14)}</span>
-      <span class="friend-preview-game-copy"><em>${t('friends.inGame')}</em><small>${escapeHtml(game)}</small></span>
-    </div>` : ''}`;
+  friendPreviewEl.innerHTML = renderFriendPreviewMarkup(name, avatar, status, gameName, gameThumb);
   document.body.appendChild(friendPreviewEl);
-  const rect = card.getBoundingClientRect();
-  const panel = friendPreviewEl.getBoundingClientRect();
-  let left = Math.min(rect.left, window.innerWidth - panel.width - 14);
-  let top = rect.top - panel.height - 10;
-  if (top < 8) top = rect.bottom + 10;
-  friendPreviewEl.style.left = Math.max(8, left) + 'px';
-  friendPreviewEl.style.top = top + 'px';
+  positionFriendPreview(card, friendPreviewEl);
+
+  // Fetch original (untranslated) game title & game icon/thumbnail on hover when
+  // not cached yet, then update the floating preview in place.
+  if (card.classList.contains('playing') && placeId && /^\d+$/.test(placeId) && (!cachedMeta || !cachedMeta.thumbnail)) {
+    window.vortexDesktop?.getGameDetails?.({ placeId }).then((res) => {
+      const details = res?.game || res;
+      if (!details?.title) return;
+      const meta = {
+        title: String(details.title),
+        thumbnail: safeThumbnail(details.icon || details.thumbnail) || gameThumb
+      };
+      friendGameMetaCache.set(placeId, meta);
+      card.dataset.gameName = meta.title;
+      if (meta.thumbnail) card.dataset.gameThumb = meta.thumbnail;
+      if (friendPreviewCard === card && friendPreviewEl?.isConnected) {
+        friendPreviewEl.innerHTML = renderFriendPreviewMarkup(name, avatar, status, meta.title, meta.thumbnail);
+        positionFriendPreview(card, friendPreviewEl);
+      }
+    }).catch(() => {});
+  }
 }
 function hideFriendPreview() {
   if (friendPreviewEl) window.vortexMotion.dismiss(friendPreviewEl);
@@ -270,6 +334,10 @@ renderSidebar();
 applyPreferences();
 renderPage();
 window.__VORTEX_BOOTED__ = true;
+// Swap out the splash screen once the first frame of the main UI is painted.
+requestAnimationFrame(() => {
+  window.vortexDesktop?.notifyAppReady?.().catch?.(() => {});
+});
 // Hovering the thin left strip peeks the rail; leaving the rail hides it again.
 document.querySelector('.sidebar-hover-zone')?.addEventListener('mouseenter', () => {
   document.body.classList.add('sidebar-peek');
@@ -279,6 +347,11 @@ document.getElementById('app-sidebar')?.addEventListener('mouseleave', () => {
 });
 void refreshRobloxAccount();
 void refreshQuickLaunchMetadata();
+if (typeof hydrateIdbCaches === 'function') {
+  void hydrateIdbCaches().then((changed) => {
+    if (changed && ['home', 'catalog', 'library', 'favorites', 'recent'].includes(currentView)) renderPage();
+  });
+}
 reportRecentGamesToTray();
 monitorRobloxRuntime();
 window.addEventListener('focus', () => { if (currentView === 'activity') journalChanged(); });

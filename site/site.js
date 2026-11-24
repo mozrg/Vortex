@@ -23,13 +23,27 @@ Object.assign(copy.ru, {
   navUpdates: 'Обновления', updatesTitle: 'Обновления Vortex', updatesBody: 'Список изменений и установщики для каждой версии.',
   viewNotes: 'Посмотреть лог', backToUpdates: 'Все обновления', loadNotes: 'Загружаем изменения…',
   notesMissing: 'Обновление не найдено', notesError: 'Не удалось загрузить лог обновления',
-  notesErrorBody: 'Попробуй ещё раз или открой список релизов на GitHub.'
+  notesErrorBody: 'Попробуй ещё раз или открой список релизов на GitHub.',
+  heroBody: 'Vortex собирает плейсы Roblox в одном быстром лаунчере: приватные серверы, реальный пинг регионов, безопасный HUD-оверлей, друзья и полная кастомизация.',
+  featureServers: 'Приватные серверы и пинг регионов',
+  featureServersBody: 'Создавай и настраивай VIP-серверы прямо в Vortex, измеряй реальный пинг до 14 датацентров Roblox и прыгай на лучший сервер в 1 клик.',
+  featureOverlay: 'Безопасный оверлей и хоткеи',
+  featureOverlayBody: 'FPS, пинг, регион, RAM/CPU поверх окна Roblox без инжектов и вмешательства в клиент. 3 стиля HUD, кастомные пороги и игровые хоткеи.',
+  featureCustom: 'Темы, коды и резервные копии',
+  featureCustomBody: 'Делись темой (VORTEXTH1-) и папками быстрого запуска (VORTEXFD1-) короткими кодами, пиши заметки к играм и сохраняй полный бэкап в 1 клик.'
 });
 Object.assign(copy.en, {
   navUpdates: 'Updates', updatesTitle: 'Vortex updates', updatesBody: 'Release notes and installers for every version.',
   viewNotes: 'View changelog', backToUpdates: 'All updates', loadNotes: 'Loading release notes…',
   notesMissing: 'Update not found', notesError: 'Could not load the changelog',
-  notesErrorBody: 'Try again or open the list of releases on GitHub.'
+  notesErrorBody: 'Try again or open the list of releases on GitHub.',
+  heroBody: 'Vortex brings Roblox experiences into one fast launcher: private servers, real datacenter ping test, safe HUD overlay, friends, and deep customization.',
+  featureServers: 'Private servers & region ping',
+  featureServersBody: 'Create and configure VIP servers right inside Vortex, measure real latency to 14 Roblox datacenters, and hop to the best server in one click.',
+  featureOverlay: 'Safe overlay & hotkeys',
+  featureOverlayBody: 'FPS, ping, server region, and RAM/CPU over Roblox with zero injection or memory hooks. 3 HUD styles, custom thresholds, and in-game hotkeys.',
+  featureCustom: 'Themes, share codes & backups',
+  featureCustomBody: 'Share themes (VORTEXTH1-) and Quick Launch folders (VORTEXFD1-) via short codes, keep per-game notes, and export a full backup in one click.'
 });
 
 const storedLanguage = localStorage.getItem('vortex.siteLanguage');

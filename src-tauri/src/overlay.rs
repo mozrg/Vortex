@@ -47,6 +47,7 @@ struct LayoutSpec {
     custom_y: i32,
     scale: i32,
     gap: i32,
+    vertical: bool,
 }
 
 impl Default for LayoutSpec {
@@ -57,6 +58,7 @@ impl Default for LayoutSpec {
             custom_y: 4,
             scale: 100,
             gap: 5,
+            vertical: false,
         }
     }
 }
@@ -98,6 +100,7 @@ mod tests {
                 custom_y: 50,
                 scale: 120,
                 gap: 8,
+                vertical: false,
             },
             3,
         );
@@ -482,6 +485,12 @@ pub struct Config {
     #[serde(default)]
     opacity: Option<u32>,
     #[serde(default)]
+    style: String,
+    #[serde(default)]
+    bad_ping_ms: Option<u32>,
+    #[serde(default)]
+    low_fps: Option<u32>,
+    #[serde(default)]
     hide_fullscreen: bool,
     timer: bool,
     fps: bool,
@@ -537,6 +546,9 @@ pub struct Content {
     scale: u32,
     gap: u32,
     opacity: u32,
+    style: String,
+    bad_ping_ms: u32,
+    low_fps: u32,
     language: String,
     accent: String,
     motion: bool,
@@ -637,13 +649,24 @@ fn position_with_spec(
     let scale_hud = |size: i32| size * hud_scale * dpi as i32 / (96 * 100);
     let margin = scale(16);
     let room = rect.right - rect.left - 2 * margin;
-    let height = scale_hud(HEIGHT).max(20);
-    let min_cell = (82 + gap_bonus).max(68);
-    let cell = (108 + gap_bonus).max(84);
-    if room < scale_hud(min_cell * metrics) || rect.bottom - rect.top < height + 2 * margin {
-        return None;
-    }
-    let width = scale_hud(cell * metrics).min(room);
+    let room_h = rect.bottom - rect.top - 2 * margin;
+    let (width, height) = if spec.vertical {
+        let row_gap = spec.gap.clamp(0, 16);
+        let col_w = scale_hud(156).min(room);
+        let col_h = scale_hud(HEIGHT * metrics + (metrics - 1).max(0) * row_gap + 8);
+        if room < scale_hud(112) || room_h < col_h {
+            return None;
+        }
+        (col_w, col_h.min(room_h))
+    } else {
+        let height = scale_hud(HEIGHT).max(20);
+        let min_cell = (82 + gap_bonus).max(68);
+        let cell = (108 + gap_bonus).max(84);
+        if room < scale_hud(min_cell * metrics) || room_h < height {
+            return None;
+        }
+        (scale_hud(cell * metrics).min(room), height)
+    };
     let avail_x = (rect.right - rect.left - 2 * margin - width).max(0);
     let avail_y = (rect.bottom - rect.top - 2 * margin - height).max(0);
     let x = match spec.corner {
@@ -890,8 +913,19 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
             .as_ref()
             .map_or_else(PingSnapshot::default, |probe| probe.samples.borrow().clone());
 
-        let show_region_slot = config.region || ping_snapshot.bad_server;
-        let extra_bad_prompt_slot = i32::from(ping_snapshot.bad_server && config.bad_ping_prompt);
+        let bad_ping_threshold = config.bad_ping_ms.unwrap_or(130).clamp(50, 500);
+        let low_fps_threshold = config.low_fps.unwrap_or(30).clamp(10, 120);
+        let is_bad_server = match ping_snapshot.state {
+            Ping::Measured(ms) => ms >= bad_ping_threshold,
+            _ => false,
+        } || ping_snapshot.jitter.is_some_and(|j| j >= crate::overlay_ping::BAD_JITTER_THRESHOLD_MS);
+        let style_clean = match config.style.as_str() {
+            "frameless" | "vertical" => config.style.clone(),
+            _ => "capsule".to_string(),
+        };
+
+        let show_region_slot = config.region || is_bad_server;
+        let extra_bad_prompt_slot = i32::from(is_bad_server && config.bad_ping_prompt);
         let count = i32::from(config.timer)
             + i32::from(config.fps)
             + i32::from(config.ping)
@@ -908,6 +942,7 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
             custom_y: config.custom_y.unwrap_or(4),
             scale: config.scale.unwrap_or(100) as i32,
             gap: config.gap.unwrap_or(5) as i32,
+            vertical: style_clean == "vertical",
         };
         let next = active.and_then(|session| {
             foreground_placement(session.pid, layout_spec, count, config.hide_fullscreen)
@@ -978,7 +1013,7 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
             ping_history: ping_snapshot.history,
             show_region: config.region,
             region: ping_snapshot.region,
-            bad_server: ping_snapshot.bad_server,
+            bad_server: is_bad_server,
             bad_ping_prompt: config.bad_ping_prompt,
             server_hop_hotkey: config.server_hop_hotkey.clone(),
             show_system: config.system,
@@ -990,6 +1025,9 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
             scale: config.scale.unwrap_or(100).clamp(70, 150),
             gap: config.gap.unwrap_or(5).clamp(0, 24),
             opacity: config.opacity.unwrap_or(74).clamp(20, 100),
+            style: style_clean,
+            bad_ping_ms: bad_ping_threshold,
+            low_fps: low_fps_threshold,
             language: config.language,
             accent: config.accent,
             motion: config.motion,

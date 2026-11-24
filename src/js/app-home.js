@@ -365,10 +365,21 @@ function renderWeekActivity() {
 }
 
 function resolveHomeHeroCandidate(customGames, featured) {
-  const active = typeof currentPlayingInviteState === 'function' ? currentPlayingInviteState() : null;
-  const lastExited = typeof getLastExitedSession === 'function' ? getLastExitedSession() : null;
-  const recentId = Array.isArray(recentGames) && recentGames.length ? String(recentGames[0]) : '';
   const recentMeta = typeof recentMetadata === 'function' ? recentMetadata() : {};
+  const lastExited = typeof getLastExitedSession === 'function' ? getLastExitedSession() : null;
+
+  // User-pinned banner game ("На баннер") always takes top priority.
+  if (featured) {
+    const featuredId = String(featured.id);
+    const exitedSame = lastExited?.placeId === featuredId ? lastExited.serverId : '';
+    const srv = typeof validSessionServer === 'function'
+      ? (validSessionServer(exitedSame) || validSessionServer(recentMeta?.[featuredId]?.serverId))
+      : '';
+    return { game: featured, isLastPlayed: false, rejoinPlaceId: featuredId, rejoinServerId: srv };
+  }
+
+  const active = typeof currentPlayingInviteState === 'function' ? currentPlayingInviteState() : null;
+  const recentId = Array.isArray(recentGames) && recentGames.length ? String(recentGames[0]) : '';
 
   if (active?.placeId) {
     const known = getGame(active.placeId) || customGames.find(g => String(g.id) === active.placeId);
@@ -386,10 +397,6 @@ function resolveHomeHeroCandidate(customGames, featured) {
       const srv = typeof validSessionServer === 'function' ? validSessionServer(recentMeta?.[recentId]?.serverId) : '';
       return { game: localizeGame(known), isLastPlayed: true, rejoinPlaceId: recentId, rejoinServerId: srv };
     }
-  }
-  if (featured) {
-    const srv = typeof validSessionServer === 'function' ? validSessionServer(recentMeta?.[featured.id]?.serverId) : '';
-    return { game: featured, isLastPlayed: false, rejoinPlaceId: featured.id, rejoinServerId: srv };
   }
   return { game: null, isLastPlayed: false, rejoinPlaceId: '', rejoinServerId: '' };
 }

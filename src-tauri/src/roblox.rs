@@ -1,5 +1,6 @@
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
@@ -8,19 +9,41 @@ use crate::state::{AppState, CacheEntry};
 
 const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const FETCH_TIMEOUT: Duration = Duration::from_secs(12);
-const THUMB_TIMEOUT: Duration = Duration::from_secs(10);
-const PAID_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 
 pub const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 
-/// Shared HTTP client with a standard browser User-Agent header so Roblox's
-/// edge gateway does not reject requests with 403 Request Context Failure.
-fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .user_agent(BROWSER_UA)
-        .timeout(FETCH_TIMEOUT)
-        .build()
-        .expect("failed to build HTTP client")
+/// Shared pooled HTTP client with a standard browser User-Agent header so
+/// Roblox's edge gateway does not reject requests and TLS/HTTP keep-alive
+/// connections are reused across requests.
+pub fn shared_http_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent(BROWSER_UA)
+            .timeout(FETCH_TIMEOUT)
+            .pool_max_idle_per_host(8)
+            .pool_idle_timeout(Duration::from_secs(60))
+            .build()
+            .expect("failed to build shared HTTP client")
+    })
+}
+
+/// Shared pooled HTTP client for GitHub / Vortex site requests.
+pub fn shared_github_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .user_agent("Vortex-Launcher")
+            .timeout(Duration::from_secs(12))
+            .pool_max_idle_per_host(4)
+            .pool_idle_timeout(Duration::from_secs(60))
+            .build()
+            .expect("failed to build GitHub HTTP client")
+    })
+}
+
+fn http_client() -> &'static reqwest::Client {
+    shared_http_client()
 }
 
 pub fn normalize_cookie_value(raw: &str) -> &str {
@@ -168,10 +191,10 @@ pub async fn get_thumbnails(state: &AppState, universe_ids: &[String]) -> HashMa
 pub fn map_game(game: &Value, thumbnail: &str, launch_place_id: Option<&str>) -> Value {
     let id = if let Some(pid) = launch_place_id {
         pid.to_string()
-    } else if let Some(rootId) = game.get("rootPlaceId") {
-        if let Some(s) = rootId.as_str() {
+    } else if let Some(root_id) = game.get("rootPlaceId") {
+        if let Some(s) = root_id.as_str() {
             s.to_string()
-        } else if let Some(n) = rootId.as_u64() {
+        } else if let Some(n) = root_id.as_u64() {
             n.to_string()
         } else {
             String::new()
@@ -308,6 +331,7 @@ pub async fn get_game_details_by_universe(state: &AppState, universe_ids: &[Stri
 }
 
 /// Resolve a Roblox username to a user ID via the public users API.
+#[allow(dead_code)]
 pub async fn resolve_user_id(username: &str) -> Option<Value> {
     let clean = username.trim();
     if clean.len() < 3
@@ -452,7 +476,7 @@ async fn write_paid_index(games: &[Value]) {
 }
 
 /// Merge any priced games from the given list into the on-disk paid index.
-pub async fn record_paid_games(state: &AppState, games: &[Value]) {
+pub async fn record_paid_games(_state: &AppState, games: &[Value]) {
     let priced: Vec<Value> = games
         .iter()
         .filter(|g| {

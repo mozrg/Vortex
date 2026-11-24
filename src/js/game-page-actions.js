@@ -62,12 +62,13 @@ function renderGameLaunch(game) {
 
 function renderGameOther(game) {
   if (!officialGameUrl(game)) return gamePageEmpty('gamepad', 'game.detailNotFound');
+  const isEn = preferences.language === 'en';
   return `<section class="game-page-card game-page-other"><h2>${t('place.other')}</h2>
     <div class="game-page-other-actions">
-      <button class="ghost-button" data-launcher-action="shortcut" data-id="${escapeHtml(game.id)}">${icon('monitor', 16)} ${t('tools.shortcut')}</button>
-      <button class="ghost-button" data-game-page-action="pin-place">${icon('star', 16)} ${t('tools.pinGame')}</button>
-      <button class="ghost-button" data-game-page-action="copy-place">${icon('link', 16)} ${t('place.copyId')}</button>
-      <button class="ghost-button" data-action="open-social-link" data-url="${officialGameUrl(game)}">${icon('arrowUpRight', 16)} ${t('place.openRoblox')}</button>
+      <button class="ghost-button" data-launcher-action="shortcut" data-id="${escapeHtml(game.id)}" data-tooltip="${isEn ? 'Create a Windows desktop shortcut for this game' : 'Создать ярлык этой игры на рабочем столе Windows'}">${icon('monitor', 16)} ${t('tools.shortcut')}</button>
+      <button class="ghost-button" data-game-page-action="pin-place" data-tooltip="${isEn ? 'Pin this game to the Quick Launch sidebar' : 'Закрепить игру в панели «Быстрый запуск»'}">${icon('star', 16)} ${t('tools.pinGame')}</button>
+      <button class="ghost-button" data-game-page-action="copy-place" data-tooltip="${isEn ? 'Copy numeric Place ID to clipboard' : 'Скопировать цифровой Place ID в буфер обмена'}">${icon('link', 16)} ${t('place.copyId')}</button>
+      <button class="ghost-button" data-action="open-social-link" data-url="${officialGameUrl(game)}" data-tooltip="${isEn ? 'Open official game page on roblox.com' : 'Открыть официальную страницу игры на roblox.com'}">${icon('arrowUpRight', 16)} ${t('place.openRoblox')}</button>
     </div>
   </section>`;
 }
@@ -254,6 +255,28 @@ document.addEventListener('click', event => {
     case 'server-more': void loadGameServers(game, true); return;
     case 'private-refresh': if (typeof loadPrivateServers === 'function') void loadPrivateServers(game); return;
     case 'private-more': if (typeof loadPrivateServers === 'function') void loadPrivateServers(game, true); return;
+    case 'private-filter': {
+      const next = target.dataset.filter || 'all';
+      if (view.privateFilter === next) return;
+      view.privateFilter = next;
+      if (typeof updatePrivateServerResults === 'function') updatePrivateServerResults(game, view);
+      return;
+    }
+    case 'private-pin': {
+      const placeId = target.dataset.placeId || String(game.id);
+      const accessCode = target.dataset.accessCode || '';
+      const serverName = target.dataset.serverName || game.title || '';
+      if (placeId && accessCode) {
+        void pinPastedLink({
+          method: 'access',
+          placeId,
+          accessCode,
+          title: serverName ? `${game.title} — ${serverName}`.slice(0, 64) : undefined
+        });
+      }
+      return;
+    }
+    case 'ping-regions': if (typeof openRegionPingModal === 'function') void openRegionPingModal(); return;
     case 'private-config': if (typeof openPrivateServerConfigModal === 'function') void openPrivateServerConfigModal(game, target.dataset.vipServerId); return;
     case 'private-create': if (typeof openCreatePrivateServerModal === 'function') void openCreatePrivateServerModal(game, view); return;
     case 'friends-refresh': requestGamePageFriends(true); return;
@@ -283,7 +306,30 @@ document.addEventListener('click', event => {
 });
 
 document.addEventListener('input', event => {
-  if (!event.target.matches?.('[data-game-server-search]') || !detailGame) return;
+  if (!detailGame) return;
+  if (event.target.matches?.('[data-game-alias-input]')) {
+    const id = String(event.target.dataset.gameAliasInput || detailGame.id);
+    const val = event.target.value.slice(0, 64);
+    const next = { ...(preferences.gameAliases || {}) };
+    if (val.trim()) next[id] = val;
+    else delete next[id];
+    preferences.gameAliases = next;
+    savePreferencesDebounced();
+    const h1 = document.querySelector('.game-page-title h1');
+    if (h1) h1.textContent = val.trim() || detailGame.title || '';
+    return;
+  }
+  if (event.target.matches?.('[data-game-note-input]')) {
+    const id = String(event.target.dataset.gameNoteInput || detailGame.id);
+    const val = event.target.value.slice(0, 500);
+    const next = { ...(preferences.gameNotes || {}) };
+    if (val.trim()) next[id] = val;
+    else delete next[id];
+    preferences.gameNotes = next;
+    savePreferencesDebounced();
+    return;
+  }
+  if (!event.target.matches?.('[data-game-server-search]')) return;
   const view = gamePageView(detailGame.id);
   view.serverSearch = event.target.value;
   const results = document.getElementById('game-page-server-results');

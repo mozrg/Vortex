@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Обновление Vortex</title>
+    <link rel="stylesheet" href="./updater.css" />
+  </head>
+  <body>
+    <main class="updater-card" id="updater-card" data-state="running">
+      <div class="updater-drag" data-tauri-drag-region></div>
+      <div class="updater-glow" aria-hidden="true"></div>
+
+      <header class="updater-hero" data-tauri-drag-region>
+        <div class="updater-emblem" aria-hidden="true">
+          <span class="updater-ring"></span>
+          <span class="updater-ring updater-ring-inner"></span>
+          <img src="./assets/vortex-logo.svg" alt="" class="updater-logo" draggable="false" />
+        </div>
+        <h1 id="updater-title">Обновление Vortex</h1>
+        <div class="updater-versions" id="updater-versions">
+          <span class="version-pill" id="version-from">v1.3.0</span>
+          <span class="version-arrow" aria-hidden="true">→</span>
+          <span class="version-pill is-target" id="version-to">v1.3.1</span>
+        </div>
+      </header>
+
+      <ol class="updater-steps" id="updater-steps">
+        <li class="updater-step" data-step="closing"><span class="step-dot"></span><span data-step-label="closing">Подготовка</span></li>
+        <li class="updater-step" data-step="verifying"><span class="step-dot"></span><span data-step-label="verifying">Проверка</span></li>
+        <li class="updater-step" data-step="installing"><span class="step-dot"></span><span data-step-label="installing">Установка</span></li>
+        <li class="updater-step" data-step="launching"><span class="step-dot"></span><span data-step-label="launching">Запуск</span></li>
+      </ol>
+
+      <section class="updater-progress-section">
+        <div class="updater-meta">
+          <span class="updater-status" id="updater-status">Подготовка к установке…</span>
+          <strong class="updater-percent" id="updater-percent">10%</strong>
+        </div>
+        <div class="updater-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="10">
+          <div class="updater-bar" id="updater-bar" style="width:10%"></div>
+        </div>
+      </section>
+
+      <div class="updater-error-box" id="updater-error-box" hidden>
+        <p id="updater-error-text"></p>
+        <div class="updater-error-actions">
+          <button type="button" class="updater-btn" id="updater-close-btn">Закрыть</button>
+          <button type="button" class="updater-btn is-primary" id="updater-retry-btn">Повторить</button>
+        </div>
+      </div>
+    </main>
+    <script src="./js/updater.js"></script>
+  </body>
+</html>

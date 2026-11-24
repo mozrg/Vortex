@@ -160,7 +160,12 @@ document.addEventListener('click', async (event) => {
       if (retryUpdateBusy) return;
       retryUpdateBusy = true;
       renderUpdateBanner({ ...(latestUpdateState || {}), status: 'applying', progress: 100 });
-      Promise.resolve(window.vortexDesktop?.installUpdate?.()).catch((error) => {
+      Promise.resolve(window.vortexDesktop?.installUpdate?.({
+        theme: preferences.theme || 'dark',
+        accent: preferences.accent || '#a68bff',
+        accentSecondary: preferences.accentSecondary || '#5b3fd6',
+        language: preferences.language || 'ru'
+      })).catch((error) => {
         retryUpdateBusy = false;
         renderUpdateBanner({ ...(latestUpdateState || {}), status: 'error', progress: 0, errorMessage: String(error?.message || error || 'Install failed') });
       });
@@ -185,15 +190,23 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'close-friends-drawer') { closeFriendsDrawer(); return; }
     if (action.dataset.action === 'friends-drawer-view-all') { closeFriendsDrawer(); setView('friends'); return; }
     if (action.dataset.action === 'refresh-friends') {
-      const username = String(preferences.robloxUsername || '').trim();
-      if (username) { void loadFriends(username, true); showToast(t('friends.refreshing')); }
-      else void autoDetectRobloxAccountOnce(true);
+      const username = String(preferences.robloxUsername || friendsCache.username || '').trim();
+      if (username) {
+        if (!preferences.robloxUsername) preferences.robloxUsername = username;
+        showToast(t('friends.refreshing'));
+        void loadFriends(username, true);
+      } else {
+        showToast(t('friends.refreshing'));
+        void autoDetectRobloxAccountOnce(true);
+      }
       return;
     }
     if (action.dataset.action === 'refresh-friends-drawer') {
-      const username = String(preferences.robloxUsername || '').trim();
-      if (username) void loadFriends(username, true);
-      else void autoDetectRobloxAccountOnce(true);
+      const username = String(preferences.robloxUsername || friendsCache.username || '').trim();
+      if (username) {
+        if (!preferences.robloxUsername) preferences.robloxUsername = username;
+        void loadFriends(username, true);
+      } else void autoDetectRobloxAccountOnce(true);
       return;
     }
     if (action.dataset.action.startsWith('activity-') && handleActivityOverviewAction(action)) return;
@@ -253,14 +266,25 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'export-data') {
       let backup;
       try { backup = await buildDataExport(); } catch { showToast(t('activity.journal.exportError')); return; }
-      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `vortex-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-      showToast(t('settings.data.exported'));
+      const contents = JSON.stringify(backup, null, 2);
+      const filename = `vortex-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      if (window.vortexDesktop?.saveShareFile) {
+        try {
+          const saved = await window.vortexDesktop.saveShareFile({ filename, contents });
+          if (saved) showToast(t('settings.data.exported'));
+        } catch {
+          showToast(t('activity.journal.exportError'));
+        }
+      } else {
+        const blob = new Blob([contents], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast(t('settings.data.exported'));
+      }
       return;
     }
     if (action.dataset.action === 'import-data') {
@@ -342,10 +366,41 @@ document.addEventListener('click', async (event) => {
       });
       window.setTimeout(() => { if (latestUpdateState?.status === 'checking') renderUpdateBanner({ status: latestUpdateState.status }); }, 100);
     }
+    if (action.dataset.action === 'open-api-status') {
+      preferences.settingsTab = 'data';
+      savePreferences();
+      setView('settings');
+      void checkApiStatus();
+      return;
+    }
+    if (action.dataset.action === 'copy-theme-code') {
+      const code = typeof encodeThemeCode === 'function' ? encodeThemeCode(preferences) : '';
+      if (!code) return;
+      const done = () => showToast(preferences.language === 'en' ? 'Theme code copied' : 'Код темы скопирован');
+      if (window.vortexDesktop?.copyToClipboard) window.vortexDesktop.copyToClipboard(code).then(done).catch(() => {});
+      else navigator.clipboard?.writeText?.(code).then(done).catch(() => {});
+      return;
+    }
+    if (action.dataset.action === 'import-theme-code') {
+      const input = document.querySelector('[data-theme-code-input]');
+      const decoded = typeof decodeThemeCode === 'function' ? decodeThemeCode(input?.value || '') : null;
+      if (!decoded) {
+        showToast(preferences.language === 'en' ? 'Invalid theme code (expected VORTEXTH1-...)' : 'Неверный код темы (ожидается VORTEXTH1-...)');
+        return;
+      }
+      Object.assign(preferences, decoded);
+      savePreferences();
+      applyPreferences();
+      renderPage();
+      showToast(preferences.language === 'en' ? 'Theme applied!' : 'Тема применена!');
+      return;
+    }
     if (action.dataset.action === 'clear-cache') {
       Object.keys(localStorage).filter((key) => key.startsWith(SEARCH_CACHE_PREFIX)).forEach((key) => localStorage.removeItem(key));
       localStorage.removeItem('vortex.featuredCache');
       localStorage.removeItem('vortex.discoveryCatalog');
+      window.vortexIdbCache?.delete?.('vortex.discoveryCatalog');
+      window.vortexIdbCache?.delete?.('vortex.discovered');
       discoveryCatalog = {};
       discoveryStatus = 'idle';
       window.vortexDesktop?.clearSearchCache?.();
@@ -400,12 +455,59 @@ document.addEventListener('click', async (event) => {
       } else showToast(t('settings.profiles.needName'));
     }
     if (action.dataset.action === 'export-profiles') {
-      const blob = new Blob([JSON.stringify(readProfiles(), null, 2)], { type: 'application/json' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'vortex-profiles.json';
-      link.click();
-      URL.revokeObjectURL(link.href);
+      const contents = JSON.stringify(readProfiles(), null, 2);
+      if (window.vortexDesktop?.saveShareFile) {
+        window.vortexDesktop.saveShareFile({ filename: 'vortex-profiles.json', contents })
+          .then((saved) => { if (saved) showToast(preferences.language === 'en' ? 'Profiles exported' : 'Профили сохранены'); })
+          .catch(() => showToast(preferences.language === 'en' ? 'Could not save file' : 'Не удалось сохранить файл'));
+      } else {
+        const blob = new Blob([contents], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'vortex-profiles.json';
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      return;
+    }
+    if (action.dataset.action === 'export-theme') {
+      const theme = {
+        name: 'Vortex theme',
+        version: 1,
+        theme: preferences.theme,
+        background: preferences.themeBackground || '',
+        surface: preferences.themeSurface || '',
+        text: preferences.themeText || '',
+        muted: preferences.themeMuted || '',
+        line: preferences.themeLine || '',
+        accent: preferences.accent,
+        accentSecondary: preferences.accentSecondary,
+        gradientAngle: preferences.gradientAngle,
+        grain: preferences.themeGrain,
+        grainStrength: preferences.themeGrainStrength,
+        vignette: preferences.themeVignette,
+        vignetteStrength: preferences.themeVignetteStrength
+      };
+      const contents = JSON.stringify(theme, null, 2);
+      if (window.vortexDesktop?.saveShareFile) {
+        window.vortexDesktop.saveShareFile({ filename: 'vortex-theme.json', contents })
+          .then((saved) => { if (saved) showToast(preferences.language === 'en' ? 'Theme exported' : 'Тема сохранена в файл'); })
+          .catch(() => showToast(preferences.language === 'en' ? 'Could not save theme file' : 'Не удалось сохранить файл темы'));
+      } else {
+        const blob = new Blob([contents], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'vortex-theme.json';
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      return;
+    }
+    if (action.dataset.action === 'import-theme') {
+      pageContent.querySelector('[data-theme-file]')?.click();
+      return;
     }
     if (action.dataset.action === 'reset-section-titles') {
       preferences.homeSectionTitles = {};
@@ -681,38 +783,6 @@ document.addEventListener('click', async (event) => {
     return;
   }
 
-  // Theme as a portable JSON: all color tokens + accent, import with validation.
-  if (target.closest('[data-action="export-theme"]')) {
-    const theme = {
-      name: 'Vortex theme',
-      version: 1,
-      theme: preferences.theme,
-      background: preferences.themeBackground || '',
-      surface: preferences.themeSurface || '',
-      text: preferences.themeText || '',
-      muted: preferences.themeMuted || '',
-      line: preferences.themeLine || '',
-      accent: preferences.accent,
-      accentSecondary: preferences.accentSecondary,
-      gradientAngle: preferences.gradientAngle,
-      grain: preferences.themeGrain,
-      grainStrength: preferences.themeGrainStrength,
-      vignette: preferences.themeVignette,
-      vignetteStrength: preferences.themeVignetteStrength
-    };
-    const blob = new Blob([JSON.stringify(theme, null, 2)], { type: 'application/json' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'vortex-theme.json';
-    link.click();
-    URL.revokeObjectURL(link.href);
-    return;
-  }
-  if (target.closest('[data-action="import-theme"]')) {
-    pageContent.querySelector('[data-theme-file]')?.click();
-    return;
-  }
-
   // ---------- Customization profiles: non-action buttons ----------
   const applyProfileBtn = target.closest('[data-apply-profile]');
   if (applyProfileBtn) {
@@ -959,19 +1029,19 @@ document.addEventListener('input', (event) => {
   if (event.target.matches('[data-wallpaper-dim]')) {
     preferences.themeWallpaperDim = Number(event.target.value) || 0;
     pageContent.querySelector('[data-wallpaper-dim-value]')?.replaceChildren(preferences.themeWallpaperDim + '%');
-    savePreferences(); applyPreferences();
+    savePreferencesDebounced(); applyPreferences();
     return;
   }
   if (event.target.matches('[data-wallpaper-grain-strength]')) {
     preferences.themeGrainStrength = Math.max(0.01, Math.min(0.25, Number(event.target.value) / 100));
     pageContent.querySelector('[data-wallpaper-grain-strength-value]')?.replaceChildren(Math.round(preferences.themeGrainStrength * 100) + '%');
-    savePreferences(); applyPreferences();
+    savePreferencesDebounced(); applyPreferences();
     return;
   }
   if (event.target.matches('[data-wallpaper-vignette-strength]')) {
     preferences.themeVignetteStrength = Math.max(0.1, Math.min(2.5, Number(event.target.value) / 100));
     pageContent.querySelector('[data-wallpaper-vignette-strength-value]')?.replaceChildren(Math.round(preferences.themeVignetteStrength * 100) + '%');
-    savePreferences(); applyPreferences();
+    savePreferencesDebounced(); applyPreferences();
     return;
   }
 
@@ -1055,7 +1125,7 @@ document.addEventListener('input', (event) => {
   if (event.target.matches('[data-setting="glow"]')) {
     preferences.glow = Number(event.target.value);
     event.target.dataset.preview = `glow:${preferences.glow}`;
-    savePreferences();
+    savePreferencesDebounced();
     applyPreferences();
     const value = document.getElementById('glow-value');
     if (value) value.textContent = `${preferences.glow}%`;
@@ -1064,7 +1134,7 @@ document.addEventListener('input', (event) => {
   }
   if (event.target.matches('[data-setting="gradientAngle"]')) {
     preferences.gradientAngle = Number(event.target.value);
-    savePreferences();
+    savePreferencesDebounced();
     applyPreferences();
     const value = document.getElementById('gradient-angle-value');
     if (value) value.textContent = `${preferences.gradientAngle}°`;

@@ -24,11 +24,7 @@ pub async fn announcement_all_releases() -> Result<Vec<Value>, String> {
             }
         }
     }
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(12))
-        .user_agent("Vortex-Launcher")
-        .build()
-        .map_err(|error| error.to_string())?;
+    let client = crate::roblox::shared_github_client();
     let response = client
         .get(ALL_RELEASES_API)
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
@@ -98,11 +94,7 @@ pub async fn announcement_release_log(tag: String) -> Result<Option<Value>, Stri
     } else {
         format!("v{tag}")
     };
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .user_agent("Vortex-Launcher")
-        .build()
-        .map_err(|error| error.to_string())?;
+    let client = crate::roblox::shared_github_client();
     for candidate in [&tag, &alternate] {
         let response = client
             .get(format!("{RELEASES_API}/{}", crate::encode_query(candidate)))
@@ -207,23 +199,13 @@ pub async fn load_announcements(
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default();
-    let result = reqwest::Client::builder()
-        .timeout(Duration::from_secs(12))
-        .user_agent("Vortex-Launcher")
-        .build()
-        .map_err(|error| error.to_string())
-        .and_then(|client| {
-            // The query parameter avoids a stale copy at GitHub's static edge
-            // immediately after the admin page commits a new file.
-            Ok(client.get(SOURCE_URL).query(&[("t", cache_buster)]))
-        });
+    let request = crate::roblox::shared_github_client()
+        .get(SOURCE_URL)
+        .query(&[("t", cache_buster)]);
 
-    let loaded = match result {
-        Ok(request) => match request.send().await {
-            Ok(response) if response.status().is_success() => response.json::<Value>().await.ok(),
-            _ => None,
-        },
-        Err(_) => None,
+    let loaded = match request.send().await {
+        Ok(response) if response.status().is_success() => response.json::<Value>().await.ok(),
+        _ => None,
     };
 
     if let Some(payload) = loaded {

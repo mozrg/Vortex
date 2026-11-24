@@ -191,6 +191,7 @@ pub fn save_cookie(cookie: &str, profile: Option<&str>) -> bool {
 }
 
 /// SHA-256 of a file's contents, returning a lowercase hex string.
+#[allow(dead_code)]
 pub async fn hash_file(path: &PathBuf) -> Result<String, String> {
     use tokio::io::AsyncReadExt;
     let mut file = tokio::fs::File::open(path)

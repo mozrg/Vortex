@@ -478,7 +478,10 @@ function renderPrivateServersContent(game, view) {
   } else if (!count && page.status === 'success') {
     body = `<p class="game-private-servers-note">${t('place.privateEmpty')}</p>`;
   } else if (count) {
+    const privFilter = view.privateFilter || 'all';
     const filtered = page.rows.filter(row => {
+      if (privFilter === 'mine' && !row.isMine) return false;
+      if (privFilter === 'active' && !(row.active !== false && row.playing > 0)) return false;
       if (!query) return true;
       const hay = [row.name, row.owner?.displayName, row.owner?.name, ...(row.players || [])]
         .filter(Boolean).join(' ').toLowerCase();
@@ -517,6 +520,7 @@ function renderPrivateServersContent(game, view) {
                 ? `<div class="game-private-server-cap"><span>${row.playing} / ${row.capacity}</span><div class="game-server-capacity"><i style="width:${percent}%"></i></div></div>`
                 : `<span class="game-private-server-idle">${t('place.privateIdle')}</span>`}
             <div class="game-private-server-actions">
+              ${row.active !== false && row.accessCode ? `<button type="button" class="ghost-button game-page-icon-button" data-game-page-action="private-pin" data-place-id="${escapeHtml(String(game.id))}" data-access-code="${escapeHtml(row.accessCode)}" data-server-name="${escapeHtml(row.name || ownerName)}" data-tooltip="${preferences.language === 'en' ? 'Pin to Quick Launch' : 'В быстрый запуск'}" aria-label="${preferences.language === 'en' ? 'Pin to Quick Launch' : 'В быстрый запуск'}">${icon('star', 14)}</button>` : ''}
               ${hasConfig ? `<button type="button" class="ghost-button game-page-icon-button" data-game-page-action="private-config" data-vip-server-id="${escapeHtml(String(row.vipServerId))}" data-tooltip="${escapeHtml(t('place.privateConfigure'))}" aria-label="${escapeHtml(t('place.privateConfigure'))}">${icon('settings', 14)}</button>` : ''}
               <button type="button" class="ghost-button game-page-join" data-game-page-action="join-private" data-place-id="${escapeHtml(String(game.id))}" data-access-code="${escapeHtml(row.accessCode || '')}" ${full || row.active === false || !row.accessCode ? 'disabled' : ''}>${t(full ? 'place.full' : 'place.join')}</button>
             </div>
@@ -529,9 +533,20 @@ function renderPrivateServersContent(game, view) {
     }
   }
 
+  const privFilter = view.privateFilter || 'all';
+  const privFilterLabels = preferences.language === 'en'
+    ? [['all', 'All'], ['mine', 'Mine'], ['active', 'Active']]
+    : [['all', 'Все'], ['mine', 'Мои'], ['active', 'Активные']];
+  const privFilterBar = count ? `<div class="game-private-filter-bar" role="group">${privFilterLabels.map(([id, label]) =>
+    `<button type="button" class="filter-chip" data-game-page-action="private-filter" data-filter="${id}" aria-pressed="${privFilter === id}">${label}</button>`
+  ).join('')}</div>` : '';
+
   return `<section class="game-private-servers-section">
     <header class="game-private-servers-head">
-      <h3>${icon('lock', 14)} ${t('place.privateServersTitle')} ${count ? `<small>${count}</small>` : ''}</h3>
+      <div class="game-private-servers-head-left">
+        <h3>${icon('lock', 14)} ${t('place.privateServersTitle')} ${count ? `<small>${count}</small>` : ''}</h3>
+        ${privFilterBar}
+      </div>
       <button type="button" class="ghost-button game-page-icon-button" data-game-page-action="private-refresh" data-tooltip="${escapeHtml(t('game.refreshServers'))}" aria-label="${escapeHtml(t('game.refreshServers'))}" ${page.status === 'loading' ? 'disabled' : ''}>${icon('refreshCw', 13)}</button>
     </header>
     ${body}
@@ -547,15 +562,22 @@ function renderGameServers(game, view) {
     <label class="game-page-server-search">${icon('search', 15)}<input data-game-server-search type="search" value="${escapeHtml(view.serverSearch)}"
       aria-label="${t('place.serverSearch')}" placeholder="${t('place.serverSearch')}"></label>
     <div class="game-page-server-filters" role="group" aria-label="${t('game.servers')}">
-      ${['all', 'friends', 'small'].map(mode => `<button class="ghost-button" data-game-page-action="server-mode" data-mode="${mode}"
-        aria-pressed="${mode === view.serverMode}">${t('place.serverFilter.' + mode)}</button>`).join('')}
+      ${['all', 'friends', 'small'].map(mode => {
+        const modeTips = preferences.language === 'en'
+          ? { all: 'Show all public servers', friends: 'Servers where your friends are playing', small: 'Servers with the fewest players' }
+          : { all: 'Показать все публичные серверы', friends: 'Серверы, на которых сейчас играют друзья', small: 'Серверы с наименьшим числом игроков' };
+        return `<button class="ghost-button" data-game-page-action="server-mode" data-mode="${mode}"
+        data-tooltip="${escapeHtml(modeTips[mode])}"
+        aria-pressed="${mode === view.serverMode}">${t('place.serverFilter.' + mode)}</button>`;
+      }).join('')}
     </div>
-    <button class="ghost-button" data-game-page-action="server-refresh" ${page.status === 'loading' || (view.serverMode === 'friends' && friendsLoading) ? 'disabled' : ''}>${icon('refreshCw', 14)} ${t('game.refreshServers')}</button>
+    <button class="ghost-button" data-game-page-action="server-refresh" data-tooltip="${preferences.language === 'en' ? 'Reload public and private server lists' : 'Обновить список публичных и приватных серверов'}" ${page.status === 'loading' || (view.serverMode === 'friends' && friendsLoading) ? 'disabled' : ''}>${icon('refreshCw', 14)} ${t('game.refreshServers')}</button>
     <span id="game-page-private-cta">${renderPrivateServerCta(game, view)}</span>
   </div>
   <div class="game-page-server-toolbar-row">
     <div class="game-page-server-region-bar" role="group" aria-label="${t('place.regionFilterLabel')}">
       ${serverRegionFilterList.map(([id]) => `<button type="button" class="filter-chip" data-game-page-action="server-region" data-region="${id}" aria-pressed="${currentRegion === id}">${t('place.regionFilter.' + id)}</button>`).join('')}
+      <button type="button" class="filter-chip game-ping-regions-btn" data-game-page-action="ping-regions" data-tooltip="${preferences.language === 'en' ? 'Measure your real ping to all Roblox datacenters' : 'Измерить реальный пинг до всех датацентров Roblox'}">${icon('zap', 12)} ${preferences.language === 'en' ? 'Region Ping' : 'Пинг регионов'}</button>
     </div>
     <label class="game-server-private-toggle">
       <input type="checkbox" data-game-private-toggle ${showPrivate ? 'checked' : ''}>
@@ -962,3 +984,89 @@ document.addEventListener('click', async event => {
     }
   }
 });
+
+// ---- One-click Roblox Datacenter Region Ping Test Modal ----
+function closeRegionPingModal() {
+  document.getElementById('vortex-region-ping-modal')?.remove();
+}
+
+async function openRegionPingModal() {
+  closeRegionPingModal();
+  const isEn = preferences.language === 'en';
+  const overlay = document.createElement('div');
+  overlay.id = 'vortex-region-ping-modal';
+  overlay.className = 'vip-config-backdrop';
+  overlay.innerHTML = `<div class="vip-config-dialog region-ping-dialog" role="dialog" aria-modal="true" aria-label="${isEn ? 'Roblox Region Ping Test' : 'Пинг до регионов Roblox'}">
+    <header class="vip-config-header">
+      <h2>${icon('zap', 16)} ${isEn ? 'Roblox Datacenter Ping' : 'Пинг до регионов Roblox'}</h2>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button type="button" class="ghost-button game-page-icon-button" data-region-ping-action="retest" aria-label="${isEn ? 'Retest' : 'Повторить'}">${icon('refreshCw', 13)}</button>
+        <button type="button" class="icon-button" data-region-ping-action="close" aria-label="${escapeHtml(t('common.cancel'))}">${icon('close', 16)}</button>
+      </div>
+    </header>
+    <div class="vip-config-body" data-region-ping-body>
+      <p class="vip-config-loading">${isEn ? 'Measuring real latency to Roblox datacenters...' : 'Измеряем реальный пинг до датацентров Roblox...'}</p>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  const runProbe = async () => {
+    const body = overlay.querySelector('[data-region-ping-body]');
+    if (!body) return;
+    body.innerHTML = `<p class="vip-config-loading">${isEn ? 'Measuring real latency to Roblox datacenters...' : 'Измеряем реальный пинг до датацентров Roblox...'}</p>`;
+    try {
+      const res = await window.vortexDesktop?.pingRobloxRegions?.();
+      if (!overlay.isConnected) return;
+      const rows = Array.isArray(res?.regions) ? res.regions : [];
+      if (!rows.length) {
+        body.innerHTML = `<p class="game-page-note">${isEn ? 'Could not measure regions.' : 'Не удалось измерить пинг регионов.'}</p>`;
+        return;
+      }
+      const currentHop = preferences.serverHopRegion || 'any';
+      body.innerHTML = `<div class="region-ping-list">${rows.map(row => {
+        const ms = Number.isFinite(row.ping) ? row.ping : null;
+        const tone = ms === null ? 'muted' : ms < 80 ? 'good' : ms < 140 ? 'warn' : 'bad';
+        const selected = currentHop === row.group;
+        return `<div class="region-ping-row">
+          <div class="region-ping-info">
+            <span class="game-server-region-tag" data-region="${escapeHtml(row.group)}">${escapeHtml(row.label)}</span>
+            <strong>${escapeHtml(row.city)}</strong>
+          </div>
+          <div class="region-ping-right">
+            <span class="region-ping-ms is-${tone}">${ms !== null ? `${ms} ms` : '—'}</span>
+            <button type="button" class="ghost-button region-ping-pick" data-region-ping-action="pick" data-group="${escapeHtml(row.group)}" ${selected ? 'aria-pressed="true"' : ''}>
+              ${selected ? (isEn ? 'Selected' : 'Выбран') : (isEn ? 'Use for Hop' : 'Для Server Hop')}
+            </button>
+          </div>
+        </div>`;
+      }).join('')}</div>
+      <p class="game-page-note" style="margin-top:10px;">${isEn ? 'Direct TCP RTT to Roblox UDMUX datacenter edges. Pick your lowest-ping region for Server Hop.' : 'Прямой TCP RTT до узлов Roblox UDMUX. Выбери ближайший регион для Server Hop.'}</p>`;
+    } catch {
+      if (overlay.isConnected && body) {
+        body.innerHTML = `<p class="game-page-note">${isEn ? 'Ping test failed.' : 'Ошибка замера пинга.'}</p>`;
+      }
+    }
+  };
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) { closeRegionPingModal(); return; }
+    const btn = e.target.closest?.('[data-region-ping-action]');
+    if (!btn) return;
+    const act = btn.dataset.regionPingAction;
+    if (act === 'close') { closeRegionPingModal(); return; }
+    if (act === 'retest') { void runProbe(); return; }
+    if (act === 'pick') {
+      const group = btn.dataset.group || 'any';
+      preferences.serverHopRegion = group;
+      savePreferences();
+      showToast(isEn ? `Server Hop region set: ${group.toUpperCase()}` : `Регион Server Hop: ${group.toUpperCase()}`);
+      overlay.querySelectorAll('[data-region-ping-action="pick"]').forEach(el => {
+        const isSel = el.dataset.group === group;
+        el.setAttribute('aria-pressed', String(isSel));
+        el.textContent = isSel ? (isEn ? 'Selected' : 'Выбран') : (isEn ? 'Use for Hop' : 'Для Server Hop');
+      });
+    }
+  });
+
+  await runProbe();
+}

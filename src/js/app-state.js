@@ -54,7 +54,23 @@ function navOrder(group = 'menu') {
 
 function navItemMarkup(item) {
   const label = t(`nav.${item.key}`);
-  return `<button class="nav-item" type="button" data-nav="${item.key}" aria-label="${label}" data-tooltip="${label}"><span class="nav-icon" data-icon="${item.icon}"></span><span>${label}</span></button>`;
+  const isEn = preferences.language === 'en';
+  const desc = (isEn ? {
+    home: 'Home dashboard: recent games, activity and picks',
+    catalog: 'Browse popular, recommended and paid Roblox games',
+    library: 'Favorites, recent launches, collections and playtime stats',
+    plans: 'Games you plan to play later',
+    friends: 'Online friends and instant join to their servers',
+    settings: 'Appearance, in-game overlay, hotkeys, integrations and safety'
+  } : {
+    home: 'Главная: недавние игры, активность и подборки',
+    catalog: 'Каталог популярных, рекомендованных и платных игр Roblox',
+    library: 'Избранное, недавние запуски, коллекции и статистика времени',
+    plans: 'Игры, в которые планируешь поиграть позже',
+    friends: 'Друзья в сети и быстрый вход на их серверы',
+    settings: 'Внешний вид, оверлей, хоткеи, интеграции и безопасность'
+  })[item.key] || label;
+  return `<button class="nav-item" type="button" data-nav="${item.key}" aria-label="${label}" data-tooltip="${escapeHtml(desc)}"><span class="nav-icon" data-icon="${item.icon}"></span><span>${label}</span></button>`;
 }
 
 function renderSidebarNav() {
@@ -91,6 +107,7 @@ const preferenceDefaults = {
   discordPresence: false, friendFavoriteAlerts: false, discordClientId: '', streamMode: false, gamingMode: true, textScale: 100,
   gameOverlay: false, gameOverlayCorner: 'top-right', gameOverlayCustomX: 96, gameOverlayCustomY: 4,
   gameOverlayScale: 100, gameOverlayGap: 5, gameOverlayOpacity: 74,
+  gameOverlayStyle: 'capsule', gameOverlayBadPing: 130, gameOverlayLowFps: 30,
   gameOverlayHideFullscreen: false, gameOverlayMinimal: false,
   gameOverlayTimer: true, gameOverlayFps: true, gameOverlayPing: true, gameOverlayStability: false,
   gameOverlayRegion: true, gameOverlayBadPingPrompt: true, gameOverlaySystem: false, gameOverlayFriendJoin: true,
@@ -99,6 +116,7 @@ const preferenceDefaults = {
   serverHopHotkey: '', serverHopMode: 'low-ping', serverHopRegion: 'any', serverHopExcludeVisited: true, rejoinHotkey: '',
   showPrivateServers: true,
   confirmLaunch: false, confirmDelete: true,
+  gameNotes: {}, gameAliases: {},
   diskCache: true, lazyImages: true, onlineHistoryLimit: 'week', trayMiniPlayer: true,
   trayFavoritesLimit: 5, trayQuickLimit: 3, trayFavoritesUnlimited: false, trayQuickUnlimited: false,
   catalogGroupByGenre: false,
@@ -386,6 +404,34 @@ let discoverySorts = readStored('vortex.discoverySorts', []);
 let discoveryCatalog = readStored('vortex.discoveryCatalog', {});
 let activeDiscoverySort = readStored('vortex.activeDiscoverySort', 'top-trending');
 if (activeDiscoverySort === 'gems') activeDiscoverySort = 'like-percentage';
+
+// Hydrate heavy catalog/game caches from IndexedDB when localStorage was empty
+// or trimmed due to the ~5 MB quota.
+async function hydrateIdbCaches() {
+  if (!window.vortexIdbCache?.get) return false;
+  let updated = false;
+  try {
+    const [idbDiscovered, idbCatalog] = await Promise.all([
+      window.vortexIdbCache.get('vortex.discovered'),
+      window.vortexIdbCache.get('vortex.discoveryCatalog')
+    ]);
+    if (Array.isArray(idbDiscovered) && idbDiscovered.length > dynamicGames.length) {
+      const merged = new Map(idbDiscovered.map((g) => [String(g.id), g]));
+      for (const g of dynamicGames) merged.set(String(g.id), g);
+      dynamicGames = [...merged.values()].slice(-1200);
+      updated = true;
+    }
+    if (idbCatalog && typeof idbCatalog === 'object' && !Array.isArray(idbCatalog)) {
+      const idbKeys = Object.keys(idbCatalog);
+      const memKeys = Object.keys(discoveryCatalog || {});
+      if (idbKeys.length > memKeys.length) {
+        discoveryCatalog = { ...idbCatalog, ...(discoveryCatalog || {}) };
+        updated = true;
+      }
+    }
+  } catch { /* Non-fatal if IndexedDB is unavailable. */ }
+  return updated;
+}
 function createSearchSessionId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
@@ -470,13 +516,30 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 }
 
+let savePreferencesTimer = 0;
 function savePreferences() {
+  if (savePreferencesTimer) {
+    window.clearTimeout(savePreferencesTimer);
+    savePreferencesTimer = 0;
+  }
   accountStorage.setItem('vortex.preferences', JSON.stringify(preferences));
   // Any preference change may affect the tray's look, so it re-reports its
   // style payload together with the recent games on every save.
   reportRecentGamesToTray();
   reportGameOverlay();
 }
+
+function savePreferencesDebounced(delay = 150) {
+  if (savePreferencesTimer) window.clearTimeout(savePreferencesTimer);
+  savePreferencesTimer = window.setTimeout(() => {
+    savePreferencesTimer = 0;
+    savePreferences();
+  }, delay);
+}
+
+window.addEventListener('beforeunload', () => {
+  if (savePreferencesTimer) savePreferences();
+});
 
 // Compact color field: the full picker lives in a popover that opens on click,
 // so the settings page stays dense and the picker itself matches the app.

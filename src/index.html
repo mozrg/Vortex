@@ -46,13 +46,13 @@
         <aside class="sidebar" id="app-sidebar">
         <nav class="primary-nav" data-nav-group="topbar" aria-label="Основные разделы" data-i18n-aria="topbar.primaryNav"></nav>
         <nav class="primary-nav" data-nav-group="menu" aria-label="Основная навигация" data-i18n-aria="sidebar.primaryNav">
-          <button class="nav-item" data-nav="library"><span class="nav-icon" data-icon="book"></span><span data-i18n="nav.library">Библиотека</span></button>
-          <button class="nav-item" data-nav="plans"><span class="nav-icon" data-icon="flag"></span><span data-i18n="nav.plans">В планах</span></button>
+          <button class="nav-item" data-nav="library" data-tooltip="Избранные, недавние и коллекции игр"><span class="nav-icon" data-icon="book"></span><span data-i18n="nav.library">Библиотека</span></button>
+          <button class="nav-item" data-nav="plans" data-tooltip="Игры, в которые планируешь поиграть позже"><span class="nav-icon" data-icon="flag"></span><span data-i18n="nav.plans">В планах</span></button>
         </nav>
         <section class="quick-launch-section" aria-label="Быстрый запуск">
           <div class="quick-launch-heading"><span data-i18n="quick.title">Быстрый запуск</span><div class="quick-heading-tools">
-            <button class="quick-launch-add icon-button" type="button" data-launcher-action="folder-import" data-i18n-aria="tools.openFolder" aria-label="Импорт папки"><span data-icon="fileUp"></span></button>
-            <button class="quick-launch-add icon-button" type="button" data-action="open-quick-game-modal" data-i18n-aria="quick.add" aria-label="Добавить быстрый запуск"><span data-icon="plus"></span></button>
+            <button class="quick-launch-add icon-button" type="button" data-launcher-action="folder-import" data-tooltip="Импортировать папку быстрого запуска из файла или кода" data-i18n-aria="tools.openFolder" aria-label="Импорт папки"><span data-icon="fileUp"></span></button>
+            <button class="quick-launch-add icon-button" type="button" data-action="open-quick-game-modal" data-tooltip="Добавить игру, приватный сервер или ссылку в быстрый запуск" data-i18n-aria="quick.add" aria-label="Добавить быстрый запуск"><span data-icon="plus"></span></button>
           </div></div>
           <div class="quick-launch-items" id="quick-launch-items"></div>
         </section>
@@ -61,10 +61,10 @@
           <div class="sidebar-tip" data-ui-part="tip">
             <div class="tip-orbit"><span data-icon="sparkle"></span></div>
             <p data-i18n="sidebar.tip">Новый мир<br />уже где-то рядом</p>
-            <button class="text-button" data-nav="catalog"><span data-i18n="sidebar.explore">Исследовать</span><span data-icon="arrowUpRight"></span></button>
+            <button class="text-button" data-nav="catalog" data-tooltip="Открыть каталог популярных и рекомендованных игр"><span data-i18n="sidebar.explore">Исследовать</span><span data-icon="arrowUpRight"></span></button>
           </div>
           <nav class="primary-nav sidebar-nav-bottom" aria-label="Настройки" data-i18n-aria="nav.settings">
-            <button class="nav-item" data-nav="settings"><span class="nav-icon" data-icon="settings"></span><span data-i18n="nav.settings">Настройки</span></button>
+            <button class="nav-item" data-nav="settings" data-tooltip="Тема, оверлей, хоткеи, интеграции и безопасность"><span class="nav-icon" data-icon="settings"></span><span data-i18n="nav.settings">Настройки</span></button>
           </nav>
         </div>
       </aside>
@@ -77,10 +77,11 @@
             <kbd>Ctrl K</kbd>
           </label>
           <div class="app-bar-actions">
-            <button class="icon-button stream-switch" type="button" data-launcher-action="stream-toggle" data-i18n-aria="tools.stream" aria-label="Режим стрима" aria-pressed="false"><span data-icon="eyeOff"></span></button>
-            <button class="icon-button notification-button" data-ui-part="notifications" data-i18n-aria="notifications" aria-label="Уведомления" data-action="notifications"><span data-icon="bell"></span><i></i></button>
-            <span class="topbar-robux" data-account-robux hidden></span>
-            <button class="avatar avatar-small" type="button" data-action="toggle-friends-drawer" data-i18n-aria="friends.drawer.open" aria-label="Открыть друзей" aria-controls="friends-drawer" aria-haspopup="dialog" aria-expanded="false"><span class="avatar-letter" data-account-avatar>V</span></button>
+            <button class="icon-button topbar-api-status" id="topbar-api-status" type="button" data-action="open-api-status" aria-label="Статус Roblox API" hidden><span data-icon="server"></span><i class="topbar-api-dot" aria-hidden="true"></i></button>
+            <button class="icon-button stream-switch" type="button" data-launcher-action="stream-toggle" data-i18n-aria="tools.stream" data-tooltip="Режим стрима: скрывает логины и приватные серверы" aria-label="Режим стрима" aria-pressed="false"><span data-icon="eyeOff"></span></button>
+            <button class="icon-button notification-button" data-ui-part="notifications" data-i18n-aria="notifications" data-tooltip="Уведомления и обновления Vortex" aria-label="Уведомления" data-action="notifications"><span data-icon="bell"></span><i></i></button>
+            <span class="topbar-robux" data-account-robux data-tooltip="Баланс Robux на привязанном аккаунте" hidden></span>
+            <button class="avatar avatar-small" type="button" data-action="toggle-friends-drawer" data-i18n-aria="friends.drawer.open" data-tooltip="Открыть панель друзей" aria-label="Открыть друзей" aria-controls="friends-drawer" aria-haspopup="dialog" aria-expanded="false"><span class="avatar-letter" data-account-avatar>V</span></button>
           </div>
         </header>
         <section class="update-banner" id="update-banner" aria-live="polite" hidden></section>
@@ -129,6 +130,7 @@
     <div class="toast-region" id="toast-region" aria-live="polite"></div>
     <script src="./js/icons.js"></script>
     <script src="./js/overlays.js"></script>
+    <script src="./js/cache-idb.js"></script>
     <script src="./js/library-storage.js"></script>
     <script src="./js/color.js"></script>
     <script src="./js/i18n.js"></script>

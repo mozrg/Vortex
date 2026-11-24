@@ -42,9 +42,10 @@ const settingIndex = [
   ['home', 'homeGameView', 'settings.home.gameView', 'главная вид список сетка плитки home layout list grid'],
   ['accent', 'accent', 'settings.accent.title', 'цвет акцент accent color'],
   ['accent', 'theme', 'tools.themePreview', 'цвет тема theme предпросмотр'],
+  ['accent', 'copy-theme-code', 'settings.themeExport', 'код темы поделиться темой VORTEXTH1 theme share code export import'],
   ['effects', 'motion', 'settings.motion.title', 'анимация анимации эффекты motion animation'],
   ['effects', 'gamingMode', 'tools.gaming', 'игра режим game mode'],
-  ['in-game', 'gameOverlay', 'overlay.title', 'fps фпс ping пинг overlay оверлей таймер счетчик кадров друзья онлайн регион время jitter стабильность прозрачность размер hud'],
+  ['in-game', 'gameOverlay', 'overlay.title', 'fps фпс ping пинг overlay оверлей таймер счетчик кадров друзья онлайн регион время jitter стабильность прозрачность размер hud стиль капсула без фона вертикальный порог полноэкранный минимальный fullscreen style threshold'],
   ['hotkeys', 'muteRobloxHotkey', 'hotkeys.gameTitle', 'хоткеи горячие клавиши звук роблокс mute server hop смена сервера перезайти rejoin инвайт'],
   ['interface', 'textScale', 'tools.textScale', 'шрифт размер масштаб интерфейс text font zoom'],
   ['interface', 'sidebarAutoHide', 'settings.ui.autoHide', 'боковая панель sidebar'],
@@ -52,10 +53,12 @@ const settingIndex = [
   ['tray', 'trayMiniPlayer', 'settings.tray.miniPlayer', 'трей окно мини плеер tray now playing'],
   ['tray', 'trayScale', 'settings.tray.scale', 'трей размер масштаб tray size'],
   ['general', 'saveHistory', 'settings.history.title', 'история время сессии журнал history session tracking'],
+  ['general', 'confirmLaunch', 'settings.safety.confirmLaunch', 'безопасность подтверждение запуск удаление ссылки safety confirm launch delete'],
+  ['general', 'confirmDelete', 'settings.safety.confirmDelete', 'безопасность подтверждение удаление safety confirm delete'],
   ['general', 'streamMode', 'tools.stream', 'стрим приватность запись stream privacy'],
   ['integrations', 'discordPresence', 'settings.integrations.discord', 'дискорд discord'],
   ['integrations', 'cookie', 'settings.presence.cookie', 'roblox roblosecurity друзья cookie'],
-  ['data', 'export-data', 'settings.data.export', 'копия экспорт перенос backup export'],
+  ['data', 'export-data', 'settings.data.export', 'копия экспорт импорт перенос бэкап резервная копия backup export restore'],
   ['version', 'download-update', 'updates.download', 'версия обновление update install']
 ];
 

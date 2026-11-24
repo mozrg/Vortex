@@ -244,19 +244,23 @@ let toastTimer;
 // favorites, recent and playtime stats. Version field guards imports.
 const DATA_EXPORT_VERSION = 1;
 async function buildDataExport() {
-  await activityClockReady;
+  await Promise.resolve(activityClockReady).catch(() => {});
+  const safePrefs = { ...preferences };
+  delete safePrefs.robloxCookie;
   return {
     app: 'vortex',
     version: DATA_EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     data: {
-      preferences,
+      preferences: safePrefs,
       customGames: preferences.customGames || [],
       favorites: [...favorites],
       recentGames,
       playStats,
       activityData,
-      sessionHistory: await sessionJournal.recent(Infinity),
+      profiles: typeof readProfiles === 'function' ? readProfiles() : {},
+      friendPins: readStored('vortex.friendPins', {}),
+      sessionHistory: await sessionJournal.recent(Infinity).catch(() => []),
       recentDetails: recentMetadata()
     }
   };
@@ -295,7 +299,14 @@ async function applyDataImport(payload) {
     runtimeConfirmedAt = 0;
   }
   savePreferences();
+  applyPreferences();
   accountStorage.setItem('vortex.favorites', JSON.stringify([...favorites]));
+  if (data.profiles && typeof data.profiles === 'object' && !Array.isArray(data.profiles) && typeof writeProfiles === 'function') {
+    writeProfiles({ ...(typeof readProfiles === 'function' ? readProfiles() : {}), ...data.profiles });
+  }
+  if (data.friendPins && typeof data.friendPins === 'object' && !Array.isArray(data.friendPins)) {
+    accountStorage.setItem('vortex.friendPins', JSON.stringify(data.friendPins));
+  }
   saveRecentGames(recentGames);
   if (Array.isArray(data.recentGames)) saveRecentDetails(data.recentDetails || {});
   persistActivityData();
@@ -407,7 +418,12 @@ function renderAnnouncementList(highlightIds) {
     return;
   }
 
-  for (const item of announcementItems) {
+  const sortedAnnouncements = [...announcementItems]
+    .map((item, idx) => ({ item, idx, ts: Date.parse(item?.date || '') || 0 }))
+    .sort((a, b) => (b.ts - a.ts) || (b.idx - a.idx))
+    .map((entry) => entry.item);
+
+  for (const item of sortedAnnouncements) {
     const row = document.createElement('article');
     row.className = `announcement level-${item.level}`;
     if (isUnread(item)) row.classList.add('is-unread');

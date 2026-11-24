@@ -1,0 +1,185 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --sp-bg: #11101a;
+  --sp-surface: #181724;
+  --sp-text: #f3f2f8;
+  --sp-muted: #9b97b2;
+  --sp-line: rgba(255, 255, 255, 0.09);
+  --sp-accent: #a68bff;
+  --sp-accent-2: #5b3fd6;
+}
+
+body.light-theme {
+  --sp-bg: #f4f5f8;
+  --sp-surface: #ffffff;
+  --sp-text: #1c1a26;
+  --sp-muted: #6e6a80;
+  --sp-line: rgba(34, 28, 52, 0.12);
+}
+
+body.oled-theme {
+  --sp-bg: #030306;
+  --sp-surface: #09090f;
+  --sp-line: rgba(255, 255, 255, 0.07);
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  padding: 10px;
+}
+
+.splash-card {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 20px;
+  border: 1px solid var(--sp-line);
+  background: linear-gradient(165deg, var(--sp-surface) 0%, var(--sp-bg) 100%);
+  color: var(--sp-text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 28px 22px;
+  overflow: hidden;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.48);
+  animation: splash-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.splash-card.is-leaving {
+  opacity: 0;
+  transform: scale(0.965);
+}
+
+.splash-glow {
+  position: absolute;
+  top: -70px;
+  left: 50%;
+  width: 240px;
+  height: 150px;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--sp-accent) 42%, transparent) 0%, transparent 72%);
+  filter: blur(22px);
+  pointer-events: none;
+}
+
+.splash-emblem {
+  position: relative;
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 2px;
+}
+
+.splash-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  border-top-color: var(--sp-accent);
+  border-right-color: color-mix(in srgb, var(--sp-accent) 36%, transparent);
+  animation: splash-spin 1.6s linear infinite;
+}
+
+.splash-ring-inner {
+  inset: 7px;
+  border-top-color: transparent;
+  border-bottom-color: color-mix(in srgb, var(--sp-accent-2) 70%, var(--sp-accent));
+  animation: splash-spin 2.4s linear infinite reverse;
+}
+
+.splash-logo {
+  width: 34px;
+  height: 34px;
+  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--sp-accent) 55%, transparent));
+  animation: splash-pulse 2.2s ease-in-out infinite;
+}
+
+.splash-brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.splash-brand h1 {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1;
+}
+
+.splash-version {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--sp-muted);
+  opacity: 0.58;
+  letter-spacing: 0.02em;
+}
+
+.splash-status {
+  font-size: 12px;
+  color: var(--sp-muted);
+  min-height: 16px;
+}
+
+.splash-track {
+  width: 100%;
+  max-width: 240px;
+  height: 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sp-text) 9%, transparent);
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.splash-bar {
+  position: relative;
+  height: 100%;
+  width: 32%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--sp-accent-2), var(--sp-accent));
+  transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+
+.splash-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: splash-shimmer 1.15s ease-in-out infinite;
+}
+
+@keyframes splash-in {
+  from { opacity: 0; transform: scale(0.95) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes splash-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes splash-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
+@keyframes splash-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(160%); }
+}

@@ -1,5 +1,6 @@
 let friendsCache = { at: 0, data: null };const FRIENDS_TTL = 30 * 1000;
 let friendsLoading = false;
+let friendsLoadingStartedAt = 0;
 let friendsAutoDetectStarted = false;
 // First visit to the Friends page with no username: detect the local Roblox
 // account automatically, so the user never has to type anything.
@@ -46,7 +47,7 @@ function friendsErrorCopy(data) {
 // hover (avatar, game, join) in a floating preview panel.
 function renderFriends() {
   const username = String(preferences.robloxUsername || '').trim();
-  const refreshAction = `<button class="ghost-button icon-only-button friends-refresh" data-action="refresh-friends" ${friendsLoading ? 'disabled' : ''} aria-label="${t('friends.refresh')}" data-tooltip="${t('friends.refresh')}">${icon('refreshCw', 15)}</button>`;
+  const refreshAction = `<button type="button" class="ghost-button icon-only-button friends-refresh" data-action="refresh-friends" ${friendsLoading ? 'disabled aria-busy="true"' : ''} aria-label="${t('friends.refresh')}" data-tooltip="${t('friends.refresh')}">${icon('refreshCw', 15)}</button>`;
   const heading = pageHeading(t('page.friends.eyebrow'), t('page.friends.title'), t('page.friends.description'), refreshAction);
   if (!username) {
     autoDetectRobloxAccountOnce();
@@ -76,8 +77,10 @@ function renderFriends() {
   const presenceNote = data.livePresence ? '' : `<div class="friends-presence-note">${icon('bell', 12)} ${t('friends.presenceOff')}</div>`;
   const card = (friend) => {
     const name = friend.displayName || friend.name || t('friends.unknown');
-    const gameName = friend.presence === 'playing' ? (friend.gameName || t('friends.inGame')) : '';
-    return `<article class="friend-card ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" data-friend-name="${escapeHtml(name)}" data-friend-avatar="${escapeHtml(friend.avatar || '')}" data-game-name="${escapeHtml(gameName)}" data-game-thumb="${escapeHtml(friend.presence === 'playing' ? friend.gameThumbnail || '' : '')}" tabindex="0">
+    const knownGame = friend.placeId ? getGame(String(friend.placeId)) : null;
+    const gameName = friend.presence === 'playing' ? (knownGame?.title || friend.gameName || t('friends.inGame')) : '';
+    const gameThumb = friend.presence === 'playing' ? (safeThumbnail(knownGame?.icon || knownGame?.thumbnail) || friend.gameThumbnail || '') : '';
+    return `<article class="friend-card ${friend.presence}" data-friend-id="${escapeHtml(friend.id)}" data-friend-name="${escapeHtml(name)}" data-friend-avatar="${escapeHtml(friend.avatar || '')}" data-place-id="${escapeHtml(friend.placeId || '')}" data-game-name="${escapeHtml(gameName)}" data-game-thumb="${escapeHtml(gameThumb)}" tabindex="0">
       <span class="friend-avatar ${friend.avatar ? 'has-avatar' : ''}">${friend.avatar ? `<img src="${escapeHtml(friend.avatar)}" alt="" loading="eager" decoding="async" />` : escapeHtml(name[0].toLocaleUpperCase())}</span>
       <span class="friend-copy"><strong>${escapeHtml(name)}</strong><small>${friend.presence === 'playing' ? escapeHtml(gameName) : friend.presence === 'online' ? t('friends.online') : t('friends.offline')}</small></span>
       ${friendPinControls(friend, pins)}${friend.presence === 'playing' && friend.placeId ? `<button class="friend-join" data-friend-join="${escapeHtml(friend.placeId)}" data-friend-game="${escapeHtml(friend.gameId || '')}" data-tooltip="${t('friends.join')}">${icon('play', 12)}</button>` : ''}
@@ -99,27 +102,34 @@ function renderFriends() {
 }
 
 async function loadFriends(username, force = false) {
-  if (friendsLoading) return;
+  if (friendsLoading && Date.now() - friendsLoadingStartedAt < 15000) return;
   if (!force && friendsCache.username === username && friendsCache.data && Date.now() - friendsCache.at <= FRIENDS_TTL) return;
   friendsLoading = true;
+  friendsLoadingStartedAt = Date.now();
   const refresh = pageContent.querySelector('[data-action="refresh-friends"]');
   if (refresh) { refresh.disabled = true; refresh.setAttribute('aria-busy', 'true'); }
   renderFriendsDrawer();
+  let ok = false;
   try {
     const data = await window.vortexDesktop?.listFriends(username);
     if (username !== String(preferences.robloxUsername || '').trim()) return;
     friendsCache = { at: Date.now(), username, data: data || { ok: false, error: 'unavailable' } };
-    if (data?.ok) { notifyFriendsInFavorites(data.friends); notifyPinnedFriends(data.friends || []); }
+    ok = Boolean(data?.ok);
+    if (ok) { notifyFriendsInFavorites(data.friends); notifyPinnedFriends(data.friends || []); }
   } catch {
     if (username === String(preferences.robloxUsername || '').trim()) {
       friendsCache = { at: Date.now(), username, data: { ok: false, error: 'network' } };
     }
   } finally {
     friendsLoading = false;
+    friendsLoadingStartedAt = 0;
     reportGameOverlay();
     if (currentView === 'friends' || shouldRefreshCatalogFriends() || isCurrentGamePage(detailGame?.id, 'overview') ||
         isCurrentGamePage(detailGame?.id, 'friends') || isCurrentGamePage(detailGame?.id, 'servers')) renderPage();
     renderFriendsDrawer();
+    if (force && ok && currentView === 'friends') {
+      showToast(preferences.language === 'en' ? 'Friends list updated' : 'Список друзей обновлён');
+    }
   }
 }
 

@@ -80,6 +80,7 @@
     hud.style.setProperty('--hud-scale', scale.toFixed(2));
     hud.style.setProperty('--hud-gap', `${gap}px`);
     hud.style.setProperty('--hud-opacity', opacity.toFixed(2));
+    hud.dataset.style = ['capsule', 'frameless', 'vertical'].includes(data.style) ? data.style : 'capsule';
     hud.dataset.badServer = data.badServer ? 'true' : 'false';
 
     showClock = Boolean(data.showClock);
@@ -96,11 +97,16 @@
     metrics.timer.hidden = !start;
     metrics.timer.lastElementChild.textContent = english ? 'Session' : 'Сессия';
 
+    const lowFpsThreshold = Number(data.lowFps) || 30;
+    const badPingThreshold = Number(data.badPingMs) || 130;
+
     metrics.fps.hidden = data.fps == null;
     metrics.fps.firstElementChild.textContent = data.fps?.measured ?? '—';
+    metrics.fps.dataset.low = (Number.isFinite(data.fps?.measured) && data.fps.measured < lowFpsThreshold) ? 'true' : 'false';
 
     metrics.ping.hidden = data.ping == null;
     metrics.ping.firstElementChild.textContent = data.ping?.measured ?? '—';
+    metrics.ping.dataset.bad = (Number.isFinite(data.ping?.measured) && data.ping.measured >= badPingThreshold) ? 'true' : 'false';
 
     if (metrics.stability) {
       metrics.stability.hidden = !data.showStability;

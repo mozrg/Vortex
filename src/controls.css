@@ -96,7 +96,7 @@ body .settings-tabs .settings-tab > .settings-tab-glyph { display: inline-flex; 
 .home-widget-head .home-game-view { margin-inline-start: 2px; }
 .home-widget-head:has(.home-game-view) { flex-wrap: wrap; }
 
-.settings-panel :is(.home-greeting-field,.custom-game-form,.profile-editor,.presence-form,.discord-id-field,.roblox-username-field) .control-field {
+.settings-panel :is(.home-greeting-field,.custom-game-form,.profile-editor,.presence-form,.discord-id-field,.roblox-username-field,.theme-code-controls) .control-field {
   min-height: var(--control-height);
   border: 1px solid var(--line);
   border-radius: var(--control-radius);
@@ -106,8 +106,8 @@ body .settings-tabs .settings-tab > .settings-tab-glyph { display: inline-flex; 
   font: 450 calc(12px * var(--vortex-text-scale, 1))/1.45 var(--font-ui);
   transition: border-color var(--control-speed), background-color var(--control-speed), box-shadow var(--control-speed);
 }
-.settings-panel :is(.home-greeting-field,.custom-game-form,.profile-editor,.presence-form,.discord-id-field,.roblox-username-field) .control-field::placeholder { color: var(--muted); opacity: 1; }
-.settings-panel :is(.home-greeting-field,.custom-game-form,.profile-editor,.presence-form,.discord-id-field,.roblox-username-field) .control-field:focus {
+.settings-panel :is(.home-greeting-field,.custom-game-form,.profile-editor,.presence-form,.discord-id-field,.roblox-username-field,.theme-code-controls) .control-field::placeholder { color: var(--muted); opacity: 1; }
+.settings-panel :is(.home-greeting-field,.custom-game-form,.profile-editor,.presence-form,.discord-id-field,.roblox-username-field,.theme-code-controls) .control-field:focus {
   outline: none;
   border-color: var(--accent-border);
   background: var(--control-surface);

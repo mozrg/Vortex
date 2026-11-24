@@ -139,7 +139,8 @@ async function resolvePlayingGame(id) {
     const game = normalizeDiscoveredGame(response.game, id);
     game.id = id;
     dynamicGames = [...dynamicGames.filter(item => String(item.id) !== id), game].slice(-1200);
-    localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames));
+    if (window.vortexIdbCache?.persistCache) window.vortexIdbCache.persistCache('vortex.discovered', dynamicGames);
+    else try { localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames)); } catch { /* In-memory cache. */ }
     saveRecentGames(recentGames);
     if (nowPlayingSnapshot?.id === id) {
       nowPlayingSnapshot.title = game.title;
@@ -401,7 +402,8 @@ async function fetchLiveSearch(append = false) {
     const storedGames = new Map(dynamicGames.map((game) => [String(game.id), game]));
     received.forEach((game) => storedGames.set(game.id, game));
     dynamicGames = [...storedGames.values()].slice(-800);
-    try { localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames)); } catch { /* Current search results remain in memory. */ }
+    if (window.vortexIdbCache?.persistCache) window.vortexIdbCache.persistCache('vortex.discovered', dynamicGames);
+    else try { localStorage.setItem('vortex.discovered', JSON.stringify(dynamicGames)); } catch { /* Current search results remain in memory. */ }
     searchSessionId = response.sessionId || searchSessionId;
     searchPageToken = response.nextPageToken || null;
     searchStatus = 'success';

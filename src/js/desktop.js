@@ -31,8 +31,9 @@
     getUpdateState: () => invoke('updates_get_state'),
     retryUpdateCheck: () => invoke('updates_retry'),
     downloadUpdate: () => invoke('updates_download'),
-    installUpdate: () => invoke('updates_install'),
+    installUpdate: (opts = {}) => invoke('updates_install', opts),
     onUpdateState: (callback) => handleEvent('updates:state', callback),
+    notifyAppReady: () => invoke('app_ready'),
 
     // Game search and details
     searchGames: (request) => invoke('games_search', request),
@@ -46,6 +47,7 @@
     updatePrivateServer: (request) => invoke('games_private_server_update', { ...request, profileId: activeAccountProfile }),
     updatePrivateServerPermissions: (request) => invoke('games_private_server_permissions', { ...request, profileId: activeAccountProfile }),
     resolveGameServers: (request) => invoke('games_resolve_servers', { ...request, profileId: activeAccountProfile }),
+    pingRobloxRegions: () => invoke('games_ping_regions'),
     getGameOnline: (request) => invoke('games_online', request),
     getSimilarGames: (request) => invoke('games_similar', request),
     getFeaturedGames: (placeIds) => invoke('games_featured', { placeIds }),

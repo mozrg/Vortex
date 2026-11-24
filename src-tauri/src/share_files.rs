@@ -17,7 +17,7 @@ pub async fn save_share_file(
     let csv = filename.ends_with(".csv");
     if contents.len() > if csv { 16 * 1024 * 1024 } else { 1024 * 1024 }
         || filename.len() > 255
-        || ![".vortex-folder.json", ".vortex-collection.json", ".csv"]
+        || ![".vortex-folder.json", ".vortex-collection.json", ".json", ".csv"]
             .iter()
             .any(|suffix| filename.ends_with(suffix))
         || filename.chars().any(|ch| ch.is_control() || "/\\:\"<>|?*".contains(ch))

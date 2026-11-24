@@ -70,6 +70,7 @@ function renderVortexPopup({ label, trigger, panel, className = '', triggerClass
   function tooltipFor(node) {
     const target = node?.closest?.(tipTarget);
     if (!target || target.closest('[data-preview], .vortex-dropdown-panel')) return null;
+    if (target.matches('[data-no-tooltip], .friends-drawer-backdrop, .quick-game-modal-backdrop')) return null;
     if (target.hasAttribute('data-tooltip')) return target;
     const name = target.getAttribute('aria-label');
     const visible = target.textContent.trim();

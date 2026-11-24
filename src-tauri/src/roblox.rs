@@ -110,7 +110,7 @@ pub async fn fetch_json_post(
 /// Cached GET: check the in-memory cache first, then the network.
 pub async fn fetch_cached_json(state: &AppState, url: &str) -> Result<Value, String> {
     {
-        let cache = state.response_cache.lock().unwrap();
+        let cache = crate::state::lock_or_recover(&state.response_cache);
         if let Some(entry) = cache.get(url) {
             if !entry.is_expired() {
                 return Ok(entry.value.clone());
@@ -122,18 +122,20 @@ pub async fn fetch_cached_json(state: &AppState, url: &str) -> Result<Value, Str
 
 pub async fn refresh_cached_json(state: &AppState, url: &str) -> Result<Value, String> {
     let value = fetch_json(url, None).await?;
-    let mut cache = state.response_cache.lock().unwrap();
+    let mut cache = crate::state::lock_or_recover(&state.response_cache);
     if cache.len() > 400 {
-        let now = Instant::now();
         cache.retain(|_, entry| !entry.is_expired());
         if cache.len() > 350 {
-            // Drop oldest entries until under cap.
-            let keys: Vec<String> = cache.keys().cloned().collect();
-            for key in keys.iter().skip(350) {
-                cache.remove(key);
+            let mut entries: Vec<(String, Instant)> = cache
+                .iter()
+                .map(|(k, entry)| (k.clone(), entry.expires_at))
+                .collect();
+            entries.sort_by_key(|(_, expires_at)| *expires_at);
+            let to_drop = entries.len().saturating_sub(350);
+            for (key, _) in entries.into_iter().take(to_drop) {
+                cache.remove(&key);
             }
         }
-        let _ = now;
     }
     cache.insert(
         url.to_string(),
@@ -373,7 +375,7 @@ const PAID_QUERIES_PER_SCAN: usize = 4;
 const PAID_MAX_PAGES_PER_QUERY: usize = 4;
 
 pub async fn collect_paid_universe_ids(state: &AppState) -> (Vec<String>, i32, bool) {
-    let cursor = *state.paid_cursor.lock().unwrap();
+    let cursor = *crate::state::lock_or_recover(&state.paid_cursor);
     let total = PAID_QUERY_POOL.len() as i32;
     let queries: Vec<&str> = (0..PAID_QUERIES_PER_SCAN as i32)
         .map(|step| PAID_QUERY_POOL[((cursor + step) as usize) % total as usize])
@@ -443,20 +445,21 @@ pub async fn collect_paid_universe_ids(state: &AppState) -> (Vec<String>, i32, b
     }
 
     let wrapped = progress >= total;
-    *state.paid_cursor.lock().unwrap() = next_cursor;
+    *crate::state::lock_or_recover(&state.paid_cursor) = next_cursor;
     let cursor_path = AppState::user_data_dir().join("paid-cursor.json");
-    let _ = std::fs::write(
+    let _ = tokio::fs::write(
         &cursor_path,
         json!({"cursor": next_cursor, "progress": progress, "updatedAt": cache::timestamp_ms()})
             .to_string(),
-    );
+    )
+    .await;
 
     (universe_ids, next_cursor, wrapped)
 }
 
 pub async fn read_paid_index() -> Vec<Value> {
     let path = AppState::user_data_dir().join("paid-games.json");
-    match std::fs::read_to_string(&path) {
+    match tokio::fs::read_to_string(&path).await {
         Ok(content) => {
             let parsed: Value = serde_json::from_str(&content).unwrap_or(json!({}));
             parsed
@@ -472,7 +475,7 @@ pub async fn read_paid_index() -> Vec<Value> {
 async fn write_paid_index(games: &[Value]) {
     let path = AppState::user_data_dir().join("paid-games.json");
     let data = json!({"updatedAt": cache::timestamp_ms(), "games": games.iter().take(1000).cloned().collect::<Vec<_>>()});
-    let _ = std::fs::write(&path, data.to_string());
+    let _ = tokio::fs::write(&path, data.to_string()).await;
 }
 
 /// Merge any priced games from the given list into the on-disk paid index.

@@ -38,21 +38,14 @@ pub async fn load_plans(state: &crate::state::AppState, force: bool) -> (Vec<Val
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default();
-    let payload = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(12))
-        .user_agent("Vortex-Launcher")
-        .build()
+    let payload = match crate::roblox::shared_github_client()
+        .get(SOURCE_URL)
+        .query(&[("t", cache_buster)])
+        .send()
+        .await
     {
-        Ok(client) => match client
-            .get(SOURCE_URL)
-            .query(&[("t", cache_buster)])
-            .send()
-            .await
-        {
-            Ok(response) if response.status().is_success() => response.json::<Value>().await.ok(),
-            _ => None,
-        },
-        Err(_) => None,
+        Ok(response) if response.status().is_success() => response.json::<Value>().await.ok(),
+        _ => None,
     };
 
     if let Some(payload) = payload {

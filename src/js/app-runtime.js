@@ -65,7 +65,9 @@ async function openGame(id, gameId = '', accessCode = '', { skipConfirm = false 
   // A specific server instance (joining a friend) rides along to the main process.
   const joinGameId = serverIdPattern.test(String(gameId)) || /^\d{5,40}$/.test(String(gameId)) ? String(gameId) : '';
   if (gameId && !joinGameId) { showToast(t('toast.launchError')); return false; }
-  const safeAccessCode = /^[A-Za-z0-9-]{8,100}$/.test(String(accessCode || '')) ? String(accessCode) : '';
+  const rawAccessCode = String(accessCode || '').trim();
+  const safeAccessCode = /^[A-Za-z0-9_-]{6,128}$/.test(rawAccessCode) ? rawAccessCode : '';
+  if (rawAccessCode && !safeAccessCode) { showToast(t('toast.launchError')); return false; }
   if (!skipConfirm && preferences.confirmLaunch && typeof confirmVortexAction === 'function') {
     const meta = typeof resolveGameSecurityMeta === 'function' ? await resolveGameSecurityMeta(game.id) : game;
     const metaHtml = typeof renderSecurityMetaCard === 'function' ? renderSecurityMetaCard(meta, { isUrl: true, authentic: true, host: 'roblox.com', reason: 'authentic' }) : '';
@@ -457,32 +459,60 @@ function scheduleLiveSearch(value) {
 }
 
 function toggleFavorite(id) {
-  if (favorites.has(id)) {
-    favorites.delete(id);
-    showToast(t('toast.favoriteRemoved'));
-  } else {
-    favorites.add(id);
+  const key = String(id);
+  const isNowFavorite = !favorites.has(key);
+  if (isNowFavorite) {
+    favorites.add(key);
     showToast(t('toast.favoriteAdded'));
+  } else {
+    favorites.delete(key);
+    showToast(t('toast.favoriteRemoved'));
   }
   accountStorage.setItem('vortex.favorites', JSON.stringify([...favorites]));
   reportRecentGamesToTray();
-  renderPage();
+  if (currentView === 'favorites' || currentView === 'home' || currentView === 'library') {
+    renderPage();
+    return;
+  }
+  const label = t(isNowFavorite ? 'card.favoriteRemove' : 'card.favoriteAdd');
+  document.querySelectorAll('[data-action="favorite"]').forEach((btn) => {
+    if (String(btn.dataset.id) !== key) return;
+    btn.setAttribute('aria-pressed', String(isNowFavorite));
+    if (btn.classList.contains('favorite-button')) {
+      btn.classList.toggle('is-favorite', isNowFavorite);
+      btn.setAttribute('aria-label', label);
+    } else if (btn.classList.contains('game-page-favorite')) {
+      btn.setAttribute('data-tooltip', preferences.language === 'en'
+        ? (isNowFavorite ? 'Remove from Favorites' : 'Add to Favorites')
+        : (isNowFavorite ? 'Убрать игру из избранного' : 'Добавить игру в избранное'));
+      btn.innerHTML = `${icon('star', 15)} ${t(isNowFavorite ? 'place.favorited' : 'place.favorite')}`;
+    } else {
+      btn.setAttribute('aria-label', label);
+      if (btn.hasAttribute('data-tooltip')) btn.setAttribute('data-tooltip', label);
+    }
+  });
 }
 
 function renderQuickGameFields(method = quickGameMethod) {
-  quickGameMethod = ['private', 'share', 'public'].includes(method) ? method : 'public';
+  quickGameMethod = ['private', 'share', 'public', 'access'].includes(method) ? method : 'public';
   const fieldHost = document.getElementById('quick-game-fields');
   if (!fieldHost) return;
   document.querySelectorAll('[data-quick-method]').forEach((button) => {
-    const active = button.dataset.quickMethod === quickGameMethod;
+    const active = button.dataset.quickMethod === quickGameMethod
+      || (quickGameMethod === 'access' && button.dataset.quickMethod === 'private');
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
   const placeField = `<label class="quick-game-field"><span>${t('quick.placeIdLabel')}</span><input name="placeId" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="1234567890" ${quickGameMethod === 'share' ? 'hidden' : 'required'} /><small>${t('quick.placeIdHint')}</small></label>`;
   const linkField = `<label class="quick-game-field"><span>${t('quick.linkCodeLabel')}</span><input name="linkCode" autocomplete="off" maxlength="100" placeholder="${t('quick.linkCodePlaceholder')}" ${quickGameMethod === 'private' ? 'required' : 'hidden'} /><small>${t('quick.linkCodeHint')}</small></label>`;
+  const accessLabel = preferences.language === 'en' ? 'Private server Access Code' : 'Код доступа приватного сервера (Access Code)';
+  const accessHint = preferences.language === 'en' ? 'Automatically filled from the game Servers tab.' : 'Заполнено автоматически со вкладки «Серверы».';
+  const accessField = `<label class="quick-game-field"><span>${escapeHtml(accessLabel)}</span><input name="accessCode" autocomplete="off" maxlength="128" required /><small>${escapeHtml(accessHint)}</small></label>`;
   const shareField = `<label class="quick-game-field"><span>${t('quick.shareCodeLabel')}</span><input name="shareCode" autocomplete="off" maxlength="512" placeholder="${t('quick.shareCodePlaceholder')}" ${quickGameMethod === 'share' ? 'required' : 'hidden'} /><small>${t('quick.shareCodeHint')}</small></label>`;
   const optionalSharePlace = `<label class="quick-game-field"><span>${t('quick.sharePlaceIdLabel')}</span><input name="placeId" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="${t('quick.sharePlaceIdPlaceholder')}" /><small>${t('quick.sharePlaceIdHint')}</small></label>`;
-  fieldHost.innerHTML = quickGameMethod === 'private' ? `${placeField}${linkField}` : quickGameMethod === 'share' ? `${shareField}${optionalSharePlace}` : placeField;
+  fieldHost.innerHTML = quickGameMethod === 'private' ? `${placeField}${linkField}`
+    : quickGameMethod === 'access' ? `${placeField}${accessField}`
+      : quickGameMethod === 'share' ? `${shareField}${optionalSharePlace}` : placeField;
 }
 
 function setQuickGameDialogMode(isEditing) {
@@ -519,6 +549,7 @@ function openQuickGameModal(editId = '', folderId = '') {
     };
     setField('placeId', item.placeId);
     setField('linkCode', item.linkCode);
+    setField('accessCode', item.accessCode);
     setField('shareCode', item.shareCode);
   }
   modal.hidden = false;
@@ -733,13 +764,19 @@ async function submitQuickGameForm(event) {
   const item = {
     ...(existing || {}),
     type: 'game', id: existing?.id || quickLaunchId(), method: quickGameMethod,
-    placeId: '', linkCode: '', shareCode: '', title: '', thumbnail: '',
+    placeId: '', linkCode: '', accessCode: '', shareCode: '', title: '', thumbnail: '',
     lastPlayed: Number(existing?.lastPlayed) || 0, hotkey: existing?.hotkey || null
   };
   if (quickGameMethod === 'private') {
     item.placeId = field('placeId');
     item.linkCode = field('linkCode');
     if (!/^\d{1,20}$/.test(item.placeId) || !/^[a-z\d_-]{1,100}$/i.test(item.linkCode)) {
+      error.textContent = t('quick.invalidPrivate'); error.hidden = false; return;
+    }
+  } else if (quickGameMethod === 'access') {
+    item.placeId = field('placeId');
+    item.accessCode = field('accessCode');
+    if (!/^\d{1,20}$/.test(item.placeId) || !/^[a-z\d_-]{6,128}$/i.test(item.accessCode)) {
       error.textContent = t('quick.invalidPrivate'); error.hidden = false; return;
     }
   } else if (quickGameMethod === 'public') {

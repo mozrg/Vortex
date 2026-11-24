@@ -239,6 +239,9 @@ pub struct UpdateState {
     pub status: String,
     pub progress: u32,
     pub stage: Option<String>,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub speed_bps: u64,
     pub current_version: String,
     pub latest_version: Option<String>,
     pub release_url: Option<String>,
@@ -251,6 +254,9 @@ impl Default for UpdateState {
             status: "idle".to_string(),
             progress: 0,
             stage: None,
+            downloaded_bytes: 0,
+            total_bytes: 0,
+            speed_bps: 0,
             current_version: env!("CARGO_PKG_VERSION").to_string(),
             latest_version: None,
             release_url: None,
@@ -266,6 +272,9 @@ impl UpdateState {
             "status": self.status,
             "progress": self.progress,
             "stage": self.stage,
+            "downloadedBytes": self.downloaded_bytes,
+            "totalBytes": self.total_bytes,
+            "speedBps": self.speed_bps,
             "currentVersion": self.current_version,
             "latestVersion": self.latest_version,
             "releaseUrl": self.release_url,
@@ -360,4 +369,9 @@ impl AppState {
             .unwrap_or_else(|| PathBuf::from("."))
             .join("vortex-roblox-launcher")
     }
+}
+
+/// Acquire a Mutex without panicking if another thread panicked while holding it.
+pub fn lock_or_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }

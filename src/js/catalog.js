@@ -45,7 +45,7 @@ function selectCatalogCollection(sortId) {
   if (sortId === RECOMMENDED_SORT.id) {
     discoveryRequestId += 1;
     activeDiscoverySort = sortId;
-    localStorage.setItem('vortex.activeDiscoverySort', JSON.stringify(sortId));
+    safeLocalStorageSet('vortex.activeDiscoverySort', JSON.stringify(sortId));
     renderPage();
     restoreRecommendationScroll();
     void loadRecommendations();
@@ -154,7 +154,7 @@ async function loadDiscoveryCatalog(sortId = activeDiscoverySort, { force = fals
   }
   activeDiscoverySort = sortId;
   const requestId = ++discoveryRequestId;
-  localStorage.setItem('vortex.activeDiscoverySort', JSON.stringify(sortId));
+  safeLocalStorageSet('vortex.activeDiscoverySort', JSON.stringify(sortId));
   const cached = discoveryCatalog[sortId];
   if (!preserveCount) catalogVisibleCount = CATALOG_PAGE_SIZE;
   if (!force && cached?.savedAt && Date.now() - cached.savedAt < DISCOVERY_CACHE_TTL &&

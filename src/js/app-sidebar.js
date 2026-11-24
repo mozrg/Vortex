@@ -12,7 +12,7 @@ function quickGameRowMarkup(item, nested = false) {
   return `<div class="quick-launch-row" data-quick-id="${escapeHtml(item.id)}" ${nested ? 'data-quick-nested="true"' : `data-quick-drop-game="${escapeHtml(item.id)}"`}>
       <button class="quick-launch-button" type="button" data-quick-launch="${escapeHtml(item.id)}" data-tooltip="${escapeHtml(title)}" aria-label="${t('quick.launchNamed', { title: escapeHtml(title) })}">${quickGameAvatarMarkup(restricted ? {} : item)}<span class="quick-launch-copy"><strong>${escapeHtml(title)}</strong>${item.hotkey ? `<small>${escapeHtml(formatHotkey(item.hotkey))}</small>` : ''}</span></button>
       <span class="quick-launch-tools">
-        <button ${restricted || ['access','instance'].includes(item.method) ? 'hidden' : ''} class="quick-launch-tool" type="button" data-quick-edit="${escapeHtml(item.id)}" aria-label="${t('quick.edit')}" data-tooltip="${t('quick.edit')}">${icon('edit', 12)}</button>
+        <button ${restricted || item.method === 'instance' ? 'hidden' : ''} class="quick-launch-tool" type="button" data-quick-edit="${escapeHtml(item.id)}" aria-label="${t('quick.edit')}" data-tooltip="${t('quick.edit')}">${icon('edit', 12)}</button>
         <button class="quick-launch-tool ${item.hotkey ? 'has-hotkey' : ''}" type="button" data-quick-hotkey="${escapeHtml(item.id)}" aria-label="${item.hotkey ? t('quick.clearHotkey') : t('quick.setHotkey')}" data-tooltip="${item.hotkey ? t('quick.clearHotkey') : t('quick.setHotkey')}">${icon('keyboard', 12)}</button>
         <button ${restricted || ['access','instance'].includes(item.method) ? 'hidden' : ''} class="quick-launch-tool" type="button" data-quick-share="${escapeHtml(item.id)}" aria-label="${t('quick.share')}" data-tooltip="${t('quick.share')}">${icon('share', 12)}</button>
         <button ${restricted ? 'hidden' : ''} class="quick-launch-tool" type="button" data-launcher-action="shortcut" data-quick="true" data-id="${escapeHtml(item.id)}" aria-label="${t('tools.shortcut')}" data-tooltip="${t('tools.shortcut')}">${icon('windowMaximize', 12)}</button>
@@ -209,7 +209,7 @@ function renderUpdateBanner(state) {
   const onVersionTab = currentView === 'settings' && preferences.settingsTab === 'version';
   if (!banner) { if (updateSettingsCard && onVersionTab) updateSettingsCard.outerHTML = renderUpdateSettings(); return; }
   const status = latestUpdateState?.status;
-  const visibleStatuses = ['downloading', 'downloaded', 'applying', 'error'];
+  const visibleStatuses = ['available', 'downloading', 'downloaded', 'applying', 'error'];
   if (!visibleStatuses.includes(status) || !preferences.uiUpdateBanner) {
     banner.hidden = true;
     banner.innerHTML = '';
@@ -221,17 +221,26 @@ function renderUpdateBanner(state) {
   const stageKeys = { checksum: 'updates.stage.checksum', prepare: 'updates.stage.prepare', downloading: 'updates.stage.downloading', verify: 'updates.stage.verify', installing: 'updates.stage.installing' };
   const stageText = stageKeys[latestUpdateState?.stage] ? t(stageKeys[latestUpdateState.stage]) : null;
   const title = t('updates.title', { version: escapeHtml(latestUpdateState.latestVersion || '') });
-  const message = status === 'downloaded' ? t('updates.ready')
-    : status === 'applying' ? t('updates.applying')
-      : status === 'error' ? t('updates.error', { error: escapeHtml(latestUpdateState.errorMessage || 'Unknown error') })
-        : `${stageText ? `${stageText} · ` : ''}${t('updates.downloading', { percent: progress })}`;
+  const totalBytes = Number(latestUpdateState.totalBytes) || 0;
+  const downloadedBytes = Number(latestUpdateState.downloadedBytes) || 0;
+  const speedBps = Number(latestUpdateState.speedBps) || 0;
+  const transferInfo = totalBytes > 0
+    ? ` · ${(downloadedBytes / 1048576).toFixed(1)} / ${(totalBytes / 1048576).toFixed(1)} ${preferences.language === 'en' ? 'MB' : 'МБ'}${speedBps > 0 ? ` (${speedBps >= 1048576 ? `${(speedBps / 1048576).toFixed(1)} ${preferences.language === 'en' ? 'MB/s' : 'МБ/с'}` : `${Math.max(1, Math.round(speedBps / 1024))} ${preferences.language === 'en' ? 'KB/s' : 'КБ/с'}`})` : ''}`
+    : '';
+  const message = status === 'available' ? t('updates.available')
+    : status === 'downloaded' ? t('updates.ready')
+      : status === 'applying' ? t('updates.applying')
+        : status === 'error' ? t('updates.error', { error: escapeHtml(latestUpdateState.errorMessage || 'Unknown error') })
+          : `${stageText ? `${stageText} · ` : ''}${t('updates.downloading', { percent: progress })}${transferInfo}`;
   banner.dataset.status = status;
   banner.hidden = false;
-  const bannerAction = status === 'downloaded'
-    ? `<button class="primary-button update-banner-install" data-action="install-update">${t('updates.installNow')}</button>`
-    : status === 'error'
-      ? `<button class="ghost-button" data-action="retry-update">${t('updates.retry')}</button>`
-      : `<span class="update-banner-progress" aria-label="${progress}%"><i style="--progress:${status === 'applying' ? 100 : progress}%"></i></span>`;
+  const bannerAction = status === 'available'
+    ? `<button class="primary-button update-banner-install" data-action="install-update">${t('updates.downloadNow')}</button>`
+    : status === 'downloaded'
+      ? `<button class="primary-button update-banner-install" data-action="install-update">${t('updates.installNow')}</button>`
+      : status === 'error'
+        ? `<button class="ghost-button" data-action="retry-update">${t('updates.retry')}</button>`
+        : `<span class="update-banner-progress" aria-label="${progress}%"><i style="--progress:${status === 'applying' ? 100 : progress}%"></i></span>`;
   banner.innerHTML = `<span class="update-banner-icon">${icon(status === 'error' ? 'close' : status === 'downloaded' ? 'check' : 'sparkle', 18)}</span><span class="update-banner-copy"><strong>${title}</strong><small>${message}</small></span>${bannerAction}`;
   if (updateSettingsCard && onVersionTab) updateSettingsCard.outerHTML = renderUpdateSettings();
 }

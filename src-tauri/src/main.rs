@@ -861,7 +861,7 @@ async fn games_paid(
 ) -> Result<serde_json::Value, String> {
     if fast.unwrap_or(false) && !force.unwrap_or(false) {
         let cached = {
-            let cache = state.paid_cache.lock().unwrap();
+            let cache = state::lock_or_recover(&state.paid_cache);
             cache.data.clone()
         };
         let games = if cached.is_empty() {
@@ -874,7 +874,7 @@ async fn games_paid(
         }
     }
     if !force.unwrap_or(false) {
-        let cache = state.paid_cache.lock().unwrap();
+        let cache = state::lock_or_recover(&state.paid_cache);
         if cache
             .at
             .map(|at| at.elapsed() < std::time::Duration::from_secs(10 * 60))
@@ -893,10 +893,10 @@ async fn games_paid(
     });
     if games.is_empty() {
         // Preserve the last known index when a network scan returned nothing.
-        let cache = state.paid_cache.lock().unwrap();
+        let cache = state::lock_or_recover(&state.paid_cache);
         games = cache.data.clone();
     }
-    let mut cache = state.paid_cache.lock().unwrap();
+    let mut cache = state::lock_or_recover(&state.paid_cache);
     cache.at = Some(Instant::now());
     cache.data = games.clone();
     cache.complete = complete;
@@ -952,7 +952,7 @@ async fn cache_set_disk_enabled(
     state: tauri::State<'_, Arc<AppState>>,
     enabled: bool,
 ) -> Result<bool, String> {
-    *state.disk_cache_enabled.lock().unwrap() = enabled;
+    *state::lock_or_recover(&state.disk_cache_enabled) = enabled;
     Ok(enabled)
 }
 
@@ -960,9 +960,12 @@ async fn cache_set_disk_enabled(
 async fn cache_disk_stats(
     _state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<serde_json::Value, String> {
-    let thumbs = cache::count_disk_cache("thumbs").await;
-    let search = cache::count_disk_cache("search").await;
-    Ok(json!({"thumbnails": thumbs, "search": search}))
+    let (thumbs, search, shortcuts) = tokio::join!(
+        cache::count_disk_cache("thumbs"),
+        cache::count_disk_cache("search"),
+        shortcut_icon::count_shortcut_icons()
+    );
+    Ok(json!({"thumbnails": thumbs, "search": search, "shortcutIcons": shortcuts}))
 }
 
 #[tauri::command]
@@ -970,14 +973,47 @@ async fn cache_clear_disk(
     _state: tauri::State<'_, Arc<AppState>>,
     kind: Option<String>,
 ) -> Result<bool, String> {
-    cache::clear_disk_cache(&kind.unwrap_or_default()).await;
+    let target = kind.unwrap_or_default();
+    cache::clear_disk_cache(&target).await;
+    if target.is_empty() || target == "shortcuts" {
+        shortcut_icon::clear_shortcut_icons().await;
+    }
     Ok(true)
 }
 
 #[tauri::command]
 async fn clear_search_cache(state: tauri::State<'_, Arc<AppState>>) -> Result<bool, String> {
-    state.response_cache.lock().unwrap().clear();
+    state::lock_or_recover(&state.response_cache).clear();
     Ok(true)
+}
+
+fn open_game_links(
+    place_id: &str,
+    game_id: Option<&str>,
+    access_code: Option<&str>,
+) -> Result<(String, String), String> {
+    if !valid_numeric_id(place_id) {
+        return Err("invalid place id".to_string());
+    }
+    let mut params = format!("placeId={}", place_id);
+    if let Some(server) = game_id.map(str::trim).filter(|id| !id.is_empty()) {
+        if server.len() > 64 || !server.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            return Err("invalid server id".to_string());
+        }
+        params.push_str("&gameInstanceId=");
+        params.push_str(&encode_query(server));
+    }
+    if let Some(code) = access_code.map(str::trim).filter(|code| !code.is_empty()) {
+        if !valid_quick_code(code, 128) {
+            return Err("invalid private server access code".to_string());
+        }
+        params.push_str("&accessCode=");
+        params.push_str(&encode_query(code));
+    }
+    Ok((
+        format!("roblox://experiences/start?{}", params),
+        format!("https://www.roblox.com/games/start?{}", params),
+    ))
 }
 
 #[tauri::command]
@@ -986,30 +1022,10 @@ async fn open_game(
     game_id: Option<String>,
     access_code: Option<String>,
 ) -> Result<String, String> {
-    if !valid_numeric_id(&place_id) {
-        return Err("invalid place id".to_string());
-    }
-    let mut url = format!("roblox://placeId={}", place_id);
-    if let Some(server) = game_id.filter(|id| !id.is_empty()) {
-        if server.len() <= 64
-            && server
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || "-".contains(c))
-        {
-            url.push_str("&gameInstanceId=");
-            url.push_str(&server);
-        }
-    }
-    if let Some(code) = access_code.filter(|code| !code.is_empty()) {
-        if code.len() <= 100 && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-            url.push_str("&accessCode=");
-            url.push_str(&code);
-        }
-    }
+    let (url, browser) = open_game_links(&place_id, game_id.as_deref(), access_code.as_deref())?;
     match open_url(&url) {
         Ok(()) => Ok("roblox".to_string()),
         Err(_) => {
-            let browser = format!("https://www.roblox.com/games/start?{}", url.trim_start_matches("roblox://"));
             open_url(&browser).map_err(|e| format!("failed to launch Roblox: {}", e))?;
             Ok("browser".to_string())
         }
@@ -1027,23 +1043,16 @@ fn quick_game_links(
 ) -> Result<(String, String), String> {
     let place = place_id.unwrap_or_default();
     let links = match method {
-        // Roblox deep links use `placeId` and `linkCode` parameters.
+        // Roblox deep links use `experiences/start` with `placeId` and `linkCode` query parameters.
         "private" => {
             let code = link_code.unwrap_or_default();
             if !valid_numeric_id(&place) || !valid_quick_code(&code, 100) {
                 return Err("invalid private server link".to_string());
             }
+            let params = format!("placeId={}&linkCode={}", place, encode_query(&code));
             (
-                format!(
-                    "roblox://placeId={}&linkCode={}",
-                    place,
-                    encode_query(&code)
-                ),
-                format!(
-                    "https://www.roblox.com/games/start?placeId={}&linkCode={}",
-                    place,
-                    encode_query(&code)
-                ),
+                format!("roblox://experiences/start?{}", params),
+                format!("https://www.roblox.com/games/start?{}", params),
             )
         }
         // Share links are opened through Roblox's native share-links route.
@@ -1078,7 +1087,7 @@ fn quick_game_links(
                 return Err("invalid place id".to_string());
             }
             (
-                format!("roblox://placeId={}", place),
+                format!("roblox://experiences/start?placeId={}", place),
                 format!("https://www.roblox.com/games/{}", place),
             )
         }
@@ -1086,13 +1095,17 @@ fn quick_game_links(
             let (parameter, value, limit) = if method == "instance" {
                 ("gameInstanceId", server_id.unwrap_or_default(), 64)
             } else {
-                ("accessCode", access_code.unwrap_or_default(), 100)
+                ("accessCode", access_code.unwrap_or_default(), 128)
             };
-            if !valid_numeric_id(&place) || !valid_quick_code(&value, limit) {
+            let value = value.trim();
+            if !valid_numeric_id(&place) || !valid_quick_code(value, limit) {
                 return Err("invalid server launch target".to_string());
             }
-            let params = format!("placeId={}&{}={}", place, parameter, encode_query(&value));
-            (format!("roblox://{}", params), format!("https://www.roblox.com/games/start?{}", params))
+            let params = format!("placeId={}&{}={}", place, parameter, encode_query(value));
+            (
+                format!("roblox://experiences/start?{}", params),
+                format!("https://www.roblox.com/games/start?{}", params),
+            )
         }
         _ => return Err("unsupported quick launch method".to_string()),
     };
@@ -1246,6 +1259,47 @@ mod shortcut_tests {
             "roblox://experiences/start?placeId=1818&gameInstanceId=example"
         );
     }
+
+    #[test]
+    fn private_server_access_code_uses_canonical_experiences_start_deeplink() {
+        let (deep_link, browser) = quick_game_links(
+            "access",
+            Some("8304191830".into()),
+            None,
+            None,
+            None,
+            None,
+            Some("3f12ab45-1234-5678-9abc-def012345678".into()),
+        )
+        .unwrap();
+        assert_eq!(
+            deep_link,
+            "roblox://experiences/start?placeId=8304191830&accessCode=3f12ab45-1234-5678-9abc-def012345678"
+        );
+        assert_eq!(
+            browser,
+            "https://www.roblox.com/games/start?placeId=8304191830&accessCode=3f12ab45-1234-5678-9abc-def012345678"
+        );
+        assert_eq!(desktop_shortcut_url(&deep_link), deep_link);
+
+        let (open_deep, open_browser) = open_game_links(
+            "8304191830",
+            None,
+            Some("vip_code-12345678"),
+        )
+        .unwrap();
+        assert_eq!(
+            open_deep,
+            "roblox://experiences/start?placeId=8304191830&accessCode=vip_code-12345678"
+        );
+        assert_eq!(
+            open_browser,
+            "https://www.roblox.com/games/start?placeId=8304191830&accessCode=vip_code-12345678"
+        );
+
+        // Malformed accessCode must fail instead of silently joining a public server.
+        assert!(open_game_links("8304191830", None, Some("bad code with spaces!")).is_err());
+    }
 }
 
 #[tauri::command]
@@ -1260,21 +1314,25 @@ async fn roblox_api_status(
         ("discover", "https://apis.roblox.com/explore-api/v1/get-sorts?sessionId=vortex-status&device=computer&country=all"),
         ("users", "https://users.roblox.com/v1/users/1"),
     ];
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(8))
-        .user_agent("Vortex-Place-Launcher")
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut services = Vec::new();
+    let mut handles = Vec::with_capacity(checks.len());
     for (id, url) in checks {
-        let started = Instant::now();
-        let ok = client
-            .get(url)
-            .send()
-            .await
-            .map(|response| response.status().is_success())
-            .unwrap_or(false);
-        services.push(json!({"id": id, "ok": ok, "ms": started.elapsed().as_millis()}));
+        handles.push(tokio::spawn(async move {
+            let started = Instant::now();
+            let ok = roblox::shared_http_client()
+                .get(url)
+                .timeout(std::time::Duration::from_secs(6))
+                .send()
+                .await
+                .map(|response| response.status().is_success())
+                .unwrap_or(false);
+            json!({"id": id, "ok": ok, "ms": started.elapsed().as_millis()})
+        }));
+    }
+    let mut services = Vec::with_capacity(handles.len());
+    for handle in handles {
+        if let Ok(row) = handle.await {
+            services.push(row);
+        }
     }
     Ok(json!({"checkedAt": chrono::Utc::now().to_rfc3339(), "services": services}))
 }
@@ -1535,7 +1593,7 @@ fn is_main_profile(id: Option<&str>) -> bool {
 
 pub(crate) fn profile_cookie(state: &AppState, id: Option<&str>) -> String {
     if is_main_profile(id) {
-        state.roblox_cookie.lock().unwrap().clone()
+        state::lock_or_recover(&state.roblox_cookie).clone()
     } else {
         cookie::load_cookie(id)
     }
@@ -1564,7 +1622,7 @@ async fn friends_presence_cookie(
             return Ok(json!({"ok": false, "error": "rejected"}));
         }
         if is_main_profile(profile) {
-            *state.roblox_cookie.lock().unwrap() = String::new();
+            *state::lock_or_recover(&state.roblox_cookie) = String::new();
         }
         Ok(json!({"ok": true, "enabled": false}))
     } else if let Some(raw_cookie) = cookie {
@@ -1584,7 +1642,7 @@ async fn friends_presence_cookie(
         }
         if cookie::save_cookie(&c, profile) {
             if is_main_profile(profile) {
-                *state.roblox_cookie.lock().unwrap() = c;
+                *state::lock_or_recover(&state.roblox_cookie) = c;
             }
             Ok(json!({"ok": true, "enabled": true}))
         } else {
@@ -1686,7 +1744,7 @@ async fn discord_set_client_id(
         .collect::<String>();
     let valid = clean.is_empty() || (clean.len() >= 15 && clean.len() <= 22);
     let stored = if valid { clean } else { String::new() };
-    *state.discord_client_id.lock().unwrap() = stored;
+    *state::lock_or_recover(&state.discord_client_id) = stored;
     let enabled = state
         .discord
         .lock()
@@ -1836,6 +1894,73 @@ fn app_ready(app: AppHandle) {
     reveal_main_window(&app);
 }
 
+#[cfg(windows)]
+struct SingleInstanceGuard(isize);
+
+#[cfg(windows)]
+impl Drop for SingleInstanceGuard {
+    fn drop(&mut self) {
+        if self.0 != 0 {
+            unsafe {
+                #[link(name = "kernel32")]
+                extern "system" {
+                    fn CloseHandle(object: isize) -> i32;
+                }
+                CloseHandle(self.0);
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+fn acquire_single_instance() -> Option<SingleInstanceGuard> {
+    const ERROR_ALREADY_EXISTS: u32 = 183;
+    const SW_SHOW: i32 = 5;
+    const SW_RESTORE: i32 = 9;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateMutexW(
+            attrs: *const std::ffi::c_void,
+            initial_owner: i32,
+            name: *const u16,
+        ) -> isize;
+        fn GetLastError() -> u32;
+        fn CloseHandle(object: isize) -> i32;
+    }
+    #[link(name = "user32")]
+    extern "system" {
+        fn FindWindowW(class_name: *const u16, window_name: *const u16) -> isize;
+        fn IsIconic(hwnd: isize) -> i32;
+        fn ShowWindow(hwnd: isize, cmd_show: i32) -> i32;
+        fn SetForegroundWindow(hwnd: isize) -> i32;
+    }
+
+    let mutex_name: Vec<u16> = "Local\\VortexLauncherSingleInstance\0"
+        .encode_utf16()
+        .collect();
+    unsafe {
+        let handle = CreateMutexW(std::ptr::null(), 1, mutex_name.as_ptr());
+        if handle == 0 {
+            return Some(SingleInstanceGuard(0));
+        }
+        if GetLastError() == ERROR_ALREADY_EXISTS {
+            CloseHandle(handle);
+            let title: Vec<u16> = "Vortex — Roblox Place Launcher\0".encode_utf16().collect();
+            let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+            if hwnd != 0 {
+                if IsIconic(hwnd) != 0 {
+                    ShowWindow(hwnd, SW_RESTORE);
+                } else {
+                    ShowWindow(hwnd, SW_SHOW);
+                }
+                SetForegroundWindow(hwnd);
+            }
+            return None;
+        }
+        Some(SingleInstanceGuard(handle))
+    }
+}
+
 fn main() {
     if std::env::args().any(|arg| arg == "--updater-mode") {
         updates::run_updater_mode();
@@ -1846,10 +1971,16 @@ fn main() {
         return;
     }
 
+    #[cfg(windows)]
+    let _single_instance = match acquire_single_instance() {
+        Some(guard) => guard,
+        None => return,
+    };
+
     let app_state = Arc::new(AppState::new());
 
     // Load the stored cookie on startup.
-    *app_state.roblox_cookie.lock().unwrap() = cookie::load_cookie(None);
+    *state::lock_or_recover(&app_state.roblox_cookie) = cookie::load_cookie(None);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -1861,7 +1992,7 @@ fn main() {
             tauri::async_runtime::spawn(overlay::run(app.handle().clone(), app.state::<Arc<overlay::OverlayState>>().inner().clone()));
             let state = app.state::<Arc<AppState>>().inner().clone();
             let (discord_tx, discord_rx) = tokio::sync::mpsc::unbounded_channel();
-            *state.discord_commands.lock().unwrap() = Some(discord_tx);
+            *state::lock_or_recover(&state.discord_commands) = Some(discord_tx);
             tauri::async_runtime::spawn(discord::run(discord_rx, state));
             let _tray_window =
                 WebviewWindowBuilder::new(app, "tray", WebviewUrl::App("tray.html".into()))
@@ -1927,7 +2058,31 @@ fn main() {
             let update_app = app.handle().clone();
             let update_state = app.state::<Arc<AppState>>().inner().clone();
             tauri::async_runtime::spawn(async move {
-                let _ = updates::run_update_check(update_app, update_state).await;
+                let _ = updates::run_update_check(update_app.clone(), update_state.clone()).await;
+                let mut periodic = tokio::time::interval(std::time::Duration::from_secs(4 * 60 * 60));
+                periodic.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                periodic.tick().await;
+                loop {
+                    periodic.tick().await;
+                    let should_recheck = {
+                        let guard = state::lock_or_recover(&update_state.update_state);
+                        !matches!(
+                            guard.status.as_str(),
+                            "available" | "downloading" | "downloaded" | "applying"
+                        )
+                    };
+                    if should_recheck {
+                        let _ = updates::run_update_check(
+                            update_app.clone(),
+                            update_state.clone(),
+                        )
+                        .await;
+                    }
+                }
+            });
+            tauri::async_runtime::spawn(async {
+                tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                cache::prune_expired_disk_cache().await;
             });
             Ok(())
         })

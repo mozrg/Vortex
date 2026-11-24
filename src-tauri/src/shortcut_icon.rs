@@ -3,12 +3,39 @@ use image::imageops::FilterType;
 use sha2::{Digest, Sha256};
 use std::io::Cursor;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use std::time::Duration;
+
+fn shortcut_icon_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(8))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("failed to build shortcut icon HTTP client")
+    })
+}
+
+fn is_allowed_rbxcdn_host(host: Option<&str>) -> bool {
+    match host {
+        Some(h) if h.eq_ignore_ascii_case("tr.rbxcdn.com") => true,
+        Some(h) => {
+            let lower = h.to_ascii_lowercase();
+            lower.ends_with(".rbxcdn.com") && lower.len() > ".rbxcdn.com".len()
+        }
+        None => false,
+    }
+}
 
 pub async fn load_shortcut_icon(source: Option<&str>) -> Option<PathBuf> {
     let url: url::Url = source?.parse().ok()?;
-    if url.scheme() != "https" || url.host_str() != Some("tr.rbxcdn.com")
-        || url.port().is_some() || !url.username().is_empty() || url.password().is_some() {
+    if url.scheme() != "https"
+        || !is_allowed_rbxcdn_host(url.host_str())
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
         return None;
     }
     let key = format!("{:x}", Sha256::digest(url.as_str()));
@@ -17,10 +44,7 @@ pub async fn load_shortcut_icon(source: Option<&str>) -> Option<PathBuf> {
     if file.is_file() {
         return Some(file);
     }
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .redirect(reqwest::redirect::Policy::none())
-        .build().ok()?;
+    let client = shortcut_icon_client();
     let mut response = client.get(url).send().await.ok()?.error_for_status().ok()?;
     let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await.ok()? {
@@ -37,6 +61,30 @@ pub async fn load_shortcut_icon(source: Option<&str>) -> Option<PathBuf> {
         let _ = tokio::fs::remove_file(temporary).await;
     }
     file.is_file().then_some(file)
+}
+
+pub async fn count_shortcut_icons() -> usize {
+    let dir = AppState::user_data_dir().join("shortcut-icons");
+    let Ok(mut entries) = tokio::fs::read_dir(&dir).await else {
+        return 0;
+    };
+    let mut count = 0usize;
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        if entry.path().extension().and_then(|e| e.to_str()) == Some("ico") {
+            count += 1;
+        }
+    }
+    count
+}
+
+pub async fn clear_shortcut_icons() {
+    let dir = AppState::user_data_dir().join("shortcut-icons");
+    let Ok(mut entries) = tokio::fs::read_dir(&dir).await else {
+        return;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let _ = tokio::fs::remove_file(entry.path()).await;
+    }
 }
 
 fn encode_shortcut_icon(png: &[u8]) -> Result<Vec<u8>, String> {
@@ -67,5 +115,16 @@ mod tests {
         let binary = encode_shortcut_icon(data).unwrap();
         let icon = ico::IconDir::read(Cursor::new(binary)).unwrap();
         assert_eq!(icon.entries().iter().map(|entry| entry.width()).collect::<Vec<_>>(), [32, 48, 128, 256]);
+    }
+
+    #[test]
+    fn allows_only_roblox_cdn_subdomains_for_shortcut_icons() {
+        assert!(is_allowed_rbxcdn_host(Some("tr.rbxcdn.com")));
+        assert!(is_allowed_rbxcdn_host(Some("t4.rbxcdn.com")));
+        assert!(is_allowed_rbxcdn_host(Some("c0.rbxcdn.com")));
+        assert!(!is_allowed_rbxcdn_host(Some("rbxcdn.com")));
+        assert!(!is_allowed_rbxcdn_host(Some("tr.rbxcdn.com.evil.net")));
+        assert!(!is_allowed_rbxcdn_host(Some("evil.com")));
+        assert!(!is_allowed_rbxcdn_host(None));
     }
 }

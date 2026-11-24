@@ -39,7 +39,7 @@ function robloxSearchLink(text) {
   const params = new URLSearchParams(native && !url.search ? input.slice('roblox://'.length) : url.search);
   const code = params.get('code') || '';
   const shareType = params.get('type') || 'Server';
-  if (/(?:^|\/)share(?:_links)?\/?$/i.test(url.pathname) && linkCodePattern.test(code) &&
+  if (/(?:^|\/)share(?:[_-]links)?\/?$/i.test(url.pathname) && linkCodePattern.test(code) &&
       ['Server', 'ExperienceInvite', 'ExperienceDetails'].includes(shareType)) {
     return { method: 'share', shareCode: code, shareType, placeId: '' };
   }
@@ -50,7 +50,7 @@ function robloxSearchLink(text) {
   const accessCode = params.get('accessCode') || '';
   if (linkCode && /^[a-z0-9_-]{1,100}$/i.test(linkCode)) return { method: 'private', placeId, linkCode };
   if (serverId && /^[a-z0-9-]{5,64}$/i.test(serverId)) return { method: 'instance', placeId, serverId };
-  if (accessCode && /^[a-z0-9-]{8,100}$/i.test(accessCode)) return { method: 'access', placeId, accessCode };
+  if (accessCode && /^[a-z0-9_-]{6,128}$/i.test(accessCode)) return { method: 'access', placeId, accessCode };
   return { method: 'public', placeId };
 }
 
@@ -389,20 +389,38 @@ async function launchPastedLink(target) {
   } catch { showToast(t('toast.launchError')); }
 }
 
-async function pinPastedLink(target) {
-  if (!target) return;
-  const known = getGame(target.placeId);
-  const item = { ...target, id: quickLaunchId(), type: 'game',
-    title: target.title || known?.title || (target.placeId ? 'Roblox #' + target.placeId : t('tools.serverLink')),
-    thumbnail: known?.thumbnail, autoTitle: Boolean(!target.title && target.placeId && !known) };
-  const fields = ['method','placeId','linkCode','shareCode','shareType','serverId','accessCode'];
-  if (quickLaunchGames().some(game => fields.every(key => !item[key] || item[key] === game[key]))) {
-    showToast(t('tools.alreadyPinned'));
-    return;
+function sameQuickLaunchTarget(first, second) {
+  if (!first || !second || first.method !== second.method) return false;
+  switch (first.method) {
+    case 'public': return first.placeId === second.placeId;
+    case 'private': return first.placeId === second.placeId && first.linkCode === second.linkCode;
+    case 'share': return first.shareCode === second.shareCode && (first.shareType || 'Server') === (second.shareType || 'Server');
+    case 'instance': return first.placeId === second.placeId && first.serverId === second.serverId;
+    case 'access': return first.placeId === second.placeId && first.accessCode === second.accessCode;
+    default: return false;
   }
-  preferences.quickLaunchItems.push(item);
+}
+
+async function pinPastedLink(target) {
+  if (!target) return false;
+  const known = getGame(target.placeId) || (String(detailGame?.id) === String(target.placeId) ? detailGame : null);
+  const rawItem = { ...target, id: quickLaunchId(), type: 'game',
+    title: target.title || known?.title || (target.placeId ? 'Roblox #' + target.placeId : t('tools.serverLink')),
+    thumbnail: safeThumbnail(target.thumbnail || known?.icon || known?.thumbnail) || '',
+    autoTitle: Boolean(!target.title && target.placeId && !known) };
+  const cleaned = cleanQuickLaunchItems([rawItem])[0];
+  if (!cleaned) {
+    showToast(t('toast.launchError'));
+    return false;
+  }
+  if (quickLaunchGames().some(game => sameQuickLaunchTarget(cleaned, game))) {
+    showToast(t('tools.alreadyPinned'));
+    return false;
+  }
+  preferences.quickLaunchItems.push(cleaned);
   persistQuickLaunchItems();
   showToast(t('tools.gamePinned'));
+  return true;
 }
 
 async function saveDesktopShortcut(button) {

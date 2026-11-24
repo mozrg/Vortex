@@ -608,7 +608,18 @@ pub fn measure_datacenter_ping_cached(udmux: Ipv4Addr) -> Option<u32> {
     }
     if let Ok(mut cache) = ping_subnet_cache().lock() {
         if cache.len() > 256 {
-            cache.clear();
+            cache.retain(|_, (at, _)| at.elapsed() < Duration::from_secs(60));
+            if cache.len() > 256 {
+                let mut entries: Vec<((u8, u8, u8), Instant)> = cache
+                    .iter()
+                    .map(|(&k, &(at, _))| (k, at))
+                    .collect();
+                entries.sort_by_key(|(_, at)| *at);
+                let to_drop = entries.len().saturating_sub(200);
+                for (k, _) in entries.into_iter().take(to_drop) {
+                    cache.remove(&k);
+                }
+            }
         }
         cache.insert(key, (Instant::now(), measured));
     }

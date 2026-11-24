@@ -145,7 +145,7 @@ function applyLauncherModes() {
 
 function setLauncherStreamMode(enabled) {
   preferences.streamMode = enabled;
-  localStorage.setItem(streamModeKey, JSON.stringify(enabled));
+  safeLocalStorageSet(streamModeKey, JSON.stringify(enabled));
   if (enabled && looksLikeRobloxLink(searchQuery)) {
     searchQuery = '';
     searchInput.value = '';

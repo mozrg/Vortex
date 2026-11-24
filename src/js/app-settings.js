@@ -183,7 +183,15 @@ async function searchGamesByName(query) {
     const response = await window.vortexDesktop.searchGames({ query: trimmed });
     if (requestId !== gameSearchRequestId) return;
     const items = (response?.items || []).slice(0, 8).map((item) => normalizeDiscoveredGame(item, trimmed));
-    items.forEach((item) => gameSearchResults.set(String(item.id), item));
+    items.forEach((item) => {
+      const idKey = String(item.id);
+      if (gameSearchResults.has(idKey)) gameSearchResults.delete(idKey);
+      gameSearchResults.set(idKey, item);
+    });
+    while (gameSearchResults.size > 300) {
+      const oldestResultKey = gameSearchResults.keys().next().value;
+      gameSearchResults.delete(oldestResultKey);
+    }
     gameSearchCache.set(cacheKey, items);
     gameSearchCacheMeta.set(cacheKey, Date.now());
     while (gameSearchCache.size > GAME_SEARCH_CACHE_MAX) {
@@ -348,7 +356,7 @@ function renderAccentSettings() {
       <div class="palette-row">${palettes.map((palette) => `<button class="palette-option ${preferences.accent.toLowerCase() === palette.color ? 'active' : ''}" aria-pressed="${preferences.accent.toLowerCase() === palette.color}" data-tooltip="${escapeHtml(t(`palette.${palette.key}`))}" aria-label="${escapeHtml(t(`palette.${palette.key}`))}" data-accent="${palette.color}" ${previewAttr('accent', palette.color, t(`palette.${palette.key}`))}><span class="palette-swatch" style="background:${palette.color};color:${palette.color}"></span></button>`).join('')}</div>
       ${renderColorTuner('accent', preferences.accent, t('settings.customColor'))}
       <div class="setting-line accent-mode-line"><div class="setting-label"><strong>${t('settings.accentMode')}</strong></div><div class="segmented"><button class="segment ${preferences.accentMode === 'solid' ? 'active' : ''}" data-pref="accentMode" data-value="solid">${t('settings.solid')}</button><button class="segment ${preferences.accentMode === 'gradient' ? 'active' : ''}" data-pref="accentMode" data-value="gradient">${t('settings.gradient')}</button></div></div>
-      ${preferences.accentMode === 'gradient' ? `<div class="gradient-options">${renderColorTuner('accentSecondary', preferences.accentSecondary, t('settings.gradientEnd'))}<label class="gradient-angle"><span>${t('settings.gradientAngle')}</span><input type="range" min="0" max="360" value="${preferences.gradientAngle}" data-setting="gradientAngle" /><output id="gradient-angle-value">${preferences.gradientAngle}°</output></label><div class="gradient-preview" aria-hidden="true"></div></div>` : ''}
+      ${preferences.accentMode === 'gradient' ? `<div class="gradient-options">${renderColorTuner('accentSecondary', preferences.accentSecondary, t('settings.gradientEnd'))}<div class="setting-line gradient-angle-line"><div class="setting-label"><strong>${t('settings.gradientAngle')}</strong></div><label class="range-control"><input type="range" min="0" max="360" value="${preferences.gradientAngle}" data-setting="gradientAngle" /><output class="range-value" id="gradient-angle-value">${preferences.gradientAngle}°</output></label></div><div class="gradient-preview" aria-hidden="true"></div></div>` : ''}
     </section>
   </div><div class="settings-column">${renderCardPreviewSettings()}${renderWallpaperCard()}</div>`;
 }
@@ -902,7 +910,7 @@ function renderUpdateSettings() {
   const downloading = status === 'downloading';
   const installReady = status === 'downloaded';
   const downloadingButton = downloading ? `<button class="control-button update-download-button" disabled>${icon('download', 13)} ${t('updates.downloading', { percent: progress })}</button>` : '';
-  const primaryUpdateAction = status === 'available' ? `<button class="control-button control-button-primary" data-action="download-update">${icon('download', 13)} ${t('updates.downloadNow')}</button>`
+  const primaryUpdateAction = status === 'available' ? `<button class="control-button control-button-primary" data-action="install-update">${icon('download', 13)} ${t('updates.downloadNow')}</button>`
     : installReady ? `<button class="control-button control-button-primary" data-action="install-update">${icon('check', 13)} ${t('updates.installNow')}</button>`
       : downloadingButton;
   return `<section class="settings-card update-settings-card" id="update-settings-card" data-update-status="${escapeHtml(status)}"><div class="settings-card-head"><div><h2>${t('updates.settingsTitle')}</h2><p>${t('updates.settingsBody')}</p></div>${icon('package', 18)}</div>

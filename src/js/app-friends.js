@@ -224,6 +224,9 @@ function notifyFriendsInFavorites(friends) {
     const key = `${friend.id}:${placeId}`;
     if (notifiedFriendGames.has(key)) continue;
     notifiedFriendGames.add(key);
+    while (notifiedFriendGames.size > 200) {
+      notifiedFriendGames.delete(notifiedFriendGames.values().next().value);
+    }
     const game = getGame(placeId);
     window.vortexDesktop?.notifyFriendPlaying?.({
       friend: friend.displayName || friend.name || t('friends.unknown'),

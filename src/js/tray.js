@@ -166,6 +166,7 @@
       host.hidden = true;
       window.clearInterval(nowPlayingTimer);
       nowPlayingTimer = 0;
+      renderNowPlaying.tickNow = null;
       return;
     }
     host.hidden = false;
@@ -173,14 +174,23 @@
     $('#tray-now-art').innerHTML = thumbnail ? `<img src="${escapeHtml(nowPlaying.thumbnail)}" alt="" />` : gamepadIcon;
     $('#tray-now-title').textContent = nowPlaying.title || '';
     const startedAt = Number(nowPlaying.startedAt) || Date.now();
-    const tick = () => {
+    const tick = (force = false) => {
+      if (!force && document.hidden) return;
       const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-      $('#tray-now-time').textContent = `${strings().playing} · ${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
+      const nextText = `${strings().playing} · ${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
+      const el = $('#tray-now-time');
+      if (el && el.textContent !== nextText) el.textContent = nextText;
     };
-    tick();
+    renderNowPlaying.tickNow = tick;
+    tick(true);
     window.clearInterval(nowPlayingTimer);
     nowPlayingTimer = window.setInterval(tick, 1000);
   }
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && typeof renderNowPlaying.tickNow === 'function') {
+      renderNowPlaying.tickNow(true);
+    }
+  });
 
   async function refresh() {
     try {

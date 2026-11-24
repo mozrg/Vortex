@@ -244,3 +244,24 @@ body .settings-tabs .settings-tab > .settings-tab-glyph { display: inline-flex; 
   .settings-panel .custom-game-remove { grid-area: 1 / 3; }
   .settings-panel .home-game-badges { grid-area: 2 / 2 / 2 / -1; }
 }
+
+/* Keep gradient fills (--accent-fill, --accent-wash, --accent-gradient) aligned to
+   the outer border edge without 1px tile wrapping on any button, pill, tab, or control. */
+button, [role="button"], [role="option"], [role="switch"], [role="tab"],
+.primary-button, .ghost-button, .subtle-button, .control-button, .icon-button,
+.filter-chip, .segment, .settings-tab, .plans-filter, .nav-item, .topbar-nav-item,
+.friend-join, .card-play, .catalog-play, .game-view-option, .hotkey-recorder,
+.home-game-badge, .home-game-option, .game-search-option, .quick-game-method,
+.palette-option, .palette-row, .toast-action, .play-stat-play, .gradient-preview,
+.density-preview-art i, .launcher-theme-page em, .preview-thumb,
+.vortex-dropdown-trigger, .vortex-dropdown-option, .region-ping-pick,
+.game-private-owner-badge, .update-banner, .update-banner-progress i,
+.update-settings-progress i, .plans-progress-bar span, .game-page-score-track i,
+.game-server-capacity i, .play-stat-track i, .activity-goal-track i,
+.activity-game-progress i, .library-folder, .friend-card, .friend-row,
+.play-stat-card, .settings-preview, .card-tuning-preview, .quick-launch-row,
+.quick-launch-tool, .ui-row, input[type="checkbox"], input[type="range"] {
+  background-origin: border-box !important;
+  background-clip: border-box !important;
+  background-repeat: no-repeat !important;
+}

@@ -7,22 +7,24 @@
   const percentEl = document.getElementById('updater-percent');
   const barEl = document.getElementById('updater-bar');
   const trackEl = document.querySelector('.updater-track');
+  const detailEl = document.getElementById('updater-detail');
   const errorBox = document.getElementById('updater-error-box');
   const errorText = document.getElementById('updater-error-text');
   const retryBtn = document.getElementById('updater-retry-btn');
   const closeBtn = document.getElementById('updater-close-btn');
 
-  const ORDER = ['closing', 'verifying', 'installing', 'launching'];
+  const ORDER = ['closing', 'downloading', 'verifying', 'installing', 'launching'];
   let lang = 'ru';
 
   const COPY = {
     ru: {
       title: 'Обновление Vortex',
-      steps: { closing: 'Подготовка', verifying: 'Проверка', installing: 'Установка', launching: 'Запуск' },
+      steps: { closing: 'Подготовка', downloading: 'Загрузка', verifying: 'Проверка', installing: 'Установка', launching: 'Запуск' },
       messages: {
         closing: 'Завершаем текущий процесс Vortex…',
-        verifying: 'Проверяем целостность установщика…',
-        installing: 'Устанавливаем новую версию…',
+        downloading: 'Скачиваем обновление с GitHub…',
+        verifying: 'Проверяем контрольную сумму SHA-256…',
+        installing: 'Распаковываем и устанавливаем обновление…',
         launching: 'Готово! Запускаем обновлённый Vortex…',
         done: 'Обновление установлено!'
       },
@@ -31,11 +33,12 @@
     },
     en: {
       title: 'Updating Vortex',
-      steps: { closing: 'Prepare', verifying: 'Verify', installing: 'Install', launching: 'Launch' },
+      steps: { closing: 'Prepare', downloading: 'Download', verifying: 'Verify', installing: 'Install', launching: 'Launch' },
       messages: {
         closing: 'Closing current Vortex process…',
-        verifying: 'Verifying installer package…',
-        installing: 'Installing new version…',
+        downloading: 'Downloading update from GitHub…',
+        verifying: 'Verifying SHA-256 checksum…',
+        installing: 'Extracting and installing update…',
         launching: 'Done! Launching updated Vortex…',
         done: 'Update installed!'
       },
@@ -79,6 +82,11 @@
     const dict = COPY[lang];
     const msg = payload.message || dict.messages[stage] || '';
     if (statusEl && msg) statusEl.textContent = msg;
+    if (detailEl) {
+      const detail = typeof payload.detail === 'string' ? payload.detail.trim() : '';
+      detailEl.textContent = detail;
+      detailEl.hidden = !detail;
+    }
 
     const isError = stage === 'error';
     const isDone = stage === 'done';

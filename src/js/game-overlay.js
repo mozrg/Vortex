@@ -23,14 +23,25 @@
     return `${Math.round(mb)} MB`;
   }
 
+  let lastTimerText = '';
+  let lastClockText = '';
+
   function paintClock() {
     if (start) {
       const seconds = Math.max(0, Math.floor((Date.now() - start) / 1000));
       const time = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60];
-      metrics.timer.firstElementChild.textContent = time.map(unit => String(unit).padStart(2, '0')).join(':');
+      const nextTimer = time.map(unit => String(unit).padStart(2, '0')).join(':');
+      if (nextTimer !== lastTimerText) {
+        lastTimerText = nextTimer;
+        metrics.timer.firstElementChild.textContent = nextTimer;
+      }
     }
     if (showClock && metrics.clock) {
-      metrics.clock.firstElementChild.textContent = formatSystemTime();
+      const nextClock = formatSystemTime();
+      if (nextClock !== lastClockText) {
+        lastClockText = nextClock;
+        metrics.clock.firstElementChild.textContent = nextClock;
+      }
     }
   }
 
@@ -88,7 +99,12 @@
     if (start !== nextStart || (!clock && (nextStart || showClock))) {
       start = nextStart;
       clearInterval(clock);
-      clock = (start || showClock) ? setInterval(paintClock, 250) : 0;
+      if (start || showClock) {
+        paintClock();
+        clock = setInterval(paintClock, 1000);
+      } else {
+        clock = 0;
+      }
     } else if (!start && !showClock && clock) {
       clearInterval(clock);
       clock = 0;

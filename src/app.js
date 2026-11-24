@@ -288,7 +288,11 @@ function showFriendPreview(card) {
         title: String(details.title),
         thumbnail: safeThumbnail(details.icon || details.thumbnail) || gameThumb
       };
+      if (friendGameMetaCache.has(placeId)) friendGameMetaCache.delete(placeId);
       friendGameMetaCache.set(placeId, meta);
+      while (friendGameMetaCache.size > 250) {
+        friendGameMetaCache.delete(friendGameMetaCache.keys().next().value);
+      }
       card.dataset.gameName = meta.title;
       if (meta.thumbnail) card.dataset.gameThumb = meta.thumbnail;
       if (friendPreviewCard === card && friendPreviewEl?.isConnected) {
@@ -390,7 +394,7 @@ startAnnouncementPolling();
 // Coming back from the tray is the moment a user expects fresh news.
 window.addEventListener('focus', () => loadAnnouncements());
 window.setInterval(() => {
-  if (pauseBackgroundRefresh()) return;
+  if (document.hidden || pauseBackgroundRefresh()) return;
   const username = String(preferences.robloxUsername || '').trim();
   if (username && (shouldRefreshCatalogFriends() || Object.keys(friendPins()).length > 0 || preferences.friendFavoriteAlerts)) void loadFriends(username);
   if (currentView === 'catalog' && !searchQuery && !isRecommendationsView() && !isGenreSearchActive() && activeAccess !== 'paid' &&

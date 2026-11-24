@@ -23,7 +23,11 @@
 .library-toolbar .primary-button { min-height: 34px; }
 .library-page .filter-chip[aria-pressed="true"],
 .library-page .filter-chip[aria-current="page"] {
+  border: 0;
   background: var(--accent-fill, var(--accent));
+  background-origin: border-box;
+  background-clip: border-box;
+  background-repeat: no-repeat;
   color: var(--accent-contrast);
 }
 .library-page :is(button, select, input):focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
@@ -65,7 +69,7 @@
   content: "";
   transition: transform 150ms ease;
 }
-.library-check input:checked { background: var(--accent-fill); border-color: var(--accent-border); }
+.library-check input:checked { border-color: transparent; background: var(--accent-fill); background-origin: border-box; background-clip: border-box; background-repeat: no-repeat; }
 .library-check input:checked::before { transform: translateX(13px); background: var(--accent-contrast); }
 body.no-motion .library-check input,
 body.no-motion .library-check input::before { transition: none; }

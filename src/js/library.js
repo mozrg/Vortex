@@ -256,7 +256,7 @@ function renderLibraryQuickGame(item, folder) {
     data-tooltip="${t(label)}" aria-label="${t(label)}">${icon(glyph, 14)}</button>`;
   return `<article class="library-panel library-quick-game" data-library-quick-game="${id}" tabindex="0"
     aria-label="${escapeHtml(title)}" aria-keyshortcuts="ArrowLeft ArrowRight" data-tooltip="${t('library.reorderGame')}">
-    <div class="library-quick-tools"><div>${!hidden && !['instance', 'access'].includes(item.method) ? tool('edit', 'quick.edit', 'edit') : ''}
+    <div class="library-quick-tools"><div>${!hidden && item.method !== 'instance' ? tool('edit', 'quick.edit', 'edit') : ''}
       ${tool('hotkey', item.hotkey ? 'quick.clearHotkey' : 'quick.setHotkey', 'keyboard')}${tool('remove', 'quick.remove', 'close')}</div></div>
     ${libraryArt(hidden ? {} : item)}
     <strong data-tooltip="${escapeHtml(title)}">${escapeHtml(title)}</strong>

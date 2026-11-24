@@ -66,7 +66,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tray-game-copy strong { overflow: hidden; font-size: calc(14px * var(--tray-scale)); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .tray-game-copy small { overflow: hidden; color: var(--muted); font-size: calc(11px * var(--tray-scale)); text-overflow: ellipsis; white-space: nowrap; }
 .tray-play { display: grid; width: 24px; height: 24px; place-items: center; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-wash); color: var(--accent-text); opacity: .86; transition: background .14s ease, opacity .14s ease; }
-.tray-game:hover .tray-play { background: var(--accent-fill); color: var(--accent-contrast); opacity: 1; }
+.tray-game:hover .tray-play { border-color: transparent; background: var(--accent-fill); background-origin: border-box; background-clip: border-box; background-repeat: no-repeat; color: var(--accent-contrast); opacity: 1; }
 .tray-play svg { width: 11px; height: 11px; fill: currentColor; }
 .tray-empty { display: flex; min-height: 39px; align-items: center; gap: 8px; padding: 7px 9px; border: 0; border-radius: 12px; background: var(--surface-2); color: var(--muted); font-size: 10px; }
 .tray-empty svg { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: var(--accent-text); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
@@ -74,8 +74,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tray-footer { display: grid; grid-template-columns: 1fr auto; gap: 7px; padding: 8px 10px 10px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 90%, var(--bg)); }
 .tray-footer-button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface-2); color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer; transition: background .14s ease, border-color .14s ease, color .14s ease; }
 .tray-footer-button svg { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.tray-open-button { border-color: transparent; background: var(--accent-fill); color: var(--accent-contrast); }
-.tray-open-button:hover { background: var(--accent-fill); color: var(--accent-contrast); }
+.tray-open-button { border: 0; background: var(--accent-fill); background-origin: border-box; background-clip: border-box; background-repeat: no-repeat; color: var(--accent-contrast); }
+.tray-open-button:hover { border: 0; background: var(--accent-fill); background-origin: border-box; background-clip: border-box; background-repeat: no-repeat; filter: brightness(1.08); color: var(--accent-contrast); }
 .tray-quit-button { color: var(--muted); }
 .tray-quit-button:hover { border-color: rgba(255,95,110,.34); background: rgba(255,95,110,.09); color: #ff8994; }
 .tray-toast { position: absolute; right: 14px; bottom: 58px; left: 14px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface-3); color: var(--text); font-size: 10px; opacity: 0; pointer-events: none; transform: translateY(4px); transition: opacity .16s ease, transform .16s ease; }
@@ -108,3 +108,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .tray-session-action:hover { transform: translateY(-1px); }
 .tray-session-action:active, .tray-item:active { transform: scale(.97); }
+button, .tray-footer-button, .tray-open-button, .tray-play, .tray-session-btn, .tray-game {
+  background-origin: border-box !important;
+  background-clip: border-box !important;
+  background-repeat: no-repeat !important;
+}

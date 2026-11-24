@@ -559,6 +559,7 @@ pub struct OverlayState {
     config: Mutex<Config>,
     ready: AtomicBool,
     content: Mutex<Content>,
+    wake: tokio::sync::Notify,
 }
 
 #[tauri::command]
@@ -571,6 +572,7 @@ pub fn game_overlay_configure(
         return Err("Only the main window can configure the overlay.".into());
     }
     *state.config.lock().map_err(|error| error.to_string())? = config;
+    state.wake.notify_one();
     Ok(())
 }
 
@@ -826,15 +828,40 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
     let mut mute_down = false;
     let mut hop_down = false;
     let mut rejoin_down = false;
-    let mut ticker = tokio::time::interval(Duration::from_millis(80));
-    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut first_tick = true;
     loop {
-        ticker.tick().await;
+        if !first_tick {
+            let idle = state
+                .config
+                .lock()
+                .map(|c| !c.session.as_ref().is_some_and(|s| s.pid != 0))
+                .unwrap_or(true)
+                && placement.is_none()
+                && capture.is_none()
+                && probe.is_none();
+            let wait = if idle {
+                Duration::from_millis(500)
+            } else {
+                Duration::from_millis(80)
+            };
+            tokio::select! {
+                _ = state.wake.notified() => {}
+                _ = tokio::time::sleep(wait) => {}
+            }
+        }
+        first_tick = false;
         let mut config = state
             .config
             .lock()
             .map(|config| config.clone())
             .unwrap_or_default();
+        if !config.session.as_ref().is_some_and(|s| s.pid != 0)
+            && placement.is_none()
+            && capture.is_none()
+            && probe.is_none()
+        {
+            continue;
+        }
         let in_foreground = config
             .session
             .as_ref()
@@ -881,9 +908,9 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
             rejoin_down = false;
         }
 
-        // We probe ping whenever the overlay is enabled (to detect the server
-        // region and bad-ping warning even if the ping metric itself isn't checked).
-        let need_ping = config.ping || config.stability || config.region || config.enabled;
+        // Probe ping only when ping, stability, region, or bad-ping prompt is active
+        // so the Minimal (FPS-only) profile avoids all background network probing.
+        let need_ping = config.ping || config.stability || config.region || config.bad_ping_prompt;
         let active_session = config
             .session
             .as_ref()

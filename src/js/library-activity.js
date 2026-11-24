@@ -309,12 +309,16 @@ function updateActivityNowPlayingCard(force = false) {
 }
 
 function tickActivityNowPlayingClock() {
+  if (document.hidden) return;
   const clock = document.querySelector('[data-activity-now-duration]');
   if (!clock) return;
   const startedAt = Number(clock.dataset.startedAt);
   if (startedAt > 0) clock.textContent = formatNowPlayingClock(startedAt);
 }
 window.setInterval(tickActivityNowPlayingClock, 1000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) tickActivityNowPlayingClock();
+});
 
 function normalizeKeyTokenFromEvent(event) {
   const code = String(event.code || '');

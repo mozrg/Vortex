@@ -67,19 +67,18 @@
     './app.js'
   ];
 
-  function loadApplication(index = 0) {
-    if (index >= appScripts.length) return;
-    const script = document.createElement('script');
-    script.async = false;
-    script.src = appScripts[index];
-    script.onload = () => loadApplication(index + 1);
-    script.onerror = (error) => {
-      bootErrors.push(`Failed to load module: ${appScripts[index]}`);
-      showBootError();
-      console.error('Failed to load Vortex module:', appScripts[index], error);
-      loadApplication(index + 1);
-    };
-    document.body.appendChild(script);
+  function loadApplication() {
+    for (const src of appScripts) {
+      const script = document.createElement('script');
+      script.async = false;
+      script.src = src;
+      script.onerror = (error) => {
+        bootErrors.push(`Failed to load module: ${src}`);
+        showBootError();
+        console.error('Failed to load Vortex module:', src, error);
+      };
+      document.body.appendChild(script);
+    }
   }
 
   async function migrateThenLoad() {

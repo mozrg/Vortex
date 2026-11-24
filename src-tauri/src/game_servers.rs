@@ -232,13 +232,23 @@ pub async fn games_resolve_servers(
     }
 
     if !newly_resolved.is_empty() {
-        if let Ok(mut cache) = resolved_server_cache().lock() {
+        let mut cache = crate::state::lock_or_recover(resolved_server_cache());
+        if cache.len() > 1024 {
+            cache.retain(|_, (at, _)| at.elapsed() < RESOLVED_SERVER_TTL);
             if cache.len() > 1024 {
-                cache.retain(|_, (at, _)| at.elapsed() < RESOLVED_SERVER_TTL);
+                let mut entries: Vec<(String, Instant)> = cache
+                    .iter()
+                    .map(|(k, (at, _))| (k.clone(), *at))
+                    .collect();
+                entries.sort_by_key(|(_, at)| *at);
+                let to_drop = entries.len().saturating_sub(800);
+                for (key, _) in entries.into_iter().take(to_drop) {
+                    cache.remove(&key);
+                }
             }
-            for (server_id, entry) in newly_resolved {
-                cache.insert(server_id, (now, entry));
-            }
+        }
+        for (server_id, entry) in newly_resolved {
+            cache.insert(server_id, (now, entry));
         }
     }
 

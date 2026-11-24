@@ -309,7 +309,7 @@ document.addEventListener('click', async (event) => {
       input.click();
       return;
     }
-    if (action.dataset.action === 'favorite') { toggleFavorite(action.dataset.id); if (currentView === 'game-detail' && detailGame) renderPage(); }
+    if (action.dataset.action === 'favorite') { toggleFavorite(action.dataset.id); return; }
     if (action.dataset.action === 'play') openGame(action.dataset.id);
     if (action.dataset.action === 'rejoin-last-banner') {
       const placeId = action.dataset.id;
@@ -576,7 +576,7 @@ document.addEventListener('click', async (event) => {
   const sidebarHide = target.closest('[data-sidebar-hide]');
   if (sidebarHide) {
     const compact = !document.body.classList.contains('sidebar-compact');
-    localStorage.setItem('vortex.sidebarCompact', JSON.stringify(compact));
+    safeLocalStorageSet('vortex.sidebarCompact', JSON.stringify(compact));
     document.body.classList.toggle('sidebar-compact', compact);
     updateSidebarCollapse();
     return;

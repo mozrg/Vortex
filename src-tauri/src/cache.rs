@@ -1,5 +1,5 @@
 use serde_json::Value;
-use sha1::{Digest, Sha1};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::fs;
@@ -7,6 +7,8 @@ use tokio::fs;
 use crate::state::AppState;
 
 const DISK_CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+const DISK_CACHE_PRUNE_AGE: Duration = Duration::from_secs(14 * 24 * 60 * 60);
+const DISK_CACHE_MAX_FILES_PER_DIR: usize = 2000;
 
 /// Sanitize a Roblox CDN thumbnail URL. Roblox rotates thumbnail CDN hosts.
 pub fn clean_thumbnail(value: &str) -> String {
@@ -29,9 +31,9 @@ pub fn disk_cache_dir(kind: &str) -> PathBuf {
 }
 
 fn disk_cache_key(key: &str) -> String {
-    let mut hasher = Sha1::new();
+    let mut hasher = Sha256::new();
     hasher.update(key.as_bytes());
-    hasher.finalize().encode_hex()
+    hasher.finalize()[..20].encode_hex()
 }
 
 trait EncodeHex {
@@ -91,6 +93,50 @@ pub async fn count_disk_cache(kind: &str) -> usize {
             count
         }
         Err(_) => 0,
+    }
+}
+
+/// Prune disk cache files older than 14 days and enforce a per-directory cap
+/// so cache folders never grow unbounded across long-running installations.
+pub async fn prune_expired_disk_cache() {
+    let now = SystemTime::now();
+    for kind in ["thumbs", "search"] {
+        let dir = disk_cache_dir(kind);
+        let Ok(mut entries) = fs::read_dir(&dir).await else {
+            continue;
+        };
+        let mut kept: Vec<(PathBuf, SystemTime)> = Vec::new();
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            let modified = entry
+                .metadata()
+                .await
+                .ok()
+                .and_then(|meta| meta.modified().ok());
+            match modified {
+                Some(mtime) => {
+                    if now
+                        .duration_since(mtime)
+                        .map(|age| age > DISK_CACHE_PRUNE_AGE)
+                        .unwrap_or(false)
+                    {
+                        let _ = fs::remove_file(&path).await;
+                    } else {
+                        kept.push((path, mtime));
+                    }
+                }
+                None => {
+                    kept.push((path, UNIX_EPOCH));
+                }
+            }
+        }
+        if kept.len() > DISK_CACHE_MAX_FILES_PER_DIR {
+            kept.sort_by_key(|(_, mtime)| *mtime);
+            let excess = kept.len() - DISK_CACHE_MAX_FILES_PER_DIR;
+            for (path, _) in kept.into_iter().take(excess) {
+                let _ = fs::remove_file(path).await;
+            }
+        }
     }
 }
 

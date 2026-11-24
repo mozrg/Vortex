@@ -380,50 +380,57 @@ pub async fn detect_local_roblox_account(state: &AppState) -> Option<Value> {
     let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
     let roblox_folder = std::path::PathBuf::from(local_app_data).join("Roblox");
 
-    let mut candidates: Vec<(String, u64)> = Vec::new();
-    let entries = std::fs::read_dir(&roblox_folder).ok()?;
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            continue;
-        }
-        if !name.chars().all(|c| c.is_ascii_digit()) || name == "0" || name.len() < 3 {
-            continue;
-        }
-        // Find the newest file mtime inside this account folder.
-        let mut newest = 0u64;
-        let account_path = roblox_folder.join(&name);
-        if let Ok(file_iter) = std::fs::read_dir(&account_path) {
-            for f in file_iter.flatten() {
-                if let Ok(meta) = f.metadata() {
-                    if let Ok(modified) = meta.modified() {
-                        if let Ok(ms) = modified.duration_since(std::time::UNIX_EPOCH) {
-                            let ms_val = ms.as_millis() as u64;
-                            if ms_val > newest {
-                                newest = ms_val;
+    let candidates = tokio::task::spawn_blocking(move || {
+        let mut candidates: Vec<(String, u64)> = Vec::new();
+        let Ok(entries) = std::fs::read_dir(&roblox_folder) else {
+            return candidates;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            if !name.chars().all(|c| c.is_ascii_digit()) || name == "0" || name.len() < 3 {
+                continue;
+            }
+            // Find the newest file mtime inside this account folder.
+            let mut newest = 0u64;
+            let account_path = roblox_folder.join(&name);
+            if let Ok(file_iter) = std::fs::read_dir(&account_path) {
+                for f in file_iter.flatten() {
+                    if let Ok(meta) = f.metadata() {
+                        if let Ok(modified) = meta.modified() {
+                            if let Ok(ms) = modified.duration_since(std::time::UNIX_EPOCH) {
+                                let ms_val = ms.as_millis() as u64;
+                                if ms_val > newest {
+                                    newest = ms_val;
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        if newest == 0 {
-            if let Ok(meta) = entry.metadata() {
-                if let Ok(modified) = meta.modified() {
-                    newest = modified
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_millis() as u64)
-                        .unwrap_or(0);
+            if newest == 0 {
+                if let Ok(meta) = entry.metadata() {
+                    if let Ok(modified) = meta.modified() {
+                        newest = modified
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
+                    }
                 }
             }
+            candidates.push((name, newest));
         }
-        candidates.push((name, newest));
-    }
+        candidates.sort_by(|a, b| b.1.cmp(&a.1));
+        candidates
+    })
+    .await
+    .ok()?;
 
     if candidates.is_empty() {
         return None;
     }
-    candidates.sort_by(|a, b| b.1.cmp(&a.1));
 
     // Try the 3 freshest candidates via the public users API.
     for (user_id, last_active) in candidates.iter().take(3) {

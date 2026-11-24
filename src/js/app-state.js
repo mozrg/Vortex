@@ -789,10 +789,10 @@ function cleanQuickLaunchItems(items, depth = 0) {
     if (method === 'share' && placeId && !/^\d{1,20}$/.test(placeId)) return null;
     if (method === 'private' && !/^[a-z\d_-]{1,100}$/i.test(linkCode)) return null;
     if (method === 'share' && !/^[a-z\d_-]{1,128}$/i.test(shareCode)) return null;
-    const serverId = String(item.serverId || '');
-    const accessCode = String(item.accessCode || '');
+    const serverId = String(item.serverId || '').trim();
+    const accessCode = String(item.accessCode || '').trim();
     if (method === 'instance' && !/^[a-z0-9-]{5,64}$/i.test(serverId)) return null;
-    if (method === 'access' && !/^[a-z0-9-]{8,100}$/i.test(accessCode)) return null;
+    if (method === 'access' && !/^[a-z0-9_-]{6,128}$/i.test(accessCode)) return null;
     const rawHotkey = item.hotkey && typeof item.hotkey === 'object' ? item.hotkey : null;
     return {
       type: 'game', id, method, placeId,

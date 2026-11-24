@@ -7,34 +7,62 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 fn compare_versions(left: &str, right: &str) -> std::cmp::Ordering {
-    let numbers = |version: &str| {
-        version
-            .trim()
-            .trim_start_matches(['v', 'V'])
-            .split(['-', '+'])
-            .next()
-            .unwrap_or_default()
+    fn parse(version: &str) -> (Vec<u64>, Option<&str>) {
+        let trimmed = version.trim().trim_start_matches(['v', 'V']);
+        let without_build = trimmed.split('+').next().unwrap_or_default();
+        let (core, pre) = match without_build.split_once('-') {
+            Some((core, pre)) if !pre.is_empty() => (core, Some(pre)),
+            Some((core, _)) => (core, None),
+            None => (without_build, None),
+        };
+        let nums = core
             .split('.')
             .map(|part| part.parse::<u64>().unwrap_or(0))
-            .collect::<Vec<_>>()
-    };
-    let left = numbers(left);
-    let right = numbers(right);
-    for index in 0..left.len().max(right.len()) {
-        let ordering = left
+            .collect();
+        (nums, pre)
+    }
+
+    let (left_nums, left_pre) = parse(left);
+    let (right_nums, right_pre) = parse(right);
+    for index in 0..left_nums.len().max(right_nums.len()) {
+        let ordering = left_nums
             .get(index)
             .copied()
             .unwrap_or(0)
-            .cmp(&right.get(index).copied().unwrap_or(0));
+            .cmp(&right_nums.get(index).copied().unwrap_or(0));
         if ordering != std::cmp::Ordering::Equal {
             return ordering;
         }
     }
-    std::cmp::Ordering::Equal
+
+    match (left_pre, right_pre) {
+        (None, None) => std::cmp::Ordering::Equal,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (Some(l), Some(r)) => {
+            let l_parts: Vec<&str> = l.split('.').collect();
+            let r_parts: Vec<&str> = r.split('.').collect();
+            for index in 0..l_parts.len().min(r_parts.len()) {
+                let lp = l_parts[index];
+                let rp = r_parts[index];
+                let ord = match (lp.parse::<u64>(), rp.parse::<u64>()) {
+                    (Ok(ln), Ok(rn)) => ln.cmp(&rn),
+                    (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+                    (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+                    (Err(_), Err(_)) => lp.cmp(rp),
+                };
+                if ord != std::cmp::Ordering::Equal {
+                    return ord;
+                }
+            }
+            l_parts.len().cmp(&r_parts.len())
+        }
+    }
 }
 
 fn update_dir() -> PathBuf {
@@ -217,13 +245,6 @@ pub async fn run_update_check(app: AppHandle, state: Arc<AppState>) -> Result<()
         *running = false;
     }
     let _ = app.emit("updates:state", final_state.public());
-    if final_state.status == "available" && pending_update.is_some() {
-        let download_app = app.clone();
-        let download_state = state.clone();
-        tauri::async_runtime::spawn(async move {
-            let _ = download_update_inner(download_app, download_state).await;
-        });
-    }
     Ok(())
 }
 
@@ -291,6 +312,9 @@ async fn download_update_inner(app: AppHandle, state: Arc<AppState>) -> Result<(
             update.status = "downloading".to_string();
             update.progress = 0;
             update.stage = Some("downloading".to_string());
+            update.downloaded_bytes = 0;
+            update.total_bytes = total;
+            update.speed_bps = 0;
         }
         publish_update_state(&app, &state);
 
@@ -299,6 +323,8 @@ async fn download_update_inner(app: AppHandle, state: Arc<AppState>) -> Result<(
             .map_err(|error| format!("Не удалось создать файл обновления: {error}"))?;
         let mut downloaded = 0u64;
         let mut hasher = Sha256::new();
+        let started_at = Instant::now();
+        let mut last_emit = Instant::now() - Duration::from_millis(200);
         while let Some(chunk) = response
             .chunk()
             .await
@@ -312,17 +338,25 @@ async fn download_update_inner(app: AppHandle, state: Arc<AppState>) -> Result<(
             file.write_all(&chunk)
                 .await
                 .map_err(|error| format!("Не удалось записать установщик: {error}"))?;
-            let progress = ((downloaded.saturating_mul(100) / total).min(99)) as u32;
-            {
-                let mut update = state
-                    .update_state
-                    .lock()
-                    .map_err(|_| "update state unavailable".to_string())?;
-                update.status = "downloading".to_string();
-                update.progress = progress;
-                update.stage = Some("downloading".to_string());
+            if last_emit.elapsed() >= Duration::from_millis(80) || downloaded == total {
+                last_emit = Instant::now();
+                let elapsed = started_at.elapsed().as_secs_f64().max(0.05);
+                let speed_bps = (downloaded as f64 / elapsed) as u64;
+                let progress = ((downloaded.saturating_mul(100) / total).min(99)) as u32;
+                {
+                    let mut update = state
+                        .update_state
+                        .lock()
+                        .map_err(|_| "update state unavailable".to_string())?;
+                    update.status = "downloading".to_string();
+                    update.progress = progress;
+                    update.stage = Some("downloading".to_string());
+                    update.downloaded_bytes = downloaded;
+                    update.total_bytes = total;
+                    update.speed_bps = speed_bps;
+                }
+                publish_update_state(&app, &state);
             }
-            publish_update_state(&app, &state);
         }
         file.flush()
             .await
@@ -458,7 +492,7 @@ fn spawn_update_apply(script: &std::path::Path) -> Result<(), String> {
 pub async fn updates_get_state(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<serde_json::Value, String> {
-    let update_state = state.update_state.lock().unwrap();
+    let update_state = crate::state::lock_or_recover(&state.update_state);
     Ok(update_state.public())
 }
 
@@ -481,7 +515,16 @@ pub async fn updates_download(
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UpdaterJob {
+    #[serde(default)]
     installer_path: String,
+    #[serde(default)]
+    asset_url: String,
+    #[serde(default)]
+    asset_name: String,
+    #[serde(default)]
+    sha256: String,
+    #[serde(default)]
+    sha_url: String,
     app_path: String,
     from_version: String,
     to_version: String,
@@ -507,10 +550,29 @@ fn updater_host_exe_path() -> PathBuf {
     update_dir().join("vortex-updater.exe")
 }
 
-/// Remove temporary updater binary/job left behind after a completed update.
+/// Remove temporary updater files and old downloaded installers left behind
+/// after a completed update so `%APPDATA%\vortex-roblox-launcher\updates`
+/// never accumulates gigabytes of obsolete `.exe` setups over time.
 pub fn cleanup_updater_artifacts() {
+    let dir = update_dir();
     let _ = std::fs::remove_file(updater_host_exe_path());
     let _ = std::fs::remove_file(updater_job_path());
+    let _ = std::fs::remove_file(dir.join("apply-update.ps1"));
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            if name.ends_with(".exe")
+                || name.ends_with(".exe.part")
+                || name.ends_with(".sha256")
+            {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -544,16 +606,25 @@ pub async fn updates_install(
         .lock()
         .map_err(|_| "update state unavailable".to_string())?
         .clone()
-        .ok_or_else(|| "Сначала скачай обновление".to_string())?;
+        .ok_or_else(|| "Нет доступного обновления для установки".to_string())?;
+    if !valid_update_asset_url(&pending.asset_url) {
+        return Err("Небезопасная ссылка на установщик".to_string());
+    }
+    let filename = safe_update_filename(&pending.asset_name)
+        .ok_or_else(|| "Некорректное имя установщика".to_string())?;
     let installer = pending
         .path
         .filter(|path| path.is_file())
-        .ok_or_else(|| "Проверенный установщик не найден".to_string())?;
+        .unwrap_or_else(|| update_dir().join(&filename));
     #[cfg(windows)]
     {
         let current_exe = std::env::current_exe().map_err(|error| error.to_string())?;
         let job = UpdaterJob {
             installer_path: installer.to_string_lossy().to_string(),
+            asset_url: pending.asset_url.clone(),
+            asset_name: pending.asset_name.clone(),
+            sha256: pending.sha256.clone(),
+            sha_url: pending.sha_url.clone(),
             app_path: current_exe.to_string_lossy().to_string(),
             from_version: env!("CARGO_PKG_VERSION").to_string(),
             to_version: pending.version.clone(),
@@ -566,17 +637,20 @@ pub async fn updates_install(
 
         if let Ok(mut update) = state.update_state.lock() {
             update.status = "applying".to_string();
-            update.progress = 100;
             update.stage = Some("installing".to_string());
             update.error_message = None;
         }
         publish_update_state(&app, &state);
 
         // Prefer our dedicated Vortex Updater UI window; fall back to the
-        // legacy PowerShell helper if copying the executable is blocked.
-        if spawn_updater_host(&job).is_err() {
-            let script = write_update_apply_script(&installer)?;
-            spawn_update_apply(&script)?;
+        // legacy PowerShell helper only when the installer is already on disk.
+        if let Err(err) = spawn_updater_host(&job) {
+            if installer.is_file() {
+                let script = write_update_apply_script(&installer)?;
+                spawn_update_apply(&script)?;
+            } else {
+                return Err(err);
+            }
         }
         if let Some(window) = app.get_webview_window("main") {
             crate::save_window_state(&window);
@@ -586,9 +660,21 @@ pub async fn updates_install(
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, theme, accent, accent_secondary, language);
+        let _ = (app, theme, accent, accent_secondary, language, installer);
         Err("Автоматическая установка этой сборки пока поддерживается только в Windows".to_string())
     }
+}
+
+#[cfg(windows)]
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+struct IoCounters {
+    read_operation_count: u64,
+    write_operation_count: u64,
+    other_operation_count: u64,
+    read_transfer_count: u64,
+    write_transfer_count: u64,
+    other_transfer_count: u64,
 }
 
 #[cfg(windows)]
@@ -596,6 +682,7 @@ pub async fn updates_install(
 extern "system" {
     fn OpenProcess(desired_access: u32, inherit_handle: i32, process_id: u32) -> isize;
     fn WaitForSingleObject(handle: isize, milliseconds: u32) -> u32;
+    fn GetProcessIoCounters(process: isize, io_counters: *mut IoCounters) -> i32;
     fn CloseHandle(object: isize) -> i32;
 }
 
@@ -615,11 +702,114 @@ async fn wait_for_parent_exit(pid: u32) {
     .await;
 }
 
+fn format_transfer_mb(bytes: u64, is_en: bool) -> String {
+    let mb = bytes as f64 / (1024.0 * 1024.0);
+    if is_en {
+        format!("{mb:.1} MB")
+    } else {
+        format!("{mb:.1} МБ")
+    }
+}
+
+fn format_transfer_speed(bps: u64, is_en: bool) -> String {
+    if bps >= 1024 * 1024 {
+        let mbps = bps as f64 / (1024.0 * 1024.0);
+        if is_en {
+            format!("{mbps:.1} MB/s")
+        } else {
+            format!("{mbps:.1} МБ/с")
+        }
+    } else {
+        let kbps = (bps / 1024).max(1);
+        if is_en {
+            format!("{kbps} KB/s")
+        } else {
+            format!("{kbps} КБ/с")
+        }
+    }
+}
+
+fn compute_download_stage_progress(downloaded: u64, total: u64) -> u32 {
+    if total == 0 {
+        return 4;
+    }
+    let ratio = (downloaded.min(total) as f64) / (total as f64);
+    (4.0 + ratio * 66.0).round().clamp(4.0, 70.0) as u32
+}
+
+fn compute_install_stage_progress(read_bytes: u64, installer_size: u64, exe_replaced: bool) -> u32 {
+    if exe_replaced {
+        return 93;
+    }
+    if installer_size == 0 {
+        return 78;
+    }
+    let ratio = (read_bytes as f64 / installer_size as f64).clamp(0.0, 1.0);
+    (78.0 + ratio * 14.0).round().clamp(78.0, 92.0) as u32
+}
+
 fn emit_updater_progress(app: &AppHandle, rt: &UpdaterRuntime, payload: Value) {
     if let Ok(mut guard) = rt.snapshot.lock() {
         *guard = payload.clone();
     }
     let _ = app.emit("updater:progress", payload);
+}
+
+async fn resolve_expected_sha256(
+    client: &reqwest::Client,
+    job: &UpdaterJob,
+    is_en: bool,
+) -> Result<String, String> {
+    if job.sha256.len() == 64
+        && job
+            .sha256
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
+        return Ok(job.sha256.to_ascii_lowercase());
+    }
+    if !job.sha_url.is_empty() && valid_update_asset_url(&job.sha_url) {
+        let response = client
+            .get(&job.sha_url)
+            .send()
+            .await
+            .map_err(|error| {
+                if is_en {
+                    format!("Failed to download checksum: {error}")
+                } else {
+                    format!("Не удалось скачать контрольную сумму: {error}")
+                }
+            })?;
+        if !response.status().is_success() {
+            return Err(if is_en {
+                format!("GitHub returned HTTP {} for checksum", response.status().as_u16())
+            } else {
+                format!(
+                    "GitHub вернул HTTP {} для контрольной суммы",
+                    response.status().as_u16()
+                )
+            });
+        }
+        let text = response.text().await.map_err(|error| error.to_string())?;
+        return text
+            .split_whitespace()
+            .find(|token| {
+                token.len() == 64 && token.chars().all(|character| character.is_ascii_hexdigit())
+            })
+            .map(str::to_ascii_lowercase)
+            .ok_or_else(|| {
+                if is_en {
+                    "Checksum file format is invalid.".to_string()
+                } else {
+                    "Файл контрольной суммы имеет неверный формат.".to_string()
+                }
+            });
+    }
+    Err(if is_en {
+        "Release is missing a SHA-256 checksum.".to_string()
+    } else {
+        "В релизе отсутствует SHA-256 контрольная сумма.".to_string()
+    })
 }
 
 async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
@@ -629,7 +819,11 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
     let job = rt.job.lock().map(|g| g.clone()).unwrap_or_default();
     let is_en = job.language.eq_ignore_ascii_case("en");
 
-    let send = |stage: &str, progress: u32, message: Option<&str>, error: Option<String>| {
+    let send = |stage: &str,
+                progress: u32,
+                message: Option<&str>,
+                detail: Option<String>,
+                error: Option<String>| {
         emit_updater_progress(
             &app,
             &rt,
@@ -643,35 +837,366 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
                 "stage": stage,
                 "progress": progress,
                 "message": message,
+                "detail": detail,
                 "error": error,
             }),
         );
     };
 
-    send("closing", 12, None, None);
+    // 1. Wait for the main Vortex process to exit cleanly.
+    send("closing", 2, None, None, None);
     #[cfg(windows)]
     wait_for_parent_exit(job.parent_pid).await;
-    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    send("closing", 4, None, None, None);
 
-    send("verifying", 28, None, None);
-    let installer_path = PathBuf::from(&job.installer_path);
-    if !installer_path.is_file() {
+    let installer_path = if !job.installer_path.is_empty() {
+        PathBuf::from(&job.installer_path)
+    } else if let Some(safe_name) = safe_update_filename(&job.asset_name) {
+        update_dir().join(safe_name)
+    } else {
         rt.running.store(false, Ordering::Release);
         send(
             "error",
-            28,
+            4,
+            None,
             None,
             Some(if is_en {
-                "Verified installer file was not found.".to_string()
+                "Invalid installer path.".to_string()
             } else {
-                "Файл установщика не найден. Попробуй скачать обновление заново.".to_string()
+                "Некорректный путь установщика.".to_string()
             }),
         );
         return;
-    }
-    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    };
 
-    send("installing", 36, None, None);
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(300))
+        .user_agent(concat!("Vortex/", env!("CARGO_PKG_VERSION")))
+        .build()
+    {
+        Ok(c) => c,
+        Err(err) => {
+            rt.running.store(false, Ordering::Release);
+            send("error", 4, None, None, Some(err.to_string()));
+            return;
+        }
+    };
+
+    // 2. Real streaming download from GitHub (if installer is not already on disk).
+    let partial_path = installer_path.with_extension("exe.part");
+    let mut downloaded_hash: Option<String> = None;
+
+    if !installer_path.is_file() {
+        if !valid_update_asset_url(&job.asset_url) {
+            rt.running.store(false, Ordering::Release);
+            send(
+                "error",
+                4,
+                None,
+                None,
+                Some(if is_en {
+                    "Installer download URL is missing or untrusted.".to_string()
+                } else {
+                    "Ссылка на загрузку установщика отсутствует или небезопасна.".to_string()
+                }),
+            );
+            return;
+        }
+        if let Some(parent) = installer_path.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        send("downloading", 4, None, None, None);
+        let mut response = match client.get(&job.asset_url).send().await {
+            Ok(resp) => resp,
+            Err(err) => {
+                rt.running.store(false, Ordering::Release);
+                send(
+                    "error",
+                    4,
+                    None,
+                    None,
+                    Some(if is_en {
+                        format!("Failed to download update: {err}")
+                    } else {
+                        format!("Не удалось скачать обновление: {err}")
+                    }),
+                );
+                return;
+            }
+        };
+        if !response.status().is_success() {
+            rt.running.store(false, Ordering::Release);
+            send(
+                "error",
+                4,
+                None,
+                None,
+                Some(if is_en {
+                    format!("GitHub returned HTTP {}", response.status().as_u16())
+                } else {
+                    format!("GitHub вернул HTTP {} при скачивании", response.status().as_u16())
+                }),
+            );
+            return;
+        }
+        let total = response.content_length().unwrap_or(0);
+        if total == 0 || total > 200 * 1024 * 1024 {
+            rt.running.store(false, Ordering::Release);
+            send(
+                "error",
+                4,
+                None,
+                None,
+                Some(if is_en {
+                    "Installer size is missing or exceeds 200 MB.".to_string()
+                } else {
+                    "Размер установщика отсутствует или превышает 200 МБ.".to_string()
+                }),
+            );
+            return;
+        }
+
+        let mut file = match tokio::fs::File::create(&partial_path).await {
+            Ok(f) => f,
+            Err(err) => {
+                rt.running.store(false, Ordering::Release);
+                send("error", 4, None, None, Some(err.to_string()));
+                return;
+            }
+        };
+        let mut downloaded = 0u64;
+        let mut hasher = Sha256::new();
+        let started_at = Instant::now();
+        let mut window_at = Instant::now();
+        let mut window_bytes = 0u64;
+        let mut smoothed_bps = 0.0f64;
+        let mut last_emit = Instant::now() - Duration::from_millis(200);
+
+        loop {
+            match response.chunk().await {
+                Ok(Some(chunk)) => {
+                    let len = chunk.len() as u64;
+                    downloaded = downloaded.saturating_add(len);
+                    window_bytes = window_bytes.saturating_add(len);
+                    if downloaded > total || downloaded > 200 * 1024 * 1024 {
+                        let _ = tokio::fs::remove_file(&partial_path).await;
+                        rt.running.store(false, Ordering::Release);
+                        send(
+                            "error",
+                            4,
+                            None,
+                            None,
+                            Some(if is_en {
+                                "Downloaded file size did not match expected length.".to_string()
+                            } else {
+                                "Размер загруженного файла не совпал с ожидаемым.".to_string()
+                            }),
+                        );
+                        return;
+                    }
+                    hasher.update(&chunk);
+                    if let Err(err) = file.write_all(&chunk).await {
+                        let _ = tokio::fs::remove_file(&partial_path).await;
+                        rt.running.store(false, Ordering::Release);
+                        send("error", 4, None, None, Some(err.to_string()));
+                        return;
+                    }
+
+                    let win_secs = window_at.elapsed().as_secs_f64();
+                    if win_secs >= 0.35 {
+                        let inst_bps = window_bytes as f64 / win_secs;
+                        smoothed_bps = if smoothed_bps <= 0.0 {
+                            inst_bps
+                        } else {
+                            smoothed_bps * 0.55 + inst_bps * 0.45
+                        };
+                        window_bytes = 0;
+                        window_at = Instant::now();
+                    }
+
+                    if last_emit.elapsed() >= Duration::from_millis(75) || downloaded == total {
+                        last_emit = Instant::now();
+                        let display_bps = if smoothed_bps > 0.0 {
+                            smoothed_bps as u64
+                        } else {
+                            let elapsed = started_at.elapsed().as_secs_f64().max(0.05);
+                            (downloaded as f64 / elapsed) as u64
+                        };
+                        let pct = compute_download_stage_progress(downloaded, total);
+                        let detail = format!(
+                            "{} / {} · {}",
+                            format_transfer_mb(downloaded, is_en),
+                            format_transfer_mb(total, is_en),
+                            format_transfer_speed(display_bps, is_en)
+                        );
+                        send("downloading", pct, None, Some(detail), None);
+                    }
+                }
+                Ok(None) => break,
+                Err(err) => {
+                    let _ = tokio::fs::remove_file(&partial_path).await;
+                    rt.running.store(false, Ordering::Release);
+                    send(
+                        "error",
+                        compute_download_stage_progress(downloaded, total),
+                        None,
+                        None,
+                        Some(if is_en {
+                            format!("Download interrupted: {err}")
+                        } else {
+                            format!("Загрузка прервана: {err}")
+                        }),
+                    );
+                    return;
+                }
+            }
+        }
+
+        if let Err(err) = file.flush().await {
+            let _ = tokio::fs::remove_file(&partial_path).await;
+            rt.running.store(false, Ordering::Release);
+            send("error", 70, None, None, Some(err.to_string()));
+            return;
+        }
+        drop(file);
+        if downloaded != total {
+            let _ = tokio::fs::remove_file(&partial_path).await;
+            rt.running.store(false, Ordering::Release);
+            send(
+                "error",
+                compute_download_stage_progress(downloaded, total),
+                None,
+                None,
+                Some(if is_en {
+                    "Installer download ended before reaching full file size.".to_string()
+                } else {
+                    "Загрузка установщика завершилась не полностью.".to_string()
+                }),
+            );
+            return;
+        }
+        downloaded_hash = Some(format!("{:x}", hasher.finalize()));
+    } else {
+        send("downloading", 70, None, None, None);
+    }
+
+    // 3. Real SHA-256 verification.
+    send("verifying", 71, None, None, None);
+    let actual_hash = match downloaded_hash {
+        Some(h) => h,
+        None => {
+            let file_size = tokio::fs::metadata(&installer_path)
+                .await
+                .map(|m| m.len())
+                .unwrap_or(0);
+            let mut file = match tokio::fs::File::open(&installer_path).await {
+                Ok(f) => f,
+                Err(err) => {
+                    rt.running.store(false, Ordering::Release);
+                    send("error", 71, None, None, Some(err.to_string()));
+                    return;
+                }
+            };
+            let mut hasher = Sha256::new();
+            let mut buf = vec![0u8; 256 * 1024];
+            let mut hashed = 0u64;
+            let mut last_emit = Instant::now() - Duration::from_millis(200);
+            loop {
+                match file.read(&mut buf).await {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        hasher.update(&buf[..n]);
+                        hashed = hashed.saturating_add(n as u64);
+                        if file_size > 0
+                            && (last_emit.elapsed() >= Duration::from_millis(60)
+                                || hashed >= file_size)
+                        {
+                            last_emit = Instant::now();
+                            let pct = 71
+                                + ((hashed.min(file_size) as f64 / file_size as f64) * 5.0).round()
+                                    as u32;
+                            let detail = format!(
+                                "SHA-256 · {} / {}",
+                                format_transfer_mb(hashed, is_en),
+                                format_transfer_mb(file_size, is_en)
+                            );
+                            send("verifying", pct.min(76), None, Some(detail), None);
+                        }
+                    }
+                    Err(err) => {
+                        rt.running.store(false, Ordering::Release);
+                        send("error", 72, None, None, Some(err.to_string()));
+                        return;
+                    }
+                }
+            }
+            format!("{:x}", hasher.finalize())
+        }
+    };
+
+    if !job.sha256.is_empty() || !job.sha_url.is_empty() {
+        match resolve_expected_sha256(&client, &job, is_en).await {
+            Ok(expected_hash) => {
+                if actual_hash != expected_hash {
+                    let _ = tokio::fs::remove_file(&partial_path).await;
+                    let _ = tokio::fs::remove_file(&installer_path).await;
+                    rt.running.store(false, Ordering::Release);
+                    send(
+                        "error",
+                        76,
+                        None,
+                        None,
+                        Some(if is_en {
+                            "Installer SHA-256 checksum mismatch. Update cancelled for safety."
+                                .to_string()
+                        } else {
+                            "Контрольная сумма SHA-256 установщика не совпала с релизом."
+                                .to_string()
+                        }),
+                    );
+                    return;
+                }
+            }
+            Err(err) => {
+                let _ = tokio::fs::remove_file(&partial_path).await;
+                rt.running.store(false, Ordering::Release);
+                send("error", 76, None, None, Some(err));
+                return;
+            }
+        }
+    }
+
+    if partial_path.is_file() {
+        if let Err(err) = tokio::fs::rename(&partial_path, &installer_path).await {
+            rt.running.store(false, Ordering::Release);
+            send("error", 77, None, None, Some(err.to_string()));
+            return;
+        }
+    }
+    send(
+        "verifying",
+        78,
+        None,
+        Some(if is_en {
+            "SHA-256 verified".to_string()
+        } else {
+            "SHA-256 подтверждён".to_string()
+        }),
+        None,
+    );
+
+    // 4. Real NSIS installation tracked via Win32 GetProcessIoCounters + exe replacement check.
+    let installer_size = tokio::fs::metadata(&installer_path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
+    let app_path = PathBuf::from(&job.app_path);
+    let old_exe_mtime = tokio::fs::metadata(&app_path)
+        .await
+        .and_then(|m| m.modified())
+        .ok();
+
+    send("installing", 78, None, None, None);
     let spawn_result = tokio::process::Command::new(&installer_path)
         .args(["/S", "/UPDATE"])
         .spawn();
@@ -681,7 +1206,8 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
             rt.running.store(false, Ordering::Release);
             send(
                 "error",
-                36,
+                78,
+                None,
                 None,
                 Some(format!(
                     "{}: {err}",
@@ -696,18 +1222,85 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
         }
     };
 
-    let mut progress: f64 = 36.0;
+    #[cfg(windows)]
+    let proc_handle: isize = child
+        .id()
+        .map(|pid| unsafe {
+            const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+            OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
+        })
+        .unwrap_or(0);
+
+    let mut current_pct: u32 = 78;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Ok(status),
             Ok(None) => {
-                progress += (92.0 - progress) * 0.085;
-                send("installing", progress.round() as u32, None, None);
-                tokio::time::sleep(std::time::Duration::from_millis(220)).await;
+                #[cfg(windows)]
+                let io = if proc_handle != 0 {
+                    let mut counters = IoCounters::default();
+                    let ok = unsafe { GetProcessIoCounters(proc_handle, &mut counters) };
+                    if ok != 0 {
+                        Some(counters)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                #[cfg(not(windows))]
+                let io: Option<()> = None;
+
+                let new_exe_mtime = tokio::fs::metadata(&app_path)
+                    .await
+                    .and_then(|m| m.modified())
+                    .ok();
+                let exe_replaced =
+                    new_exe_mtime.is_some() && new_exe_mtime != old_exe_mtime;
+
+                #[cfg(windows)]
+                let (read_bytes, write_bytes) = io
+                    .map(|c| (c.read_transfer_count, c.write_transfer_count))
+                    .unwrap_or((0, 0));
+                #[cfg(not(windows))]
+                let (read_bytes, write_bytes) = {
+                    let _ = io;
+                    (0u64, 0u64)
+                };
+
+                let measured_pct =
+                    compute_install_stage_progress(read_bytes, installer_size, exe_replaced);
+                if measured_pct > current_pct {
+                    current_pct = measured_pct;
+                }
+                let detail = if exe_replaced {
+                    Some(if is_en {
+                        "Finalizing installation…".to_string()
+                    } else {
+                        "Завершаем установку…".to_string()
+                    })
+                } else if write_bytes > 0 {
+                    Some(if is_en {
+                        format!("Extracted: {}", format_transfer_mb(write_bytes, true))
+                    } else {
+                        format!("Распаковано: {}", format_transfer_mb(write_bytes, false))
+                    })
+                } else {
+                    None
+                };
+                send("installing", current_pct, None, detail, None);
+                tokio::time::sleep(Duration::from_millis(120)).await;
             }
             Err(err) => break Err(err),
         }
     };
+
+    #[cfg(windows)]
+    if proc_handle != 0 {
+        unsafe {
+            let _ = CloseHandle(proc_handle);
+        }
+    }
 
     match status {
         Ok(exit) if exit.success() => {}
@@ -715,7 +1308,8 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
             rt.running.store(false, Ordering::Release);
             send(
                 "error",
-                progress.round() as u32,
+                current_pct,
+                None,
                 None,
                 Some(if is_en {
                     format!("Installer exited with code {:?}", exit.code())
@@ -727,20 +1321,21 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
         }
         Err(err) => {
             rt.running.store(false, Ordering::Release);
-            send("error", progress.round() as u32, None, Some(err.to_string()));
+            send("error", current_pct, None, None, Some(err.to_string()));
             return;
         }
     }
 
-    send("launching", 96, None, None);
-    tokio::time::sleep(std::time::Duration::from_millis(550)).await;
+    // 5. Launch the updated Vortex executable.
+    send("launching", 96, None, None, None);
+    tokio::time::sleep(Duration::from_millis(250)).await;
 
-    let app_path = PathBuf::from(&job.app_path);
     if let Err(err) = std::process::Command::new(&app_path).spawn() {
         rt.running.store(false, Ordering::Release);
         send(
             "error",
             96,
+            None,
             None,
             Some(format!(
                 "{}: {err}",
@@ -754,8 +1349,8 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
         return;
     }
 
-    send("done", 100, None, None);
-    tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+    send("done", 100, None, None, None);
+    tokio::time::sleep(Duration::from_millis(650)).await;
     app.exit(0);
 }
 
@@ -774,7 +1369,7 @@ fn updater_ready(rt: tauri::State<'_, Arc<UpdaterRuntime>>) -> Result<Value, Str
         "accentSecondary": job.accent_secondary,
         "language": job.language,
         "stage": "closing",
-        "progress": 10,
+        "progress": 2,
     }))
 }
 
@@ -815,7 +1410,7 @@ pub fn run_updater_mode() {
             let _updater =
                 WebviewWindowBuilder::new(app, "updater", WebviewUrl::App("updater.html".into()))
                     .title("Vortex Updater")
-                    .inner_size(450.0, 336.0)
+                    .inner_size(480.0, 356.0)
                     .decorations(false)
                     .transparent(true)
                     .shadow(false)
@@ -845,7 +1440,7 @@ pub fn run_updater_mode() {
 pub fn run_updater_preview_mode() {
     let job = UpdaterJob {
         from_version: env!("CARGO_PKG_VERSION").to_string(),
-        to_version: "1.3.1".to_string(),
+        to_version: "1.3.3".to_string(),
         theme: "dark".to_string(),
         accent: "#a68bff".to_string(),
         accent_secondary: "#5b3fd6".to_string(),
@@ -867,7 +1462,7 @@ pub fn run_updater_preview_mode() {
             let _updater =
                 WebviewWindowBuilder::new(app, "updater", WebviewUrl::App("updater.html".into()))
                     .title("Vortex Updater Preview")
-                    .inner_size(450.0, 336.0)
+                    .inner_size(480.0, 356.0)
                     .decorations(false)
                     .transparent(true)
                     .shadow(false)
@@ -880,15 +1475,19 @@ pub fn run_updater_preview_mode() {
             let state = app.state::<Arc<UpdaterRuntime>>().inner().clone();
             let preview_job = job.clone();
             tauri::async_runtime::spawn(async move {
-                let steps = [
-                    ("closing", 16, 700),
-                    ("verifying", 34, 700),
-                    ("installing", 62, 850),
-                    ("installing", 88, 850),
-                    ("launching", 96, 650),
-                    ("done", 100, 1200),
+                let steps: [(&str, u32, Option<&str>, u64); 10] = [
+                    ("closing", 4, None, 450),
+                    ("downloading", 18, Some("2.6 / 12.4 МБ · 5.4 МБ/с"), 380),
+                    ("downloading", 38, Some("6.4 / 12.4 МБ · 6.1 МБ/с"), 380),
+                    ("downloading", 58, Some("10.1 / 12.4 МБ · 6.3 МБ/с"), 380),
+                    ("downloading", 70, Some("12.4 / 12.4 МБ · 6.2 МБ/с"), 320),
+                    ("verifying", 78, Some("SHA-256 подтверждён"), 500),
+                    ("installing", 84, Some("Распаковано: 11.2 МБ"), 550),
+                    ("installing", 93, Some("Завершаем установку…"), 550),
+                    ("launching", 96, None, 450),
+                    ("done", 100, None, 1000),
                 ];
-                for (stage, progress, wait_ms) in steps {
+                for (stage, progress, detail, wait_ms) in steps {
                     emit_updater_progress(
                         &handle,
                         &state,
@@ -901,9 +1500,10 @@ pub fn run_updater_preview_mode() {
                             "language": preview_job.language,
                             "stage": stage,
                             "progress": progress,
+                            "detail": detail,
                         }),
                     );
-                    tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
+                    tokio::time::sleep(Duration::from_millis(wait_ms)).await;
                 }
                 handle.exit(0);
             });
@@ -916,4 +1516,67 @@ pub fn run_updater_preview_mode() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Vortex updater preview");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cmp::Ordering;
+
+    #[test]
+    fn compare_versions_handles_semver_and_prereleases() {
+        assert_eq!(compare_versions("1.3.0", "1.3.1"), Ordering::Less);
+        assert_eq!(compare_versions("v1.3.1", "1.3.1"), Ordering::Equal);
+        assert_eq!(compare_versions("1.3.1+build.42", "1.3.1"), Ordering::Equal);
+        assert_eq!(compare_versions("1.3.1-beta.1", "1.3.1"), Ordering::Less);
+        assert_eq!(compare_versions("1.3.1", "1.3.1-rc.1"), Ordering::Greater);
+        assert_eq!(compare_versions("1.3.1-alpha.1", "1.3.1-beta.1"), Ordering::Less);
+        assert_eq!(compare_versions("1.3.1-beta.2", "1.3.1-beta.10"), Ordering::Less);
+        assert_eq!(compare_versions("1.3.0.1", "1.3.1"), Ordering::Less);
+        assert_eq!(compare_versions("1.4.0", "1.3.9"), Ordering::Greater);
+    }
+
+    #[test]
+    fn valid_update_asset_url_accepts_only_official_release_downloads() {
+        assert!(valid_update_asset_url(
+            "https://github.com/mozrg/Vortex/releases/download/v1.3.1/Vortex.Launcher.Setup.1.3.1.exe"
+        ));
+        assert!(!valid_update_asset_url(
+            "https://evil.example/mozrg/Vortex/releases/download/v1.3.1/setup.exe"
+        ));
+        assert!(!valid_update_asset_url(
+            "http://github.com/mozrg/Vortex/releases/download/v1.3.1/setup.exe"
+        ));
+    }
+
+    #[test]
+    fn safe_update_filename_sanitizes_and_requires_exe() {
+        assert_eq!(
+            safe_update_filename("Vortex.Launcher.Setup.1.3.1.exe").as_deref(),
+            Some("Vortex.Launcher.Setup.1.3.1.exe")
+        );
+        assert_eq!(
+            safe_update_filename("../bad\\path/setup.exe").as_deref(),
+            Some("..badpathsetup.exe")
+        );
+        assert!(safe_update_filename("Vortex.Launcher.Setup.1.3.1.msi").is_none());
+        assert!(safe_update_filename("").is_none());
+    }
+
+    #[test]
+    fn real_updater_progress_helpers_are_bounded_and_monotonic() {
+        assert_eq!(compute_download_stage_progress(0, 1000), 4);
+        assert_eq!(compute_download_stage_progress(500, 1000), 37);
+        assert_eq!(compute_download_stage_progress(1000, 1000), 70);
+        assert_eq!(compute_download_stage_progress(1500, 1000), 70);
+
+        assert_eq!(compute_install_stage_progress(0, 10_000, false), 78);
+        assert_eq!(compute_install_stage_progress(5_000, 10_000, false), 85);
+        assert_eq!(compute_install_stage_progress(10_000, 10_000, false), 92);
+        assert_eq!(compute_install_stage_progress(2_000, 10_000, true), 93);
+
+        assert_eq!(format_transfer_mb(5 * 1024 * 1024, false), "5.0 МБ");
+        assert_eq!(format_transfer_speed(2 * 1024 * 1024, true), "2.0 MB/s");
+        assert_eq!(format_transfer_speed(512 * 1024, false), "512 КБ/с");
+    }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "vortex-launcher"
-version = "1.3.0"
+version = "1.3.2"
 description = "A customizable desktop launcher for Roblox experiences."
 edition = "2021"
 rust-version = "1.82"
@@ -18,9 +18,8 @@ serde_json = "1"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
 ico = "0.6"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "io-util", "process", "net"] }
 sha2 = "0.10"
-sha1 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 dirs = "6"
 url = "2"
@@ -28,8 +27,6 @@ windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Graphics_Di
 chrono = { version = "0.4", features = ["serde"] }
 aes-gcm = "0.10"
 base64 = "0.22"
-log = "0.4"
-env_logger = "0.11"
 rusty-leveldb = "4.0.2"
 winreg = "0.56"
 

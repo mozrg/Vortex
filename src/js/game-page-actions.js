@@ -199,6 +199,78 @@ async function copyGamePageValue(value) {
   catch { showToast(t('place.copyFailed')); }
 }
 
+async function pinPrivateServerFromGamePage(game, target) {
+  if (!game || !target || target.dataset.pinning === '1') return;
+  const placeId = String(target.dataset.placeId || game.id || '').trim();
+  const accessCode = String(target.dataset.accessCode || '').trim();
+  const vipServerId = String(target.dataset.vipServerId || '').trim();
+  const isMine = target.dataset.isMine === '1';
+  const serverName = String(target.dataset.serverName || game.title || '').trim();
+  if (!placeId || (!accessCode && !(isMine && /^\d+$/.test(vipServerId)))) return;
+
+  const title = serverName ? `${game.title} — ${serverName}`.slice(0, 64) : undefined;
+  const thumbnail = safeThumbnail(game.icon || game.thumbnail) || '';
+  target.dataset.pinning = '1';
+  target.disabled = true;
+  try {
+    // For the user's own VIP server, prefer Roblox's official share/invite link when enabled
+    // so Quick Launch uses the same native share_links / linkCode route as Roblox itself.
+    if (isMine && /^\d+$/.test(vipServerId) && window.vortexDesktop?.getPrivateServerConfig) {
+      try {
+        const res = await window.vortexDesktop.getPrivateServerConfig({ vipServerId });
+        const server = res?.ok ? res.server : null;
+        const rawLink = typeof server?.link === 'string' ? server.link.trim() : '';
+        const parsed = rawLink && typeof robloxSearchLink === 'function' ? robloxSearchLink(rawLink) : null;
+        if (parsed?.method === 'share' && parsed.shareCode) {
+          await pinPastedLink({
+            method: 'share',
+            shareCode: parsed.shareCode,
+            shareType: parsed.shareType || 'Server',
+            placeId,
+            title,
+            thumbnail
+          });
+          return;
+        }
+        if (parsed?.method === 'private' && parsed.linkCode) {
+          await pinPastedLink({
+            method: 'private',
+            placeId: parsed.placeId || placeId,
+            linkCode: parsed.linkCode,
+            title,
+            thumbnail
+          });
+          return;
+        }
+        const joinCode = typeof server?.joinCode === 'string' ? server.joinCode.trim() : '';
+        if (joinCode && /^[a-z0-9_-]{1,100}$/i.test(joinCode)) {
+          await pinPastedLink({
+            method: 'private',
+            placeId,
+            linkCode: joinCode,
+            title,
+            thumbnail
+          });
+          return;
+        }
+      } catch { /* Fall back to pinning by accessCode below. */ }
+    }
+
+    if (accessCode) {
+      await pinPastedLink({
+        method: 'access',
+        placeId,
+        accessCode,
+        title,
+        thumbnail
+      });
+    }
+  } finally {
+    delete target.dataset.pinning;
+    target.disabled = false;
+  }
+}
+
 document.addEventListener('click', event => {
   if (currentView !== 'game-detail' || !detailGame) return;
   const target = event.target.closest?.('[data-game-pane],[data-game-page-action]');
@@ -263,17 +335,7 @@ document.addEventListener('click', event => {
       return;
     }
     case 'private-pin': {
-      const placeId = target.dataset.placeId || String(game.id);
-      const accessCode = target.dataset.accessCode || '';
-      const serverName = target.dataset.serverName || game.title || '';
-      if (placeId && accessCode) {
-        void pinPastedLink({
-          method: 'access',
-          placeId,
-          accessCode,
-          title: serverName ? `${game.title} — ${serverName}`.slice(0, 64) : undefined
-        });
-      }
+      void pinPrivateServerFromGamePage(game, target);
       return;
     }
     case 'ping-regions': if (typeof openRegionPingModal === 'function') void openRegionPingModal(); return;

@@ -21,7 +21,13 @@ function routeToReleaseLog(item) {
   const route = 'release-log/' + (item.id || announcementReleaseTag(item) || 'all');
   const existing = releaseLogRoutes.get(route);
   if (!existing || existing.item !== item || existing.status === 'error') {
+    if (releaseLogRoutes.has(route)) releaseLogRoutes.delete(route);
     releaseLogRoutes.set(route, { item, status: 'idle', release: null });
+    while (releaseLogRoutes.size > 60) {
+      const oldestKey = [...releaseLogRoutes.keys()].find((k) => k !== route && k !== shownReleaseLog);
+      if (!oldestKey) break;
+      releaseLogRoutes.delete(oldestKey);
+    }
   }
   showReleaseLog(route);
 }

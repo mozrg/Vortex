@@ -340,3 +340,153 @@ test('full backup export excludes cookies, IDB hydration restores caches, and Co
   assert.equal(hydrated, true);
   assert.equal(vm.runInContext('dynamicGames.length', ctx), 1);
 });
+
+test('accountStorage recovers from QuotaExceededError by evicting disposable caches, and in-memory maps stay bounded', () => {
+  const { ctx } = bootVortexInVm();
+
+  // Simulate localStorage hitting quota once, then succeeding after disposable cache eviction.
+  const recovered = vm.runInContext(`(() => {
+    const store = new Map([
+      ['vortex.searchCache.old', '{"items":[]}'],
+      ['vortex.featuredCache', '{"items":[]}'],
+      ['vortex.preferences', '{"theme":"dark"}']
+    ]);
+    let failedOnce = false;
+    const origStorage = globalThis.localStorage;
+    globalThis.localStorage = {
+      get length() { return store.size; },
+      key(i) { return [...store.keys()][i] ?? null; },
+      getItem(k) { return store.has(k) ? store.get(k) : null; },
+      removeItem(k) { store.delete(k); },
+      setItem(k, v) {
+        if (!failedOnce) {
+          failedOnce = true;
+          const err = new Error('QuotaExceededError');
+          err.name = 'QuotaExceededError';
+          throw err;
+        }
+        store.set(k, String(v));
+      }
+    };
+    const ok = accountStorage.setItem('vortex.favorites', '["2753915549"]');
+    const favSaved = store.get('vortex.favorites');
+    const cacheEvicted = !store.has('vortex.searchCache.old') && !store.has('vortex.featuredCache');
+    const prefsKept = store.get('vortex.preferences') === '{"theme":"dark"}';
+    globalThis.localStorage = origStorage;
+    return { ok, favSaved, cacheEvicted, prefsKept };
+  })()`, ctx);
+
+  assert.equal(recovered.ok, true);
+  assert.equal(recovered.favSaved, '["2753915549"]');
+  assert.equal(recovered.cacheEvicted, true);
+  assert.equal(recovered.prefsKept, true);
+
+  // routeToReleaseLog keeps releaseLogRoutes capped at <= 60 entries
+  const routeCount = vm.runInContext(`(() => {
+    const origShow = showReleaseLog;
+    showReleaseLog = () => {};
+    releaseLogRoutes.clear();
+    for (let i = 0; i < 85; i += 1) {
+      routeToReleaseLog({ id: 'rel-' + i, releaseTag: 'v1.0.' + i, title: 'Vortex 1.0.' + i });
+    }
+    showReleaseLog = origShow;
+    return releaseLogRoutes.size;
+  })()`, ctx);
+  assert.equal(routeCount, 60);
+
+  // toggleFavorite on catalog updates state without invoking full renderPage()
+  const favResult = vm.runInContext(`(() => {
+    currentView = 'catalog';
+    favorites.clear();
+    let renderCalls = 0;
+    const origRender = renderPage;
+    renderPage = () => { renderCalls += 1; };
+    toggleFavorite('2753915549');
+    const added = favorites.has('2753915549');
+    toggleFavorite('2753915549');
+    const removed = !favorites.has('2753915549');
+    renderPage = origRender;
+    return { added, removed, renderCalls };
+  })()`, ctx);
+  assert.equal(favResult.added, true);
+  assert.equal(favResult.removed, true);
+  assert.equal(favResult.renderCalls, 0);
+});
+
+test('pinning private servers from Game Page Servers tab preserves private launch target', async () => {
+  const { ctx, invoked } = bootVortexInVm();
+
+  // 1) Own VIP server with active share link resolves to native share method (with placeId preserved).
+  const ownResult = await vm.runInContext(`(async () => {
+    preferences.quickLaunchItems = [];
+    preferences.confirmLaunch = false;
+    window.vortexDesktop.getPrivateServerConfig = async ({ vipServerId }) => ({
+      ok: true,
+      server: {
+        id: Number(vipServerId),
+        name: 'My Farm VIP',
+        active: true,
+        link: 'https://www.roblox.com/share?code=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4&type=Server'
+      }
+    });
+    const game = { id: '8304191830', title: 'Anime Adventures', thumbnail: '' };
+    const btn = {
+      dataset: {
+        placeId: '8304191830',
+        accessCode: '3f12ab45-1234-5678-9abc-def012345678',
+        vipServerId: '991122',
+        isMine: '1',
+        serverName: 'My Farm VIP'
+      },
+      disabled: false
+    };
+    await pinPrivateServerFromGamePage(game, btn);
+    const saved = preferences.quickLaunchItems[0];
+    await launchQuickGame(saved.id);
+    return saved;
+  })()`, ctx);
+
+  assert.equal(ownResult.method, 'share');
+  assert.equal(ownResult.shareCode, 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4');
+  assert.equal(ownResult.shareType, 'Server');
+  assert.equal(ownResult.placeId, '8304191830');
+  const ownLaunch = invoked.findLast(entry => entry.cmd === 'launch_quick_game');
+  assert.equal(ownLaunch.args.method, 'share');
+  assert.equal(ownLaunch.args.shareCode, 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4');
+
+  // 2) Friend's private server (no VIP config access) pins and launches with method 'access' + accessCode
+  //    and does not collide with a public pin for the same placeId.
+  const friendResult = await vm.runInContext(`(async () => {
+    preferences.quickLaunchItems = [];
+    await pinPastedLink({ method: 'public', placeId: '8304191830', title: 'Anime Adventures' });
+    const game = { id: '8304191830', title: 'Anime Adventures', thumbnail: '' };
+    const btn = {
+      dataset: {
+        placeId: '8304191830',
+        accessCode: 'friend_vip-1234-5678-9abc-def012345678',
+        vipServerId: '774411',
+        isMine: '0',
+        serverName: 'Friend VIP'
+      },
+      disabled: false
+    };
+    await pinPrivateServerFromGamePage(game, btn);
+    const saved = preferences.quickLaunchItems.find(item => item.method === 'access');
+    await launchQuickGame(saved.id);
+    // Duplicate pin is blocked, and openGame with malformed accessCode refuses to launch a public server.
+    const dup = await pinPastedLink({ method: 'access', placeId: '8304191830', accessCode: 'friend_vip-1234-5678-9abc-def012345678' });
+    const badLaunch = await openGame('8304191830', '', 'bad code!', { skipConfirm: true });
+    return { count: preferences.quickLaunchItems.length, saved, dup, badLaunch };
+  })()`, ctx);
+
+  assert.equal(friendResult.count, 2);
+  assert.equal(friendResult.saved.method, 'access');
+  assert.equal(friendResult.saved.accessCode, 'friend_vip-1234-5678-9abc-def012345678');
+  assert.equal(friendResult.dup, false);
+  assert.equal(friendResult.badLaunch, false);
+  const friendLaunch = invoked.findLast(entry => entry.cmd === 'launch_quick_game');
+  assert.equal(friendLaunch.args.method, 'access');
+  assert.equal(friendLaunch.args.placeId, '8304191830');
+  assert.equal(friendLaunch.args.accessCode, 'friend_vip-1234-5678-9abc-def012345678');
+  assert.equal(invoked.filter(entry => entry.cmd === 'open_game').length, 0);
+});

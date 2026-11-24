@@ -208,14 +208,15 @@ function normalizeBrowserServers(items) {
     .map(row => ({ ...row, id: String(row.id).toLowerCase(), ping: Number(row.ping) > 0 ? Number(row.ping) : null }));
 }
 
-async function resolveServersForView(game, view, rows, mode) {
+async function resolveServersForView(game, view, rows, mode, limit = 8) {
   const id = String(game.id);
   const page = gameServerPage(view, mode);
   const resolveFn = window.vortexDesktop?.resolveGameServers;
   if (typeof resolveFn !== 'function' || !Array.isArray(rows) || !rows.length) return;
   const unresolved = rows
     .filter(row => row?.id && !getResolvedServerMeta(row.id))
-    .map(row => row.id);
+    .map(row => row.id)
+    .slice(0, limit);
   if (!unresolved.length) return;
 
   const token = (page.resolveToken || 0) + 1;
@@ -226,23 +227,15 @@ async function resolveServersForView(game, view, rows, mode) {
   }
 
   let authReason = null;
-  for (let offset = 0; offset < unresolved.length; offset += 25) {
+  try {
+    const result = await resolveFn({ placeId: id, serverIds: unresolved });
     if (page.resolveToken !== token) return;
-    const chunk = unresolved.slice(offset, offset + 25);
-    try {
-      const result = await resolveFn({ placeId: id, serverIds: chunk });
-      if (page.resolveToken !== token) return;
-      if (result?.resolved) storeResolvedServerMap(result.resolved);
-      if (result?.ok === false && (result.reason === 'auth-required' || result.reason === 'cookie-expired')) {
-        authReason = result.reason;
-        break;
-      }
-    } catch {
-      // keep probing remaining or finish gracefully
+    if (result?.resolved) storeResolvedServerMap(result.resolved);
+    if (result?.ok === false && (result.reason === 'auth-required' || result.reason === 'cookie-expired')) {
+      authReason = result.reason;
     }
-    if (isCurrentGamePage(id, 'servers') && view.serverMode === mode) {
-      updateGameServerResults(detailGame, view);
-    }
+  } catch {
+    // finish gracefully
   }
 
   if (page.resolveToken !== token) return;
@@ -279,7 +272,7 @@ async function loadGameServers(game, append = false) {
     revealGameContent(document.getElementById('game-page-server-results'));
   }
   if (page.status === 'success' && page.rows.length) {
-    void resolveServersForView(game, view, page.rows, mode);
+    void resolveServersForView(game, view, page.rows, mode, 10);
   }
 }
 
@@ -422,18 +415,6 @@ async function loadPrivateServers(game, append = false) {
   if (isCurrentGamePage(id, 'servers')) {
     updatePrivateServerResults(detailGame, view);
     revealGameContent(document.getElementById('game-page-private-servers'));
-  }
-  // If any active private servers have an instance UUID, resolve their real region & ping too.
-  if (page.status === 'success') {
-    const activeIds = page.rows.filter(r => r.id && serverIdPattern.test(String(r.id)) && !getResolvedServerMeta(r.id)).map(r => r.id);
-    if (activeIds.length && typeof window.vortexDesktop?.resolveGameServers === 'function') {
-      window.vortexDesktop.resolveGameServers({ placeId: id, serverIds: activeIds }).then(res => {
-        if (res?.resolved) {
-          storeResolvedServerMap(res.resolved);
-          if (isCurrentGamePage(id, 'servers')) updatePrivateServerResults(detailGame, view);
-        }
-      }).catch(() => {});
-    }
   }
 }
 

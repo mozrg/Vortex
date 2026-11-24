@@ -45,8 +45,8 @@ function finishDetectedSession(through) {
   accountStorage.removeItem(PLAYTIME_SESSION_KEY);
 }
 
-function recordGameLaunch(game, serverId = '') {
-  pendingLaunch = { ...game, at: Date.now() };
+function recordGameLaunch(game, serverId = '', isPrivate = false) {
+  pendingLaunch = { ...game, at: Date.now(), isPrivate: Boolean(isPrivate) };
   if (typeof rememberLastActiveServerSession === 'function' && game?.id) {
     rememberLastActiveServerSession(game.id, serverId, pendingLaunch.at);
   }
@@ -87,7 +87,7 @@ async function openGame(id, gameId = '', accessCode = '', { skipConfirm = false 
     showToast(t('toast.launchError'));
     return;
   }
-  recordGameLaunch(game, safeAccessCode ? '' : joinGameId);
+  recordGameLaunch(game, safeAccessCode ? '' : joinGameId, Boolean(safeAccessCode));
   showToast(t('toast.opening', { game: game.title }));
   return true;
 }
@@ -192,7 +192,7 @@ function observeRobloxRuntime(data) {
     runtimeConfirmedAt = at;
     const server = validSessionServer(data.serverId);
     if (recordingSession && server) {
-      if (!recordingSession.serverId) {
+      if (recordingSession.serverId !== server) {
         recordingSession.serverId = server;
         const recent = recentMetadata()[id];
         if (recent && recent.at === (joined || recordingSession.startedAt)) {
@@ -203,6 +203,7 @@ function observeRobloxRuntime(data) {
       }
       observeLibraryFriends();
     } else if (server) {
+      if (preferences.discordPresence) applyDiscordPresence();
       observeLibraryFriends();
     }
     checkLibraryBreakReminder(continuous && continuedSession ? at - floor : 0);
@@ -891,7 +892,8 @@ async function launchQuickGame(id) {
     if (item.placeId && !(item.method === 'public' && folder?.server && folder.server !== 'default')) {
       const game = getGame(item.placeId);
       recordGameLaunch({ id: item.placeId, title: item.title || game?.title, thumbnail: item.thumbnail || game?.thumbnail },
-        item.method === 'instance' ? item.serverId : '');
+        item.method === 'instance' ? item.serverId : '',
+        item.method === 'private' || item.method === 'access' || item.method === 'share');
     } else {
       reportRecentGamesToTray();
     }

@@ -2568,6 +2568,16 @@ async fn discord_set_activity(
                     .or_else(|| first_button.and_then(|b| b.get("url")).and_then(Value::as_str))
                     .map(|text| text.trim().chars().take(256).collect::<String>())
                     .filter(|url| url.starts_with("https://www.roblox.com/"));
+                let large_image = value
+                    .get("largeImage")
+                    .and_then(Value::as_str)
+                    .map(|text| text.trim().chars().take(256).collect::<String>())
+                    .filter(|url| url.starts_with("https://"));
+                let large_text = value
+                    .get("largeText")
+                    .and_then(Value::as_str)
+                    .map(|text| text.trim().chars().take(128).collect::<String>())
+                    .filter(|text| !text.is_empty());
                 crate::state::DiscordActivity {
                     details: value
                         .get("details")
@@ -2580,6 +2590,8 @@ async fn discord_set_activity(
                     start_timestamp,
                     button_label,
                     button_url,
+                    large_image,
+                    large_text,
                 }
             });
         let payload = discord.activity.as_ref().map(|a| a.to_rpc_json());

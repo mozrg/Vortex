@@ -2,7 +2,7 @@
 
 **Vortex** — быстрый нативный лаунчер Roblox для Windows на **Tauri 2 + Rust**. Он объединяет каталог игр, библиотеку, точный браузер публичных и приватных серверов с реальным пингом, внутриигровой оверлей, игровые хоткеи, Discord Rich Presence и подробный учёт игрового времени.
 
-![Версия 1.2.9](https://img.shields.io/badge/version-1.2.9-9b7cff) ![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D6) ![Tauri 2](https://img.shields.io/badge/Tauri-2-FFC131) ![Rust](https://img.shields.io/badge/Rust-stable-DEA584)
+![Версия 1.3.0](https://img.shields.io/badge/version-1.3.0-9b7cff) ![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D6) ![Tauri 2](https://img.shields.io/badge/Tauri-2-FFC131) ![Rust](https://img.shields.io/badge/Rust-stable-DEA584)
 
 [Релизы на GitHub](https://github.com/mozrg/Vortex/releases) · [Сайт проекта](https://vortex.mivermiver51.workers.dev) · [Безопасность](https://vortex.mivermiver51.workers.dev/security.html)
 
@@ -10,10 +10,10 @@
 
 ## Установка и обновление
 
-1. Скачайте установщик `Vortex.Launcher.Setup.1.2.9.exe` для Windows x64 со страницы [GitHub Releases](https://github.com/mozrg/Vortex/releases).
+1. Скачайте установщик `Vortex.Launcher.Setup.1.3.0.exe` для Windows x64 со страницы [GitHub Releases](https://github.com/mozrg/Vortex/releases).
 2. *(Рекомендуется)* Проверьте целостность файла по контрольной сумме `.sha256` в PowerShell:
    ```powershell
-   Get-FileHash .\Vortex.Launcher.Setup.1.2.9.exe -Algorithm SHA256
+   Get-FileHash .\Vortex.Launcher.Setup.1.3.0.exe -Algorithm SHA256
    ```
 3. Для запуска игр требуется установленный **Roblox Player**.
 

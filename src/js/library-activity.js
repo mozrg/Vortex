@@ -136,9 +136,12 @@ function currentPlayingInviteState() {
   const thumbnail = safeThumbnail(known?.thumbnail || nowPlayingSnapshot?.thumbnail) || '';
   const startedAt = Number(gameOverlaySession?.startedAt || nowPlayingSnapshot?.startedAt || playSessionStart) || Date.now();
   const game = known || { id: placeId, title, thumbnail };
+  const isPrivate = Boolean(
+    pendingLaunch && String(pendingLaunch.id) === placeId && pendingLaunch.isPrivate
+  );
   const url = buildServerInviteUrl(placeId, serverId);
   rememberLastActiveServerSession(placeId, serverId, startedAt);
-  return { placeId, serverId, title, thumbnail, startedAt, game, url };
+  return { placeId, serverId, title, thumbnail, startedAt, game, url, isPrivate };
 }
 
 async function writeInviteToClipboard(url) {

@@ -20,7 +20,7 @@ pub struct ResolvedServer {
     pub real_ping: Option<u32>,
 }
 
-const RESOLVED_SERVER_TTL: Duration = Duration::from_secs(300);
+const RESOLVED_SERVER_TTL: Duration = Duration::from_secs(900);
 
 fn resolved_server_cache() -> &'static Mutex<HashMap<String, (Instant, ResolvedServer)>> {
     static CACHE: OnceLock<Mutex<HashMap<String, (Instant, ResolvedServer)>>> = OnceLock::new();
@@ -65,7 +65,7 @@ pub async fn games_resolve_servers(
             let norm = parsed.hyphenated().to_string();
             if seen.insert(norm.clone()) {
                 unique_ids.push(norm);
-                if unique_ids.len() >= 30 {
+                if unique_ids.len() >= 10 {
                     break;
                 }
             }
@@ -108,14 +108,17 @@ pub async fn games_resolve_servers(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let sem = Arc::new(Semaphore::new(5));
+    let sem = Arc::new(Semaphore::new(2));
     let mut join_handles = Vec::with_capacity(to_fetch.len());
-    for server_id in to_fetch {
+    for (idx, server_id) in to_fetch.into_iter().enumerate() {
         let client = client.clone();
         let sem = sem.clone();
         let cookie_header = format!(".ROBLOSECURITY={clean_cookie}");
         join_handles.push(tokio::spawn(async move {
             let _permit = sem.acquire().await.ok()?;
+            if idx > 0 {
+                tokio::time::sleep(Duration::from_millis(180)).await;
+            }
             let attempt_id = Uuid::new_v4().hyphenated().to_string();
             let body = json!({
                 "placeId": place_num,
@@ -246,7 +249,7 @@ pub async fn games_resolve_servers(
     Ok(json!({ "ok": true, "reason": null, "resolved": resolved_map }))
 }
 
-const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+const BROWSER_UA: &str = crate::roblox::BROWSER_UA;
 
 fn normalize_private_server(row: &Value, my_user_id: Option<u64>) -> Option<Value> {
     let vip_server_id = row.get("vipServerId").and_then(Value::as_u64).unwrap_or(0);

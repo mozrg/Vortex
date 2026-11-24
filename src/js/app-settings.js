@@ -938,31 +938,43 @@ async function refreshDiscordStatus() {
   if (host) host.textContent = discordStatusText();
 }
 
-function applyDiscordPresence() {
+let lastDiscordPayloadJson = '';
+
+function applyDiscordPresence(force = false) {
   window.vortexDesktop?.setDiscordEnabled?.(Boolean(preferences.discordPresence));
-  if (!preferences.discordPresence) return;
+  if (!preferences.discordPresence) {
+    lastDiscordPayloadJson = '';
+    return;
+  }
   const active = typeof currentPlayingInviteState === 'function' ? currentPlayingInviteState() : null;
+  let payload;
   if (active) {
     const startSec = Math.floor((Number(active.startedAt) || Date.now()) / 1000);
-    const showJoinButton = !preferences.streamMode && Boolean(active.url);
+    const isPublicJoinable = Boolean(active.serverId) && !active.isPrivate;
+    const showJoinButton = !preferences.streamMode && isPublicJoinable && Boolean(active.url);
     const serverState = !preferences.streamMode && active.serverId
-      ? t('discord.playingServer', { server: active.serverId.slice(0, 8) })
+      ? (active.isPrivate ? t('place.privateServersTitle') : t('discord.playingServer', { server: active.serverId.slice(0, 8) }))
       : t('discord.inRoblox');
-    window.vortexDesktop?.setDiscordActivity?.({
+    payload = {
       details: t('discord.playingGame', { game: active.title }),
       state: serverState,
       startTimestamp: startSec,
+      largeImage: active.thumbnail || undefined,
+      largeText: active.title || undefined,
       buttonLabel: showJoinButton ? t('discord.joinServer') : undefined,
       buttonUrl: showJoinButton ? active.url : undefined
-    });
-    setTimeout(refreshDiscordStatus, 1200);
-    return;
+    };
+  } else {
+    const viewing = currentView === 'game-detail' && detailGame ? detailGame.title : null;
+    payload = {
+      details: viewing ? t('discord.viewing', { game: viewing }) : t('discord.browsing'),
+      state: viewing ? t('discord.inVortex') : t('discord.launcher')
+    };
   }
-  const viewing = currentView === 'game-detail' && detailGame ? detailGame.title : null;
-  window.vortexDesktop?.setDiscordActivity?.({
-    details: viewing ? t('discord.viewing', { game: viewing }) : t('discord.browsing'),
-    state: viewing ? t('discord.inVortex') : t('discord.launcher')
-  });
+  const serialized = JSON.stringify(payload);
+  if (!force && serialized === lastDiscordPayloadJson) return;
+  lastDiscordPayloadJson = serialized;
+  window.vortexDesktop?.setDiscordActivity?.(payload);
   setTimeout(refreshDiscordStatus, 1200);
 }
 

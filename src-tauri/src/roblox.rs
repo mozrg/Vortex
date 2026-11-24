@@ -11,11 +11,13 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(12);
 const THUMB_TIMEOUT: Duration = Duration::from_secs(10);
 const PAID_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 
+pub const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
+
 /// Shared HTTP client with a standard browser User-Agent header so Roblox's
 /// edge gateway does not reject requests with 403 Request Context Failure.
 fn http_client() -> reqwest::Client {
     reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
+        .user_agent(BROWSER_UA)
         .timeout(FETCH_TIMEOUT)
         .build()
         .expect("failed to build HTTP client")

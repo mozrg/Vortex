@@ -583,6 +583,7 @@ fn create_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("game-overlay.html".into()))
         .title("Vortex Overlay")
         .inner_size(324.0, f64::from(HEIGHT))
+        .min_inner_size(80.0, 20.0)
         .decorations(false)
         .transparent(true)
         .shadow(false)

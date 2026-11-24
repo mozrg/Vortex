@@ -77,6 +77,19 @@ pub struct DiscordActivity {
     pub start_timestamp: Option<u64>,
     pub button_label: Option<String>,
     pub button_url: Option<String>,
+    pub large_image: Option<String>,
+    pub large_text: Option<String>,
+}
+
+fn truncate_utf8_bytes(text: &str, max_bytes: usize) -> String {
+    let mut out = String::new();
+    for ch in text.chars() {
+        if out.len() + ch.len_utf8() > max_bytes {
+            break;
+        }
+        out.push(ch);
+    }
+    out.trim().to_string()
 }
 
 impl DiscordActivity {
@@ -88,10 +101,22 @@ impl DiscordActivity {
         if let Some(start) = self.start_timestamp.filter(|&ts| ts > 0) {
             obj["timestamps"] = serde_json::json!({ "start": start });
         }
+        if let Some(image) = self
+            .large_image
+            .as_deref()
+            .filter(|url| url.starts_with("https://"))
+        {
+            let mut assets = serde_json::json!({ "large_image": image });
+            if let Some(text) = self.large_text.as_deref().filter(|t| !t.trim().is_empty()) {
+                assets["large_text"] = serde_json::json!(text);
+            }
+            obj["assets"] = assets;
+        }
         if let (Some(label), Some(url)) = (&self.button_label, &self.button_url) {
-            if !label.is_empty() && url.starts_with("https://www.roblox.com/") {
+            let safe_label = truncate_utf8_bytes(label, 32);
+            if !safe_label.is_empty() && url.starts_with("https://www.roblox.com/") {
                 obj["buttons"] = serde_json::json!([
-                    { "label": label, "url": url }
+                    { "label": safe_label, "url": url }
                 ]);
             }
         }

@@ -133,7 +133,7 @@ const overlayLabels = [
   ['discord.playingGame', 'Играет в {game}', 'Playing {game}'],
   ['discord.playingServer', 'Сервер #{server}', 'Server #{server}'],
   ['discord.inRoblox', 'В Roblox через Vortex', 'In Roblox via Vortex'],
-  ['discord.joinServer', 'Присоединиться к серверу', 'Join server'],
+  ['discord.joinServer', 'Присоединиться', 'Join server'],
 
   ['tools.pinnedFriendLogTitle', 'Лог активности закреплённых друзей', 'Pinned friends activity log'],
   ['tools.pinnedFriendLogBody', 'Фиксирует переходы закреплённых друзей между играми, пока Vortex открыт или в трее.', 'Tracks game switches for your pinned friends while Vortex is open or in the tray.'],
@@ -587,14 +587,10 @@ async function resolveCandidatesRealMeta(placeId, candidates, targetRegion = 'an
     }
   }
 
-  // Probe up to 50 candidates in batches of 25; stop early if we already found good matches in targetRegion.
-  const maxProbe = Math.min(toProbe.length, 50);
-  for (let offset = 0; offset < maxProbe; offset += 25) {
-    if (targetRegion !== 'any') {
-      const matchedCount = [...metaMap.values()].filter(m => m.regionGroup === targetRegion).length;
-      if (matchedCount >= 3) break;
-    }
-    const chunk = toProbe.slice(offset, offset + 25);
+  // Probe gently (at most 10 candidates) to avoid triggering Roblox Account Session Protection.
+  const maxProbe = Math.min(toProbe.length, 10);
+  if (maxProbe > 0) {
+    const chunk = toProbe.slice(0, maxProbe);
     try {
       const res = await resolveFn({ placeId, serverIds: chunk });
       if (res?.resolved && typeof res.resolved === 'object') {
@@ -603,12 +599,7 @@ async function resolveCandidatesRealMeta(placeId, candidates, targetRegion = 'an
           if (info) metaMap.set(id.toLowerCase(), info);
         }
       }
-      if (res?.ok === false && (res.reason === 'auth-required' || res.reason === 'cookie-expired')) {
-        break;
-      }
-    } catch {
-      break;
-    }
+    } catch { /* ignore */ }
   }
   return metaMap;
 }

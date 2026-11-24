@@ -146,7 +146,7 @@ function renderReleaseLog() {
   if (!entry) return '';
   return `<article class="settings-card release-log-page">
     <header class="release-log-head">
-      <span>${preferences.language === 'en' ? 'Changelog' : 'История версий'}</span>
+      <span>${t('releaseLog.kicker')}</span>
       <h1 tabindex="-1">${t('notifications.logTitle')}</h1>
     </header>
     <div class="release-log-content" aria-live="polite">${renderReleaseLogContent(entry)}</div>

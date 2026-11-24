@@ -268,6 +268,43 @@ function renderVortexPopup({ label, trigger, panel, className = '', triggerClass
     options[index]?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
   }, true);
 
+  const FOCUSABLE_SELECTOR = 'a[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
+  function activeModalDialog() {
+    const dialogs = [...document.querySelectorAll('[role="dialog"][aria-modal="true"]')].filter((el) => {
+      if (!el.isConnected || el.hidden || el.closest('[hidden]')) return false;
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 || rect.height > 0;
+    });
+    return dialogs.length ? dialogs[dialogs.length - 1] : null;
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab' || menu) return;
+    const dialog = activeModalDialog();
+    if (!dialog) return;
+    const focusables = [...dialog.querySelectorAll(FOCUSABLE_SELECTOR)].filter((el) =>
+      !el.hidden && !el.closest('[hidden]') && (el.offsetWidth > 0 || el.offsetHeight > 0)
+    );
+    if (!focusables.length) {
+      event.preventDefault();
+      dialog.focus?.();
+      return;
+    }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (!dialog.contains(document.activeElement)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }, true);
+
   document.addEventListener('scroll', event => {
     if (!tip?.contains(event.target)) closeTooltip();
     if (menu && !menu.panel.contains(event.target)) placePopup(menu.panel, menu.trigger, true);
@@ -278,6 +315,7 @@ function renderVortexPopup({ label, trigger, panel, className = '', triggerClass
   window.vortexOverlays = {
     closeTooltip,
     closeMenu,
+    activeModalDialog,
     enableTooltips(enabled) {
       document.body.classList.toggle('no-tooltips', !enabled);
       if (!enabled) closeTooltip(true);

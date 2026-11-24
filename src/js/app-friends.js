@@ -128,7 +128,7 @@ async function loadFriends(username, force = false) {
         isCurrentGamePage(detailGame?.id, 'friends') || isCurrentGamePage(detailGame?.id, 'servers')) renderPage();
     renderFriendsDrawer();
     if (force && ok && currentView === 'friends') {
-      showToast(preferences.language === 'en' ? 'Friends list updated' : 'Список друзей обновлён');
+      showToast(t('friends.updatedToast'));
     }
   }
 }

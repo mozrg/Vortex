@@ -550,7 +550,7 @@ async function fetchGenreGames(append = false) {
   if (!GENRE_SEARCH_BASE[genre] || genreLoadingMore) return;
   const requestId = ++activeGenreRequestId;
   const targetNewCount = append ? 10 : 0;
-  const maxRequests = append ? 120 : 1;
+  const maxRequests = append ? 12 : 1;
   if (append) {
     genreLoadingMore = true;
     genrePendingResults = [];

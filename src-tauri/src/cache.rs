@@ -1,7 +1,7 @@
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::fs;
 
 use crate::state::AppState;
@@ -71,14 +71,23 @@ pub async fn write_disk_cache(kind: &str, key: &str, value: &Value) {
     let _ = fs::write(&path, content).await;
 }
 
-/// Clear the on-disk cache for a given kind, or all caches if kind is empty.
-pub async fn clear_disk_cache(kind: &str) {
+/// Return whether a disk cache kind is part of the strict whitelist.
+pub fn is_valid_disk_cache_kind(kind: &str) -> bool {
+    matches!(kind, "" | "thumbs" | "search")
+}
+
+/// Clear the on-disk cache for a given whitelisted kind, or all caches if kind is empty.
+pub async fn clear_disk_cache(kind: &str) -> Result<(), String> {
+    if !is_valid_disk_cache_kind(kind) {
+        return Err("Invalid cache kind".to_string());
+    }
     let target = if kind.is_empty() {
         AppState::user_data_dir().join("cache")
     } else {
         disk_cache_dir(kind)
     };
     let _ = fs::remove_dir_all(&target).await;
+    Ok(())
 }
 
 /// Count the number of cached files for a given kind.
@@ -158,23 +167,25 @@ pub async fn read_cached_thumbnail(universe_id: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// Get the last-modified time of a file as a Unix timestamp (ms), if available.
-#[allow(dead_code)]
-pub async fn file_mtime_ms(path: &Path) -> Option<u64> {
-    let metadata = fs::metadata(path).await.ok()?;
-    let modified = metadata.modified().ok()?;
-    Some(modified.duration_since(UNIX_EPOCH).ok()?.as_millis() as u64)
-}
-
-/// Time helpers for the response cache.
-#[allow(dead_code)]
-pub fn now_instant() -> Instant {
-    Instant::now()
-}
-
 pub fn timestamp_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disk_cache_kind_whitelist_blocks_path_traversal() {
+        assert!(is_valid_disk_cache_kind(""));
+        assert!(is_valid_disk_cache_kind("thumbs"));
+        assert!(is_valid_disk_cache_kind("search"));
+        assert!(!is_valid_disk_cache_kind(".."));
+        assert!(!is_valid_disk_cache_kind("../accounts"));
+        assert!(!is_valid_disk_cache_kind("thumbs/../.."));
+        assert!(!is_valid_disk_cache_kind("arbitrary"));
+    }
 }

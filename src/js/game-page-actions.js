@@ -62,13 +62,12 @@ function renderGameLaunch(game) {
 
 function renderGameOther(game) {
   if (!officialGameUrl(game)) return gamePageEmpty('gamepad', 'game.detailNotFound');
-  const isEn = preferences.language === 'en';
   return `<section class="game-page-card game-page-other"><h2>${t('place.other')}</h2>
     <div class="game-page-other-actions">
-      <button class="ghost-button" data-launcher-action="shortcut" data-id="${escapeHtml(game.id)}" data-tooltip="${isEn ? 'Create a Windows desktop shortcut for this game' : 'Создать ярлык этой игры на рабочем столе Windows'}">${icon('monitor', 16)} ${t('tools.shortcut')}</button>
-      <button class="ghost-button" data-game-page-action="pin-place" data-tooltip="${isEn ? 'Pin this game to the Quick Launch sidebar' : 'Закрепить игру в панели «Быстрый запуск»'}">${icon('star', 16)} ${t('tools.pinGame')}</button>
-      <button class="ghost-button" data-game-page-action="copy-place" data-tooltip="${isEn ? 'Copy numeric Place ID to clipboard' : 'Скопировать цифровой Place ID в буфер обмена'}">${icon('link', 16)} ${t('place.copyId')}</button>
-      <button class="ghost-button" data-action="open-social-link" data-url="${officialGameUrl(game)}" data-tooltip="${isEn ? 'Open official game page on roblox.com' : 'Открыть официальную страницу игры на roblox.com'}">${icon('arrowUpRight', 16)} ${t('place.openRoblox')}</button>
+      <button class="ghost-button" data-launcher-action="shortcut" data-id="${escapeHtml(game.id)}" data-tooltip="${escapeHtml(t('place.shortcutTip'))}">${icon('monitor', 16)} ${t('tools.shortcut')}</button>
+      <button class="ghost-button" data-game-page-action="pin-place" data-tooltip="${escapeHtml(t('place.pinTip'))}">${icon('star', 16)} ${t('tools.pinGame')}</button>
+      <button class="ghost-button" data-game-page-action="copy-place" data-tooltip="${escapeHtml(t('place.copyIdTip'))}">${icon('link', 16)} ${t('place.copyId')}</button>
+      <button class="ghost-button" data-action="open-social-link" data-url="${officialGameUrl(game)}" data-tooltip="${escapeHtml(t('place.openRobloxTip'))}">${icon('arrowUpRight', 16)} ${t('place.openRoblox')}</button>
     </div>
   </section>`;
 }

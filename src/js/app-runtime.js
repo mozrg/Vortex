@@ -482,9 +482,7 @@ function toggleFavorite(id) {
       btn.classList.toggle('is-favorite', isNowFavorite);
       btn.setAttribute('aria-label', label);
     } else if (btn.classList.contains('game-page-favorite')) {
-      btn.setAttribute('data-tooltip', preferences.language === 'en'
-        ? (isNowFavorite ? 'Remove from Favorites' : 'Add to Favorites')
-        : (isNowFavorite ? 'Убрать игру из избранного' : 'Добавить игру в избранное'));
+      btn.setAttribute('data-tooltip', t(isNowFavorite ? 'place.favoriteRemoveTip' : 'place.favoriteAddTip'));
       btn.innerHTML = `${icon('star', 15)} ${t(isNowFavorite ? 'place.favorited' : 'place.favorite')}`;
     } else {
       btn.setAttribute('aria-label', label);
@@ -505,8 +503,8 @@ function renderQuickGameFields(method = quickGameMethod) {
   });
   const placeField = `<label class="quick-game-field"><span>${t('quick.placeIdLabel')}</span><input name="placeId" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="1234567890" ${quickGameMethod === 'share' ? 'hidden' : 'required'} /><small>${t('quick.placeIdHint')}</small></label>`;
   const linkField = `<label class="quick-game-field"><span>${t('quick.linkCodeLabel')}</span><input name="linkCode" autocomplete="off" maxlength="100" placeholder="${t('quick.linkCodePlaceholder')}" ${quickGameMethod === 'private' ? 'required' : 'hidden'} /><small>${t('quick.linkCodeHint')}</small></label>`;
-  const accessLabel = preferences.language === 'en' ? 'Private server Access Code' : 'Код доступа приватного сервера (Access Code)';
-  const accessHint = preferences.language === 'en' ? 'Automatically filled from the game Servers tab.' : 'Заполнено автоматически со вкладки «Серверы».';
+  const accessLabel = t('quick.accessCodeLabel');
+  const accessHint = t('quick.accessCodeHint');
   const accessField = `<label class="quick-game-field"><span>${escapeHtml(accessLabel)}</span><input name="accessCode" autocomplete="off" maxlength="128" required /><small>${escapeHtml(accessHint)}</small></label>`;
   const shareField = `<label class="quick-game-field"><span>${t('quick.shareCodeLabel')}</span><input name="shareCode" autocomplete="off" maxlength="512" placeholder="${t('quick.shareCodePlaceholder')}" ${quickGameMethod === 'share' ? 'required' : 'hidden'} /><small>${t('quick.shareCodeHint')}</small></label>`;
   const optionalSharePlace = `<label class="quick-game-field"><span>${t('quick.sharePlaceIdLabel')}</span><input name="placeId" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="${t('quick.sharePlaceIdPlaceholder')}" /><small>${t('quick.sharePlaceIdHint')}</small></label>`;

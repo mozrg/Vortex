@@ -225,7 +225,7 @@ function renderUpdateBanner(state) {
   const downloadedBytes = Number(latestUpdateState.downloadedBytes) || 0;
   const speedBps = Number(latestUpdateState.speedBps) || 0;
   const transferInfo = totalBytes > 0
-    ? ` · ${(downloadedBytes / 1048576).toFixed(1)} / ${(totalBytes / 1048576).toFixed(1)} ${preferences.language === 'en' ? 'MB' : 'МБ'}${speedBps > 0 ? ` (${speedBps >= 1048576 ? `${(speedBps / 1048576).toFixed(1)} ${preferences.language === 'en' ? 'MB/s' : 'МБ/с'}` : `${Math.max(1, Math.round(speedBps / 1024))} ${preferences.language === 'en' ? 'KB/s' : 'КБ/с'}`})` : ''}`
+    ? ` · ${(downloadedBytes / 1048576).toFixed(1)} / ${(totalBytes / 1048576).toFixed(1)} ${t('unit.mb')}${speedBps > 0 ? ` (${speedBps >= 1048576 ? `${(speedBps / 1048576).toFixed(1)} ${t('unit.mbps')}` : `${Math.max(1, Math.round(speedBps / 1024))} ${t('unit.kbps')}`})` : ''}`
     : '';
   const message = status === 'available' ? t('updates.available')
     : status === 'downloaded' ? t('updates.ready')

@@ -2,7 +2,6 @@ use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
-use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{LocalFree, HLOCAL};
@@ -53,12 +52,8 @@ fn dpapi_protect(bytes: &[u8]) -> Result<Vec<u8>, String> {
     copy_and_free_blob(output)
 }
 
-/// Decrypt either an Electron DPAPI blob or the temporary Rust placeholder format.
+/// Decrypt either a native Windows DPAPI blob or a migrated Electron `v10` OSCrypt blob.
 pub fn decrypt_string(cipher: &[u8]) -> Result<String, String> {
-    // Keep cookies created by early Rust builds readable during this transition.
-    if cipher.len() >= 4 && cipher[..4] == [0, 0, 0, 0] {
-        return String::from_utf8(cipher[4..].to_vec()).map_err(|e| format!("UTF-8 error: {e}"));
-    }
     let bytes = if cipher.starts_with(b"v10") {
         decrypt_electron_v10(cipher)?
     } else {
@@ -153,7 +148,8 @@ fn copy_and_free_blob(blob: CRYPT_INTEGER_BLOB) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-/// Load the stored cookie from disk and decrypt it.
+/// Load the stored cookie from disk and decrypt it. Legacy Electron `v10` blobs
+/// are transparently re-encrypted into native Windows DPAPI on first load.
 pub fn load_cookie(profile: Option<&str>) -> String {
     let Some(path) = cookie_file_path(profile) else { return String::new() };
     match std::fs::read(&path) {
@@ -161,8 +157,14 @@ pub fn load_cookie(profile: Option<&str>) -> String {
             if cipher.is_empty() {
                 return String::new();
             }
+            let is_legacy_v10 = cipher.starts_with(b"v10");
             match decrypt_string(&cipher) {
-                Ok(plain) => plain,
+                Ok(plain) => {
+                    if is_legacy_v10 && !plain.is_empty() {
+                        let _ = save_cookie(&plain, profile);
+                    }
+                    plain
+                }
                 Err(_) => String::new(),
             }
         }
@@ -190,25 +192,19 @@ pub fn save_cookie(cookie: &str, profile: Option<&str>) -> bool {
     }
 }
 
-/// SHA-256 of a file's contents, returning a lowercase hex string.
-#[allow(dead_code)]
-pub async fn hash_file(path: &PathBuf) -> Result<String, String> {
-    use tokio::io::AsyncReadExt;
-    let mut file = tokio::fs::File::open(path)
-        .await
-        .map_err(|e| e.to_string())?;
-    let mut hasher = Sha256::new();
-    let mut buf = vec![0u8; 64 * 1024];
-    loop {
-        let n = file.read(&mut buf).await.map_err(|e| e.to_string())?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dpapi_roundtrip_works_and_plaintext_prefix_is_rejected() {
+        let encrypted = encrypt_string("sample-cookie-value").expect("dpapi encrypt");
+        assert_eq!(
+            decrypt_string(&encrypted).expect("dpapi decrypt"),
+            "sample-cookie-value"
+        );
+        let mut fake_plain = vec![0u8, 0, 0, 0];
+        fake_plain.extend_from_slice(b"plaintext-cookie");
+        assert!(decrypt_string(&fake_plain).is_err());
     }
-    let result = hasher.finalize();
-    Ok(result
-        .iter()
-        .map(|b| format!("{:02x}", b))
-        .collect::<String>())
 }

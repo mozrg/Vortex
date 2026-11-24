@@ -72,11 +72,20 @@
   }
 
   function persistCache(key, value) {
-    void set(key, value);
+    if (typeof indexedDB !== 'undefined') {
+      void set(key, value).then((stored) => {
+        if (stored) {
+          try { localStorage.removeItem(key); } catch { /* ignore */ }
+        } else {
+          try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota */ }
+        }
+      });
+      return;
+    }
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch {
-      // Quota exceeded in localStorage — IndexedDB holds the full copy.
+      // Quota exceeded in localStorage.
     }
   }
 

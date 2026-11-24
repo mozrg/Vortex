@@ -448,44 +448,85 @@ async fn download_update_inner(app: AppHandle, state: Arc<AppState>) -> Result<(
     result
 }
 
-#[cfg(windows)]
-fn write_update_apply_script(installer: &std::path::Path) -> Result<PathBuf, String> {
-    let script_path = update_dir().join("apply-update.ps1");
-    let installer = installer
-        .to_str()
-        .ok_or_else(|| "Invalid installer path".to_string())?;
-    let installer = installer.replace('\'', "''");
-    let app_path = std::env::current_exe().map_err(|error| error.to_string())?;
-    let app_path = app_path
-        .to_str()
-        .ok_or_else(|| "Invalid application path".to_string())?
-        .replace('\'', "''");
-    let script = format!(
-        "$ErrorActionPreference = 'Stop'\n$installer = '{installer}'\n$app = '{app_path}'\n$deadline = (Get-Date).AddMinutes(3)\ndo {{\n  Start-Sleep -Milliseconds 400\n  $running = Get-Process -Name 'vortex-launcher' -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq $app }}\n}} while ($running -and (Get-Date) -lt $deadline)\nif ($running) {{ exit 2 }}\n$p = Start-Process -FilePath $installer -ArgumentList @('/S', '/UPDATE') -PassThru -Wait\nif ($p.ExitCode -ne 0) {{ exit $p.ExitCode }}\nStart-Sleep -Seconds 2\nStart-Process -FilePath $app\n"
-    );
-    std::fs::write(&script_path, script).map_err(|error| error.to_string())?;
-    Ok(script_path)
+fn normalize_windows_path_for_compare(path: &std::path::Path) -> String {
+    let raw = path.to_string_lossy();
+    let stripped = raw.strip_prefix(r"\\?\").unwrap_or(&raw);
+    stripped
+        .replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_ascii_lowercase()
 }
 
-#[cfg(windows)]
-fn spawn_update_apply(script: &std::path::Path) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-    std::process::Command::new("powershell.exe")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-WindowStyle",
-            "Hidden",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-        ])
-        .arg(script)
-        .creation_flags(CREATE_NO_WINDOW | 0x00000200)
-        .spawn()
-        .map_err(|error| format!("Не удалось запустить установщик: {error}"))?;
-    Ok(())
+fn has_parent_traversal(path: &std::path::Path) -> bool {
+    path.components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+}
+
+fn validate_installer_path_in_dir(
+    raw_installer_path: &str,
+    asset_name: &str,
+    allowed_dir: &std::path::Path,
+) -> Result<PathBuf, String> {
+    let expected_dir = normalize_windows_path_for_compare(allowed_dir);
+    let candidate_name = if !raw_installer_path.trim().is_empty() {
+        let p = PathBuf::from(raw_installer_path.trim());
+        if has_parent_traversal(&p) {
+            return Err("Invalid installer path.".to_string());
+        }
+        let parent = p
+            .parent()
+            .ok_or_else(|| "Invalid installer path.".to_string())?;
+        if normalize_windows_path_for_compare(parent) != expected_dir {
+            return Err("Installer path must reside inside the updates directory.".to_string());
+        }
+        let raw_name = p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| "Invalid installer filename.".to_string())?;
+        safe_update_filename(raw_name)
+            .filter(|safe| safe == raw_name)
+            .ok_or_else(|| "Invalid installer filename.".to_string())?
+    } else if let Some(safe) = safe_update_filename(asset_name) {
+        safe
+    } else {
+        return Err("Invalid installer path.".to_string());
+    };
+
+    if candidate_name.eq_ignore_ascii_case("vortex-updater.exe") {
+        return Err("Invalid installer filename.".to_string());
+    }
+    Ok(allowed_dir.join(candidate_name))
+}
+
+fn validate_app_path_against_updates(
+    raw_app_path: &str,
+    updates_dir: &std::path::Path,
+) -> Result<PathBuf, String> {
+    let trimmed = raw_app_path.trim();
+    if trimmed.is_empty() {
+        return Err("Missing target application path.".to_string());
+    }
+    let path = PathBuf::from(trimmed);
+    if !path.is_absolute() || has_parent_traversal(&path) {
+        return Err("Invalid target application path.".to_string());
+    }
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Invalid target application executable.".to_string())?;
+    let lower_name = file_name.to_ascii_lowercase();
+    if !lower_name.ends_with(".exe")
+        || !lower_name.contains("vortex")
+        || lower_name == "vortex-updater.exe"
+    {
+        return Err("Untrusted target application executable.".to_string());
+    }
+    let norm_path = normalize_windows_path_for_compare(&path);
+    let norm_updates = normalize_windows_path_for_compare(updates_dir);
+    if norm_path == norm_updates || norm_path.starts_with(&format!("{norm_updates}\\")) {
+        return Err("Target application path cannot reside inside updates directory.".to_string());
+    }
+    Ok(path)
 }
 
 #[tauri::command]
@@ -610,6 +651,12 @@ pub async fn updates_install(
     if !valid_update_asset_url(&pending.asset_url) {
         return Err("Небезопасная ссылка на установщик".to_string());
     }
+    let has_valid_sha = (pending.sha256.len() == 64
+        && pending.sha256.chars().all(|c| c.is_ascii_hexdigit()))
+        || (!pending.sha_url.is_empty() && valid_update_asset_url(&pending.sha_url));
+    if !has_valid_sha {
+        return Err("В релизе отсутствует SHA-256 контрольная сумма".to_string());
+    }
     let filename = safe_update_filename(&pending.asset_name)
         .ok_or_else(|| "Некорректное имя установщика".to_string())?;
     let installer = pending
@@ -642,16 +689,7 @@ pub async fn updates_install(
         }
         publish_update_state(&app, &state);
 
-        // Prefer our dedicated Vortex Updater UI window; fall back to the
-        // legacy PowerShell helper only when the installer is already on disk.
-        if let Err(err) = spawn_updater_host(&job) {
-            if installer.is_file() {
-                let script = write_update_apply_script(&installer)?;
-                spawn_update_apply(&script)?;
-            } else {
-                return Err(err);
-            }
-        }
+        spawn_updater_host(&job)?;
         if let Some(window) = app.get_webview_window("main") {
             crate::save_window_state(&window);
         }
@@ -849,24 +887,43 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
     wait_for_parent_exit(job.parent_pid).await;
     send("closing", 4, None, None, None);
 
-    let installer_path = if !job.installer_path.is_empty() {
-        PathBuf::from(&job.installer_path)
-    } else if let Some(safe_name) = safe_update_filename(&job.asset_name) {
-        update_dir().join(safe_name)
-    } else {
-        rt.running.store(false, Ordering::Release);
-        send(
-            "error",
-            4,
-            None,
-            None,
-            Some(if is_en {
-                "Invalid installer path.".to_string()
-            } else {
-                "Некорректный путь установщика.".to_string()
-            }),
-        );
-        return;
+    let updates_root = update_dir();
+    let installer_path =
+        match validate_installer_path_in_dir(&job.installer_path, &job.asset_name, &updates_root) {
+            Ok(path) => path,
+            Err(_) => {
+                rt.running.store(false, Ordering::Release);
+                send(
+                    "error",
+                    4,
+                    None,
+                    None,
+                    Some(if is_en {
+                        "Invalid or untrusted installer path.".to_string()
+                    } else {
+                        "Некорректный или небезопасный путь установщика.".to_string()
+                    }),
+                );
+                return;
+            }
+        };
+    let app_path = match validate_app_path_against_updates(&job.app_path, &updates_root) {
+        Ok(path) => path,
+        Err(_) => {
+            rt.running.store(false, Ordering::Release);
+            send(
+                "error",
+                4,
+                None,
+                None,
+                Some(if is_en {
+                    "Invalid or untrusted target application path.".to_string()
+                } else {
+                    "Некорректный или небезопасный путь запуска Vortex.".to_string()
+                }),
+            );
+            return;
+        }
     };
 
     let client = match reqwest::Client::builder()
@@ -1134,35 +1191,33 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
         }
     };
 
-    if !job.sha256.is_empty() || !job.sha_url.is_empty() {
-        match resolve_expected_sha256(&client, &job, is_en).await {
-            Ok(expected_hash) => {
-                if actual_hash != expected_hash {
-                    let _ = tokio::fs::remove_file(&partial_path).await;
-                    let _ = tokio::fs::remove_file(&installer_path).await;
-                    rt.running.store(false, Ordering::Release);
-                    send(
-                        "error",
-                        76,
-                        None,
-                        None,
-                        Some(if is_en {
-                            "Installer SHA-256 checksum mismatch. Update cancelled for safety."
-                                .to_string()
-                        } else {
-                            "Контрольная сумма SHA-256 установщика не совпала с релизом."
-                                .to_string()
-                        }),
-                    );
-                    return;
-                }
-            }
-            Err(err) => {
+    match resolve_expected_sha256(&client, &job, is_en).await {
+        Ok(expected_hash) => {
+            if actual_hash != expected_hash {
                 let _ = tokio::fs::remove_file(&partial_path).await;
+                let _ = tokio::fs::remove_file(&installer_path).await;
                 rt.running.store(false, Ordering::Release);
-                send("error", 76, None, None, Some(err));
+                send(
+                    "error",
+                    76,
+                    None,
+                    None,
+                    Some(if is_en {
+                        "Installer SHA-256 checksum mismatch. Update cancelled for safety."
+                            .to_string()
+                    } else {
+                        "Контрольная сумма SHA-256 установщика не совпала с релизом.".to_string()
+                    }),
+                );
                 return;
             }
+        }
+        Err(err) => {
+            let _ = tokio::fs::remove_file(&partial_path).await;
+            let _ = tokio::fs::remove_file(&installer_path).await;
+            rt.running.store(false, Ordering::Release);
+            send("error", 76, None, None, Some(err));
+            return;
         }
     }
 
@@ -1190,7 +1245,6 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
         .await
         .map(|m| m.len())
         .unwrap_or(0);
-    let app_path = PathBuf::from(&job.app_path);
     let old_exe_mtime = tokio::fs::metadata(&app_path)
         .await
         .and_then(|m| m.modified())
@@ -1440,7 +1494,7 @@ pub fn run_updater_mode() {
 pub fn run_updater_preview_mode() {
     let job = UpdaterJob {
         from_version: env!("CARGO_PKG_VERSION").to_string(),
-        to_version: "1.3.3".to_string(),
+        to_version: "1.3.4".to_string(),
         theme: "dark".to_string(),
         accent: "#a68bff".to_string(),
         accent_secondary: "#5b3fd6".to_string(),
@@ -1578,5 +1632,56 @@ mod tests {
         assert_eq!(format_transfer_mb(5 * 1024 * 1024, false), "5.0 МБ");
         assert_eq!(format_transfer_speed(2 * 1024 * 1024, true), "2.0 MB/s");
         assert_eq!(format_transfer_speed(512 * 1024, false), "512 КБ/с");
+    }
+
+    #[test]
+    fn updater_path_validators_reject_traversal_and_untrusted_binaries() {
+        let updates = PathBuf::from(r"C:\Users\Test\AppData\Roaming\vortex-roblox-launcher\updates");
+
+        let ok_installer = validate_installer_path_in_dir(
+            r"C:\Users\Test\AppData\Roaming\vortex-roblox-launcher\updates\Vortex.Launcher.Setup.1.3.3.exe",
+            "Vortex.Launcher.Setup.1.3.3.exe",
+            &updates,
+        );
+        assert_eq!(
+            ok_installer.unwrap(),
+            updates.join("Vortex.Launcher.Setup.1.3.3.exe")
+        );
+
+        assert!(validate_installer_path_in_dir(
+            r"C:\Windows\System32\cmd.exe",
+            "Vortex.Setup.exe",
+            &updates
+        )
+        .is_err());
+        assert!(validate_installer_path_in_dir(
+            r"C:\Users\Test\AppData\Roaming\vortex-roblox-launcher\updates\..\evil.exe",
+            "",
+            &updates
+        )
+        .is_err());
+        assert!(validate_installer_path_in_dir(
+            r"C:\Users\Test\AppData\Roaming\vortex-roblox-launcher\updates\vortex-updater.exe",
+            "",
+            &updates
+        )
+        .is_err());
+
+        assert!(validate_app_path_against_updates(
+            r"C:\Users\Test\AppData\Local\Vortex Launcher\vortex-launcher.exe",
+            &updates
+        )
+        .is_ok());
+        assert!(validate_app_path_against_updates(r"C:\Windows\System32\cmd.exe", &updates).is_err());
+        assert!(validate_app_path_against_updates(
+            r"C:\Users\Test\AppData\Roaming\vortex-roblox-launcher\updates\vortex-launcher.exe",
+            &updates
+        )
+        .is_err());
+        assert!(validate_app_path_against_updates(
+            r"C:\Users\Test\..\Vortex\vortex-launcher.exe",
+            &updates
+        )
+        .is_err());
     }
 }

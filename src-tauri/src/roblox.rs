@@ -144,19 +144,41 @@ pub async fn refresh_cached_json(state: &AppState, url: &str) -> Result<Value, S
     Ok(value)
 }
 
-/// Fetch thumbnails for a batch of universe IDs from the Roblox API, using the
-/// on-disk cache for already-seen icons.
+/// Fetch thumbnails for a batch of universe IDs from the Roblox API, honoring
+/// `state.disk_cache_enabled` and performing disk cache reads/writes concurrently.
 pub async fn get_thumbnails(state: &AppState, universe_ids: &[String]) -> HashMap<String, String> {
     let mut out = HashMap::new();
     let mut missing = Vec::new();
+    let use_disk_cache = *crate::state::lock_or_recover(&state.disk_cache_enabled);
 
-    for id in universe_ids {
-        if let Some(cached) = cache::read_cached_thumbnail(id).await {
-            out.insert(id.clone(), cached);
-        } else if id.chars().all(|c| c.is_ascii_digit()) && !id.is_empty() && id.len() <= 20 {
-            missing.push(id.clone());
+    let valid_ids: Vec<String> = universe_ids
+        .iter()
+        .filter(|id| !id.is_empty() && id.len() <= 20 && id.chars().all(|c| c.is_ascii_digit()))
+        .cloned()
+        .collect();
+
+    if use_disk_cache {
+        for chunk in valid_ids.chunks(24) {
+            let mut reads = tokio::task::JoinSet::new();
+            for id in chunk {
+                let id_owned = id.clone();
+                reads.spawn(async move {
+                    let cached = cache::read_cached_thumbnail(&id_owned).await;
+                    (id_owned, cached)
+                });
+            }
+            while let Some(joined) = reads.join_next().await {
+                if let Ok((id, Some(cached))) = joined {
+                    out.insert(id, cached);
+                } else if let Ok((id, None)) = joined {
+                    missing.push(id);
+                }
+            }
         }
+    } else {
+        missing = valid_ids;
     }
+
     if missing.is_empty() {
         return out;
     }
@@ -167,23 +189,31 @@ pub async fn get_thumbnails(state: &AppState, universe_ids: &[String]) -> HashMa
             "https://thumbnails.roblox.com/v1/games/icons?universeIds={}&size=512x512&format=Png&isCircular=false",
             batch.join(",")
         );
-        match fetch_cached_json(state, &url).await {
-            Ok(payload) => {
-                if let Some(data) = payload.get("data").and_then(|d| d.as_array()) {
-                    for item in data {
-                        let target_id = item.get("targetId").and_then(|t| t.as_u64());
-                        let image_url = item.get("imageUrl").and_then(|u| u.as_str()).unwrap_or("");
-                        if let Some(tid) = target_id {
-                            let clean = cache::clean_thumbnail(image_url);
-                            out.insert(tid.to_string(), clean.clone());
-                            if !clean.is_empty() {
-                                cache::cache_thumbnail(&tid.to_string(), &clean).await;
-                            }
+        if let Ok(payload) = fetch_cached_json(state, &url).await {
+            if let Some(data) = payload.get("data").and_then(|d| d.as_array()) {
+                let mut to_write: Vec<(String, String)> = Vec::new();
+                for item in data {
+                    let target_id = item.get("targetId").and_then(|t| t.as_u64());
+                    let image_url = item.get("imageUrl").and_then(|u| u.as_str()).unwrap_or("");
+                    if let Some(tid) = target_id {
+                        let tid_str = tid.to_string();
+                        let clean = cache::clean_thumbnail(image_url);
+                        out.insert(tid_str.clone(), clean.clone());
+                        if use_disk_cache && !clean.is_empty() {
+                            to_write.push((tid_str, clean));
                         }
                     }
                 }
+                if !to_write.is_empty() {
+                    let mut writes = tokio::task::JoinSet::new();
+                    for (tid_str, clean) in to_write {
+                        writes.spawn(async move {
+                            cache::cache_thumbnail(&tid_str, &clean).await;
+                        });
+                    }
+                    while writes.join_next().await.is_some() {}
+                }
             }
-            Err(_) => {}
         }
     }
     out

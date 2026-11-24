@@ -490,3 +490,110 @@ test('pinning private servers from Game Page Servers tab preserves private launc
   assert.equal(friendLaunch.args.accessCode, 'friend_vip-1234-5678-9abc-def012345678');
   assert.equal(invoked.filter(entry => entry.cmd === 'open_game').length, 0);
 });
+
+test('all static i18n keys exist in both ru and en, and all static icon names exist in icons.js', () => {
+  const { ctx } = bootVortexInVm();
+  const translations = vm.runInContext('translations', ctx);
+  const icons = vm.runInContext('icons', ctx);
+
+  function collectFiles(dir, exts) {
+    const out = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...collectFiles(full, exts));
+      else if (exts.some(ext => entry.name.endsWith(ext))) out.push(full);
+    }
+    return out;
+  }
+
+  const jsFiles = collectFiles(path.join(ROOT, 'src'), ['.js']);
+  const htmlFiles = collectFiles(path.join(ROOT, 'src'), ['.html']);
+
+  const missingRu = [];
+  const missingEn = [];
+  const missingIcons = [];
+
+  for (const file of jsFiles) {
+    const rel = path.relative(ROOT, file);
+    const text = fs.readFileSync(file, 'utf8');
+    for (const match of text.matchAll(/\bt\(\s*['"]([a-zA-Z0-9._-]+)['"]\s*[,)]/g)) {
+      const key = match[1];
+      if (!Object.hasOwn(translations.ru, key)) missingRu.push(`${rel}: ${key}`);
+      if (!Object.hasOwn(translations.en, key)) missingEn.push(`${rel}: ${key}`);
+    }
+    for (const match of text.matchAll(/\bicon\(\s*['"]([a-zA-Z0-9_-]+)['"]/g)) {
+      const name = match[1];
+      if (!Object.hasOwn(icons, name)) missingIcons.push(`${rel}: ${name}`);
+    }
+  }
+  for (const file of [...jsFiles, ...htmlFiles]) {
+    const rel = path.relative(ROOT, file);
+    const text = fs.readFileSync(file, 'utf8');
+    for (const match of text.matchAll(/data-icon=["']([a-zA-Z0-9_-]+)["']/g)) {
+      const name = match[1];
+      if (!Object.hasOwn(icons, name)) missingIcons.push(`${rel}: data-icon=${name}`);
+    }
+  }
+
+  assert.deepEqual(missingRu, [], `Missing RU translations:\n${missingRu.join('\n')}`);
+  assert.deepEqual(missingEn, [], `Missing EN translations:\n${missingEn.join('\n')}`);
+  assert.deepEqual(missingIcons, [], `Missing icons in icons.js:\n${missingIcons.join('\n')}`);
+});
+
+test('cache-idb avoids synchronous localStorage duplication when IndexedDB succeeds', async () => {
+  const idbStore = new Map();
+  const lsStore = new Map([['vortex.discoveryCatalog', '{"stale":true}']]);
+  let lsSetCalls = 0;
+
+  const fakeIndexedDB = {
+    open() {
+      const req = {};
+      queueMicrotask(() => {
+        req.result = {
+          objectStoreNames: { contains: () => true },
+          createObjectStore() {},
+          transaction() {
+            const tx = {
+              objectStore() {
+                return {
+                  put(val, key) { idbStore.set(key, val); },
+                  get(key) {
+                    const r = {};
+                    queueMicrotask(() => { r.result = idbStore.get(key); r.onsuccess?.(); });
+                    return r;
+                  },
+                  delete(key) { idbStore.delete(key); }
+                };
+              }
+            };
+            queueMicrotask(() => tx.oncomplete?.());
+            return tx;
+          }
+        };
+        req.onsuccess?.();
+      });
+      return req;
+    }
+  };
+
+  const sandbox = {
+    window: {},
+    indexedDB: fakeIndexedDB,
+    localStorage: {
+      getItem: (k) => lsStore.get(k) ?? null,
+      setItem: (k, v) => { lsSetCalls += 1; lsStore.set(k, String(v)); },
+      removeItem: (k) => { lsStore.delete(k); }
+    }
+  };
+  sandbox.window = sandbox;
+  const ctx = vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/js/cache-idb.js'), 'utf8'), ctx);
+
+  ctx.vortexIdbCache.persistCache('vortex.discoveryCatalog', { top: { items: [1, 2, 3] } });
+  // Synchronous path must not write to localStorage.
+  assert.equal(lsSetCalls, 0);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.deepEqual(idbStore.get('vortex.discoveryCatalog'), { top: { items: [1, 2, 3] } });
+  assert.equal(lsStore.has('vortex.discoveryCatalog'), false);
+  assert.equal(lsSetCalls, 0);
+});

@@ -5,16 +5,6 @@
 // Built-in starter list removed: the home page and catalog now show only the
 // games the user adds in Settings (plus live Roblox results).
 const games = [];
-const LEGACY_STARTER_GAMES_DISABLED = [
-  { id: '2753915549', title: 'Blox Fruits', genre: 'Приключения', genreKey: 'adventure', art: 'blox', iconKey: 'sword', tag: 'ПРИКЛЮЧЕНИЕ', tagKey: 'adventure', description: 'Путешествуй по морям и открывай способности.', descriptionKey: 'bloxDescription', search: 'блокс фруктс экшен приключение anime anime' },
-  { id: '6516141723', title: 'DOORS', genre: 'Хоррор', genreKey: 'horror', art: 'doors', iconKey: 'door', tag: 'ХОРРОР', tagKey: 'horror', description: 'Проверь нервы: за каждой дверью кто-то есть.', descriptionKey: 'doorsDescription', search: 'дурс двери страшная игра хоррор ужасы' },
-  { id: '4924922222', title: 'Brookhaven RP', genre: 'Ролевая', genreKey: 'roleplay', art: 'brookhaven', iconKey: 'home', tag: 'РОЛЕВАЯ ИГРА', tagKey: 'roleplay', description: 'Выбери дом, машину и свою историю.', descriptionKey: 'brookhavenDescription', search: 'брукхейвен ролевая город roleplay' },
-  { id: '15101393044', title: 'Dress to Impress', genre: 'Мода', genreKey: 'fashion', art: 'dti', iconKey: 'sparkle', tag: 'СТИЛЬ', tagKey: 'style', description: 'Собери образ и выйди на модный подиум.', descriptionKey: 'dtiDescription', search: 'дресс ту импресс мода fashion одежда' },
-  { id: '1962086868', title: 'Tower of Hell', genre: 'Паркур', genreKey: 'parkour', art: 'tower', iconKey: 'mountain', tag: 'ПАРКУР', tagKey: 'parkour', description: 'Поднимайся выше и не останавливайся.', descriptionKey: 'towerDescription', search: 'тауэр оф хелл башня паркур обби obby' },
-  { id: '286090429', title: 'Arsenal', genre: 'Экшен', genreKey: 'action', art: 'arsenal', iconKey: 'crosshair', tag: 'ЭКШЕН', tagKey: 'action', description: 'Быстрые раунды и смена оружия на ходу.', descriptionKey: 'arsenalDescription', search: 'арсенал шутер экшен fps' },
-  { id: '920587237', title: 'Adopt Me!', genre: 'Симулятор', genreKey: 'simulator', art: 'adopt', iconKey: 'paw', tag: 'СИМУЛЯТОР', tagKey: 'simulator', description: 'Заботься о питомцах и обустраивай дом.', descriptionKey: 'adoptDescription', search: 'адопт ми питомцы симулятор животные' },
-  { id: '9872472334', title: 'Evade', genre: 'Выживание', genreKey: 'survival', art: 'evade', iconKey: 'run', tag: 'ВЫЖИВАНИЕ', tagKey: 'survival', description: 'Держись рядом с командой и беги к выходу.', descriptionKey: 'evadeDescription', search: 'эвейд выживание escape team' }
-];
 
 // Accent presets follow the public site palette: a violet family with a few
 // restrained supporting tones instead of the old rainbow set.
@@ -54,22 +44,8 @@ function navOrder(group = 'menu') {
 
 function navItemMarkup(item) {
   const label = t(`nav.${item.key}`);
-  const isEn = preferences.language === 'en';
-  const desc = (isEn ? {
-    home: 'Home dashboard: recent games, activity and picks',
-    catalog: 'Browse popular, recommended and paid Roblox games',
-    library: 'Favorites, recent launches, collections and playtime stats',
-    plans: 'Games you plan to play later',
-    friends: 'Online friends and instant join to their servers',
-    settings: 'Appearance, in-game overlay, hotkeys, integrations and safety'
-  } : {
-    home: 'Главная: недавние игры, активность и подборки',
-    catalog: 'Каталог популярных, рекомендованных и платных игр Roblox',
-    library: 'Избранное, недавние запуски, коллекции и статистика времени',
-    plans: 'Игры, в которые планируешь поиграть позже',
-    friends: 'Друзья в сети и быстрый вход на их серверы',
-    settings: 'Внешний вид, оверлей, хоткеи, интеграции и безопасность'
-  })[item.key] || label;
+  const descKey = `nav.desc.${item.key}`;
+  const desc = t(descKey) !== descKey ? t(descKey) : label;
   return `<button class="nav-item" type="button" data-nav="${item.key}" aria-label="${label}" data-tooltip="${escapeHtml(desc)}"><span class="nav-icon" data-icon="${item.icon}"></span><span>${label}</span></button>`;
 }
 
@@ -422,12 +398,15 @@ async function hydrateIdbCaches() {
       updated = true;
     }
     if (idbCatalog && typeof idbCatalog === 'object' && !Array.isArray(idbCatalog)) {
-      const idbKeys = Object.keys(idbCatalog);
-      const memKeys = Object.keys(discoveryCatalog || {});
-      if (idbKeys.length > memKeys.length) {
-        discoveryCatalog = { ...idbCatalog, ...(discoveryCatalog || {}) };
-        updated = true;
+      const mergedCatalog = { ...(discoveryCatalog || {}) };
+      for (const [sortId, entry] of Object.entries(idbCatalog)) {
+        const current = mergedCatalog[sortId];
+        if (!current || (Number(entry?.savedAt) || 0) > (Number(current?.savedAt) || 0)) {
+          mergedCatalog[sortId] = entry;
+          updated = true;
+        }
       }
+      if (updated) discoveryCatalog = mergedCatalog;
     }
   } catch { /* Non-fatal if IndexedDB is unavailable. */ }
   return updated;
@@ -832,7 +811,7 @@ function renderAccountRobux() {
     return;
   }
   const formatted = formatRobuxValue(accountRobuxBalance);
-  const label = preferences.language === 'en' ? 'Robux balance' : 'Баланс Robux';
+  const label = t('account.robuxBalance');
   host.hidden = false;
   host.setAttribute('data-tooltip', `${label}: ${formatted} R$`);
   host.setAttribute('aria-label', `${label}: ${formatted} R$`);

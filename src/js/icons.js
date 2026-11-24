@@ -124,6 +124,10 @@ const icons = {
   cards: '<rect x="3" y="5" width="12" height="15" rx="2"/><path d="M10 3h7a2 2 0 0 1 2 2v11M6 10h6m-6 4h6"/>',
   homeList: '<path d="m2 9 7-6 7 6m-12-1.5V20h17M8 12h13M8 16h13"/>',
   homeGrid: '<path d="m2 9 7-6 7 6m-12-1.5V20h17"/><rect x="8" y="11" width="4" height="5" rx=".6"/><rect x="15" y="11" width="5" height="5" rx=".6"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  shield: '<path d="M12 3 4 6.5v5.5c0 4.6 3.4 8.2 8 9.5 4.6-1.3 8-4.9 8-9.5V6.5L12 3Z"/>',
+  zap: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
+  alert: '<path d="M10.3 3.9 2.6 17.3A2 2 0 0 0 4.3 20.3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 4h.01"/>',
 };
 
 function icon(name, size = 16) {

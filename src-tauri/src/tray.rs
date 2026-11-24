@@ -1,7 +1,10 @@
 use crate::state::AppState;
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition};
+use tauri::{
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
+};
 
 #[tauri::command]
 pub async fn report_recent_games(
@@ -73,8 +76,8 @@ pub async fn report_recent_games(
         if window.is_visible().unwrap_or(false) {
             position_tray_window(&app, width, height);
         }
+        let _ = app.emit_to("tray", "tray:updated", tray_json);
     }
-    let _ = app.emit_to("tray", "tray:updated", tray_json);
     Ok(())
 }
 
@@ -276,13 +279,31 @@ pub async fn tray_launch_game(app: AppHandle, kind: String, id: String) -> Resul
         .map_err(|error| error.to_string())
 }
 
+fn ensure_tray_window(app: &AppHandle, width: f64, height: f64) -> Option<WebviewWindow> {
+    if let Some(window) = app.get_webview_window("tray") {
+        return Some(window);
+    }
+    WebviewWindowBuilder::new(app, "tray", WebviewUrl::App("tray.html".into()))
+        .title("Vortex Quick Access")
+        .inner_size(width, height)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(false)
+        .focused(true)
+        .build()
+        .ok()
+}
+
 pub fn show_tray_popup(app: &AppHandle, rect: tauri::Rect) {
-    let Some(window) = app.get_webview_window("tray") else {
-        return;
-    };
-    if window.is_visible().unwrap_or(false) {
-        let _ = window.hide();
-        return;
+    if let Some(existing) = app.get_webview_window("tray") {
+        if existing.is_visible().unwrap_or(false) {
+            let _ = existing.hide();
+            return;
+        }
     }
 
     let icon_position = rect.position.to_physical::<f64>(1.0);
@@ -320,6 +341,9 @@ pub fn show_tray_popup(app: &AppHandle, rect: tauri::Rect) {
         favorites_collapsed,
         quick_collapsed,
     );
+    let Some(window) = ensure_tray_window(app, width, height) else {
+        return;
+    };
     let _ = window.set_size(LogicalSize::new(width, height));
     position_tray_window(app, width, height);
     let _ = window.show();

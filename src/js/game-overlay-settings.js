@@ -347,7 +347,7 @@ function renderOverlayPreviewMetrics() {
   const now = new Date();
   const timeStr = [now.getHours(), now.getMinutes()].map(v => String(v).padStart(2, '0')).join(':');
   const items = [];
-  if (preferences.gameOverlayTimer) items.push(`<span><strong>00:24:18</strong><small>${preferences.language === 'en' ? 'Session' : 'Сессия'}</small></span>`);
+  if (preferences.gameOverlayTimer) items.push(`<span><strong>00:24:18</strong><small>${t('overlay.sessionLabel')}</small></span>`);
   if (preferences.gameOverlayFps) items.push(`<span><strong>120</strong><small>FPS</small></span>`);
   if (preferences.gameOverlayPing) items.push(`<span><strong>42</strong><small>ms</small></span>`);
   if (preferences.gameOverlayStability) {
@@ -405,10 +405,10 @@ function renderGameOverlaySettings() {
 
         <p class="ui-section-title">${t('overlay.appearanceTitle')}</p>
         <div class="setting-line">
-          <div class="setting-label"><strong>${preferences.language === 'en' ? 'Overlay style' : 'Стиль оверлея'}</strong><small>${preferences.language === 'en' ? 'Capsule bar, frameless text, or vertical column' : 'Капсула, чистый текст без фона или вертикальная колонка'}</small></div>
+          <div class="setting-label"><strong>${t('overlay.styleTitle')}</strong><small>${t('overlay.styleHint')}</small></div>
           <div class="segmented">
-            ${[['capsule', preferences.language === 'en' ? 'Capsule' : 'Капсула'], ['frameless', preferences.language === 'en' ? 'Frameless' : 'Без фона'], ['vertical', preferences.language === 'en' ? 'Vertical' : 'Вертикальный']].map(([val, lbl]) =>
-              `<button type="button" class="segment ${(preferences.gameOverlayStyle || 'capsule') === val ? 'active' : ''}" data-pref="gameOverlayStyle" data-value="${val}">${lbl}</button>`
+            ${['capsule', 'frameless', 'vertical'].map((val) =>
+              `<button type="button" class="segment ${(preferences.gameOverlayStyle || 'capsule') === val ? 'active' : ''}" data-pref="gameOverlayStyle" data-value="${val}">${t('overlay.style.' + val)}</button>`
             ).join('')}
           </div>
         </div>
@@ -425,11 +425,11 @@ function renderGameOverlaySettings() {
           <label class="range-control"><input type="range" min="20" max="100" step="5" value="${opacity}" data-overlay-range="gameOverlayOpacity" /><span class="range-value" data-overlay-range-value="gameOverlayOpacity">${opacity}%</span></label>
         </div>
         <div class="setting-line">
-          <div class="setting-label"><strong>${preferences.language === 'en' ? 'High ping threshold' : 'Порог высокого пинга'}</strong><small>${preferences.language === 'en' ? 'Warn and highlight ping above this value' : 'Подсвечивать пинг и предупреждать выше этого значения'}</small></div>
+          <div class="setting-label"><strong>${t('overlay.badPingTitle')}</strong><small>${t('overlay.badPingHint')}</small></div>
           <label class="range-control"><input type="range" min="50" max="400" step="10" value="${clampOverlayNumber(preferences.gameOverlayBadPing, 50, 500, 130)}" data-overlay-range="gameOverlayBadPing" /><span class="range-value" data-overlay-range-value="gameOverlayBadPing">${clampOverlayNumber(preferences.gameOverlayBadPing, 50, 500, 130)} ms</span></label>
         </div>
         <div class="setting-line">
-          <div class="setting-label"><strong>${preferences.language === 'en' ? 'Low FPS threshold' : 'Порог низкого FPS'}</strong><small>${preferences.language === 'en' ? 'Highlight FPS counter below this value' : 'Подсвечивать счётчик FPS ниже этого значения'}</small></div>
+          <div class="setting-label"><strong>${t('overlay.lowFpsTitle')}</strong><small>${t('overlay.lowFpsHint')}</small></div>
           <label class="range-control"><input type="range" min="10" max="120" step="5" value="${clampOverlayNumber(preferences.gameOverlayLowFps, 10, 120, 30)}" data-overlay-range="gameOverlayLowFps" /><span class="range-value" data-overlay-range-value="gameOverlayLowFps">${clampOverlayNumber(preferences.gameOverlayLowFps, 10, 120, 30)} FPS</span></label>
         </div>
 

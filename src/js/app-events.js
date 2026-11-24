@@ -376,7 +376,7 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'copy-theme-code') {
       const code = typeof encodeThemeCode === 'function' ? encodeThemeCode(preferences) : '';
       if (!code) return;
-      const done = () => showToast(preferences.language === 'en' ? 'Theme code copied' : 'Код темы скопирован');
+      const done = () => showToast(t('theme.codeCopied'));
       if (window.vortexDesktop?.copyToClipboard) window.vortexDesktop.copyToClipboard(code).then(done).catch(() => {});
       else navigator.clipboard?.writeText?.(code).then(done).catch(() => {});
       return;
@@ -385,14 +385,14 @@ document.addEventListener('click', async (event) => {
       const input = document.querySelector('[data-theme-code-input]');
       const decoded = typeof decodeThemeCode === 'function' ? decodeThemeCode(input?.value || '') : null;
       if (!decoded) {
-        showToast(preferences.language === 'en' ? 'Invalid theme code (expected VORTEXTH1-...)' : 'Неверный код темы (ожидается VORTEXTH1-...)');
+        showToast(t('theme.codeInvalid'));
         return;
       }
       Object.assign(preferences, decoded);
       savePreferences();
       applyPreferences();
       renderPage();
-      showToast(preferences.language === 'en' ? 'Theme applied!' : 'Тема применена!');
+      showToast(t('theme.codeApplied'));
       return;
     }
     if (action.dataset.action === 'clear-cache') {
@@ -458,8 +458,8 @@ document.addEventListener('click', async (event) => {
       const contents = JSON.stringify(readProfiles(), null, 2);
       if (window.vortexDesktop?.saveShareFile) {
         window.vortexDesktop.saveShareFile({ filename: 'vortex-profiles.json', contents })
-          .then((saved) => { if (saved) showToast(preferences.language === 'en' ? 'Profiles exported' : 'Профили сохранены'); })
-          .catch(() => showToast(preferences.language === 'en' ? 'Could not save file' : 'Не удалось сохранить файл'));
+          .then((saved) => { if (saved) showToast(t('profiles.exported')); })
+          .catch(() => showToast(t('profiles.exportFailed')));
       } else {
         const blob = new Blob([contents], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -492,8 +492,8 @@ document.addEventListener('click', async (event) => {
       const contents = JSON.stringify(theme, null, 2);
       if (window.vortexDesktop?.saveShareFile) {
         window.vortexDesktop.saveShareFile({ filename: 'vortex-theme.json', contents })
-          .then((saved) => { if (saved) showToast(preferences.language === 'en' ? 'Theme exported' : 'Тема сохранена в файл'); })
-          .catch(() => showToast(preferences.language === 'en' ? 'Could not save theme file' : 'Не удалось сохранить файл темы'));
+          .then((saved) => { if (saved) showToast(t('theme.exported')); })
+          .catch(() => showToast(t('theme.exportFailed')));
       } else {
         const blob = new Blob([contents], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -1092,7 +1092,7 @@ document.addEventListener('input', (event) => {
     // restore them: the sliders stay the source of truth while the user drags.
     const sliderHsl = { hue: value('hue'), saturation: value('saturation'), lightness: value('lightness') };
     preferences[name] = hslToHex(sliderHsl.hue, sliderHsl.saturation, sliderHsl.lightness);
-    savePreferences();
+    savePreferencesDebounced();
     applyPreferences();
     syncColorTuner(name, preferences[name], ['hue', 'saturation', 'lightness']);
     // Re-assert every slider from the values the user set (not from the hex).
@@ -1107,19 +1107,19 @@ document.addEventListener('input', (event) => {
   }
   if (event.target.matches('[data-home-greeting]')) {
     preferences.homeGreeting = event.target.value.slice(0, 48);
-    savePreferences();
+    savePreferencesDebounced();
     return;
   }
   if (event.target.hasAttribute('data-widget-title')) {
     const key = event.target.dataset.widgetTitle;
     preferences.homeSectionTitles = { ...(preferences.homeSectionTitles || {}), [key]: event.target.value.slice(0, 36) };
-    savePreferences();
+    savePreferencesDebounced();
     return;
   }
   if (event.target.matches('[data-home-section-scale]')) {
     preferences.homeSectionScale = Math.max(0.8, Math.min(1.6, Number(event.target.value) || 1));
     pageContent.querySelector('[data-home-section-scale-value]')?.replaceChildren(Math.round(preferences.homeSectionScale * 100) + '%');
-    savePreferences(); applyPreferences(); renderSidebar();
+    savePreferencesDebounced();
     return;
   }
   if (event.target.matches('[data-setting="glow"]')) {

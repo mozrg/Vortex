@@ -2,6 +2,7 @@
 //!
 //! Mutes or unmutes only `RobloxPlayerBeta.exe` / `Windows10Universal.exe`
 //! audio sessions without affecting system volume or other applications.
+use std::collections::HashSet;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use windows::core::GUID;
@@ -15,10 +16,14 @@ const IID_IAUDIO_SESSION_CONTROL2: GUID = GUID::from_u128(0xbfb7ff88_7239_4fc9_8
 const IID_ISIMPLE_AUDIO_VOLUME: GUID = GUID::from_u128(0x87ce5498_68d6_44e5_9215_6da47ef883d8);
 const CLSCTX_ALL: u32 = 23;
 const COINIT_MULTITHREADED: u32 = 0;
+const S_OK: i32 = 0;
+const S_FALSE: i32 = 1;
 
 #[link(name = "ole32")]
 extern "system" {
     fn CoInitializeEx(reserved: *const c_void, coinit: u32) -> i32;
+    fn CoUninitialize();
+    fn CoTaskMemFree(pv: *mut c_void);
     fn CoCreateInstance(
         rclsid: *const GUID,
         outer: *mut c_void,
@@ -26,6 +31,36 @@ extern "system" {
         riid: *const GUID,
         result: *mut *mut c_void,
     ) -> i32;
+}
+
+struct ComGuard(bool);
+
+impl Drop for ComGuard {
+    fn drop(&mut self) {
+        if self.0 {
+            unsafe {
+                CoUninitialize();
+            }
+        }
+    }
+}
+
+unsafe fn read_device_id(device: &ComPtr) -> Option<String> {
+    // IMMDevice vtable: 0=QI, 1=AddRef, 2=Release, 3=Activate, 4=OpenPropertyStore, 5=GetId
+    let get_id: unsafe extern "system" fn(*mut c_void, *mut *mut u16) -> i32 =
+        std::mem::transmute(*device.vtable().add(5));
+    let mut id_ptr: *mut u16 = std::ptr::null_mut();
+    if get_id(device.0, &mut id_ptr) < 0 || id_ptr.is_null() {
+        return None;
+    }
+    let mut len = 0usize;
+    while len < 1024 && *id_ptr.add(len) != 0 {
+        len += 1;
+    }
+    let slice = std::slice::from_raw_parts(id_ptr, len);
+    let id = String::from_utf16_lossy(slice);
+    CoTaskMemFree(id_ptr.cast());
+    Some(id)
 }
 
 struct ComPtr(*mut c_void);
@@ -59,7 +94,9 @@ impl Drop for ComPtr {
 /// when `explicit` is `Some(muted)`. Returns `(new_mute_state, sessions_found)`.
 pub fn set_or_toggle_roblox_mute(explicit: Option<bool>) -> Result<(bool, usize), String> {
     unsafe {
-        let _ = CoInitializeEx(std::ptr::null(), COINIT_MULTITHREADED);
+        // Declared first so all ComPtr instances release before CoUninitialize runs.
+        let co_hr = CoInitializeEx(std::ptr::null(), COINIT_MULTITHREADED);
+        let _com_guard = ComGuard(co_hr == S_OK || co_hr == S_FALSE);
         let mut enumerator_raw = std::ptr::null_mut();
         let hr = CoCreateInstance(
             &CLSID_MMDEVICE_ENUMERATOR,
@@ -80,9 +117,11 @@ pub fn set_or_toggle_roblox_mute(explicit: Option<bool>) -> Result<(bool, usize)
         ) -> i32 = std::mem::transmute(*enumerator.vtable().add(4));
 
         let mut volumes: Vec<ComPtr> = Vec::new();
+        let mut seen_devices: HashSet<String> = HashSet::new();
         let mut any_unmuted = false;
 
-        // Check both eConsole (0) and eMultimedia (1) render endpoints.
+        // Check both eConsole (0) and eMultimedia (1) render endpoints, deduplicating
+        // when both roles point to the same default audio device.
         for role in [0i32, 1i32] {
             let mut device_raw = std::ptr::null_mut();
             if get_default_endpoint(enumerator.0, 0, role, &mut device_raw) < 0
@@ -91,6 +130,11 @@ pub fn set_or_toggle_roblox_mute(explicit: Option<bool>) -> Result<(bool, usize)
                 continue;
             }
             let device = ComPtr(device_raw);
+            if let Some(device_id) = read_device_id(&device) {
+                if !seen_devices.insert(device_id) {
+                    continue;
+                }
+            }
             let activate: unsafe extern "system" fn(
                 *mut c_void,
                 *const GUID,

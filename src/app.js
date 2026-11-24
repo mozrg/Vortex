@@ -85,23 +85,23 @@ function paletteCommands() {
   toggle('friendFavoriteAlerts', 'settings.integrations.friendAlerts', 'bell', 'notifications уведомления');
   toggle('gamingMode', 'tools.gaming', 'gamepad', 'performance производительность');
   add('eyeOff', t('tools.stream'), t('palette.toggle'), () => setLauncherStreamMode(!preferences.streamMode), 'stream приватность');
-  add('monitor', preferences.language === 'en' ? 'Toggle in-game overlay' : 'Вкл / выкл оверлей «В игре»', t('palette.toggle'), () => {
+  add('monitor', t('palette.toggleOverlay'), t('palette.toggle'), () => {
     if (typeof triggerOverlayToggle === 'function') triggerOverlayToggle();
   }, 'overlay hud fps ping оверлей');
-  add('zap', preferences.language === 'en' ? 'Roblox Datacenter Ping Test' : 'Пинг до регионов Roblox', action, () => {
+  add('zap', t('palette.regionPingTest'), action, () => {
     if (typeof openRegionPingModal === 'function') void openRegionPingModal();
   }, 'ping regions datacenter тест пинга регионы серверы');
-  add('rotate', preferences.language === 'en' ? 'Rejoin last server' : 'Перезайти на последний сервер', action, () => {
+  add('rotate', t('palette.rejoinLast'), action, () => {
     if (typeof triggerServerRejoin === 'function') void triggerServerRejoin();
   }, 'rejoin server перезайти сервер');
-  add('copy', preferences.language === 'en' ? 'Copy theme share code (VORTEXTH1-)' : 'Скопировать код темы (VORTEXTH1-)', action, () => {
+  add('copy', t('palette.copyThemeCode'), action, () => {
     const code = typeof encodeThemeCode === 'function' ? encodeThemeCode(preferences) : '';
     if (!code) return;
-    const done = () => showToast(preferences.language === 'en' ? 'Theme code copied' : 'Код темы скопирован');
+    const done = () => showToast(t('theme.codeCopied'));
     if (window.vortexDesktop?.copyToClipboard) window.vortexDesktop.copyToClipboard(code).then(done).catch(() => {});
     else navigator.clipboard?.writeText?.(code).then(done).catch(() => {});
   }, 'theme code share VORTEXTH1 тема код скопировать');
-  add('fileDown', preferences.language === 'en' ? 'Export full Vortex backup' : 'Создать резервную копию Vortex', action, () => {
+  add('fileDown', t('palette.exportBackup'), action, () => {
     setting('data');
     pageContent.querySelector('[data-action=export-data]')?.click();
   }, 'backup export бэкап резервная копия экспорт');
@@ -111,7 +111,7 @@ function paletteCommands() {
 
   // Direct launch of pinned Quick Launch games & private servers.
   const quickItems = typeof quickLaunchGames === 'function' ? quickLaunchGames() : [];
-  const quickHint = preferences.language === 'en' ? 'Quick Launch' : 'Быстрый запуск';
+  const quickHint = t('quick.hint');
   for (const item of quickItems.slice(0, 24)) {
     if (preferences.streamMode && item.method !== 'public') continue;
     const title = String(item.title || '').trim();

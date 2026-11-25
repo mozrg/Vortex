@@ -204,7 +204,6 @@ function submitSharedFolder() {
   showToast(t('tools.folderAdded'));
 }
 
-const profilePreferenceKeys = ['robloxUsername','robloxDisplayName','robloxAvatar','robloxAccountId','friendsNoticeAccepted'];
 function listImportChanges(before, after, identify, describe) {
   const previous = new Map(before.map(item => [identify(item), item]));
   const changes = [];
@@ -220,15 +219,14 @@ function listImportChanges(before, after, identify, describe) {
 }
 
 function previewLauncherImport(payload) {
-  const data = payload?.data;
-  if (payload?.app !== 'vortex' || !data?.preferences || typeof data.preferences !== 'object' || Array.isArray(data.preferences)) {
-    showToast(t('settings.data.invalid'));
-    return;
+  const data = validateDataBackup(payload);
+  const incoming = Object.entries(backupPreferences(data.preferences))
+    .filter(([key, value]) => JSON.stringify(preferences[key]) !== JSON.stringify(value))
+    .map(([key]) => settingName(key));
+  const profiles = readProfiles();
+  for (const [name, profile] of Object.entries(data.profiles || {})) {
+    if (JSON.stringify(profiles[name]) !== JSON.stringify(profile)) incoming.push(name);
   }
-  const excluded = new Set([...profilePreferenceKeys, 'customGames','quickLaunchItems','settingsTab','streamMode']);
-  const incoming = Object.fromEntries(Object.entries(data.preferences)
-    .filter(([key, value]) => Object.hasOwn(preferenceDefaults, key) && !excluded.has(key)
-      && JSON.stringify(preferences[key]) !== JSON.stringify(value)));
   const folderChanges = cleanQuickLaunchItems(data.preferences.quickLaunchItems);
   const id = item => String(item?.id || item);
   const label = item => item?.title || getGame(id(item))?.title || 'Roblox #' + id(item);
@@ -241,23 +239,30 @@ function previewLauncherImport(payload) {
     return preferences.streamMode && entry.method !== 'public' ? t('tools.privateShortcut') : entry.title || entry.placeId;
   };
   const sections = [];
-  if (Object.keys(incoming).length) sections.push(['settings', 'tools.importSettings', Object.keys(incoming).map(settingName)]);
+  if (incoming.length) sections.push(['settings', 'tools.importSettings', incoming]);
   if (libraryChanges.length) sections.push(['library','tools.importLibrary', libraryChanges]);
   if (Array.isArray(data.preferences.quickLaunchItems)) {
     const changed = listImportChanges(preferences.quickLaunchItems, folderChanges, id, launchLabel);
     if (changed.length) sections.push(['folders','tools.importFolders',changed]);
   }
-  if (data.sessionHistory || data.activityData || data.playStats) {
-    sections.push(['activity','tools.importActivity', (Array.isArray(data.sessionHistory) ? data.sessionHistory : [])
-      .map(row => row?.title || 'Roblox #' + row?.gameId)]);
+  if (data.friendPins) {
+    const pinChanges = listImportChanges(Object.entries(friendPins()), Object.entries(data.friendPins),
+      ([id]) => id, ([id]) => id);
+    if (pinChanges.length) sections.push(['friends', 'tools.importFriends', pinChanges]);
+  }
+  if (BACKUP_SECTIONS.activity.some(key => Object.hasOwn(data, key))) {
+    const sessions = data.sessionHistory || [];
+    const labels = sessions.slice(0, 20).map(row => row.title || 'Roblox #' + row.gameId);
+    if (!sessions.length) labels.push(t('tools.importKeepJournal'));
+    sections.push(['activity','tools.importActivity', labels, sessions.length]);
   }
   if (!sections.length) { showToast(t('settings.data.invalid')); return; }
-  importPreview = { payload, incoming, folderChanges };
+  importPreview = payload;
   openLauncherDialog(t('tools.importCompare'), `<form data-launcher-form="backup-import" class="launcher-dialog-form">
     <p class="catalog-disclaimer">${t('tools.importStorage')}</p>
-    ${sections.map(([key, label, changes]) => `<details class="launcher-import-section"><summary>
+    ${sections.map(([key, label, changes, count = changes.length]) => `<details class="launcher-import-section"><summary>
       <input type="checkbox" name="groups" value="${key}" aria-label="${t(label)}">
-      <strong>${t(label)}</strong> <small>${t('tools.importChange', { count: changes.length })}</small></summary>
+      <strong>${t(label)}</strong> <small>${key === 'activity' ? t('tools.importSessions', { count }) : t('tools.importChange', { count })}</small></summary>
       <ul>${changes.slice(0, 20).map(value => `<li>${escapeHtml(value)}</li>`).join('')}</ul></details>`).join('')}
     <button class="primary-button" type="submit">${t('tools.saveSelected')}</button></form>`);
 }
@@ -270,16 +275,14 @@ function settingName(key) {
 async function submitLauncherImport(form) {
   const picked = new Set(form.getAll('groups'));
   if (!picked.size) { showToast(t('tools.selectSome')); return; }
-  const { payload, incoming, folderChanges } = importPreview;
-  const data = { preferences: { ...preferences } };
-  if (picked.has('settings')) Object.assign(data.preferences, incoming);
-  if (picked.has('folders')) data.preferences.quickLaunchItems = folderChanges;
-  if (picked.has('library')) for (const key of ['favorites','customGames']) data[key] = payload.data[key];
-  if (picked.has('activity')) for (const key of ['recentGames','recentDetails','activityData','playStats','sessionHistory']) data[key] = payload.data[key];
+  if (!importPreview || dataImportInProgress) return;
+  const submit = launcherDialog.querySelector('[data-launcher-form="backup-import"] [type="submit"]');
+  if (submit) submit.disabled = true;
   try {
-    if (await applyDataImport({ ...payload, data })) {
+    if (await applyDataImport(importPreview, picked)) {
       launcherDialog.close();
       showToast(t('settings.data.imported'));
     }
-  } catch { showToast(t('settings.data.importError')); }
+  } catch { showToast(t('tools.importWriteError')); }
+  finally { if (submit) submit.disabled = false; }
 }

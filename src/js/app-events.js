@@ -265,15 +265,15 @@ document.addEventListener('click', async (event) => {
     if (action.dataset.action === 'open-details') { captureCatalogScroll(); openGameDetails(action.dataset.id); return; }
     if (action.dataset.action === 'export-data') {
       let backup;
-      try { backup = await buildDataExport(); } catch { showToast(t('activity.journal.exportError')); return; }
-      const contents = JSON.stringify(backup, null, 2);
+      try { backup = await buildDataExport(); } catch { showToast(t('tools.backupReadError')); return; }
+      const contents = JSON.stringify(backup);
       const filename = `vortex-backup-${new Date().toISOString().slice(0, 10)}.json`;
       if (window.vortexDesktop?.saveShareFile) {
         try {
           const saved = await window.vortexDesktop.saveShareFile({ filename, contents });
           if (saved) showToast(t('settings.data.exported'));
         } catch {
-          showToast(t('activity.journal.exportError'));
+          showToast(t('tools.backupSaveError'));
         }
       } else {
         const blob = new Blob([contents], { type: 'application/json' });
@@ -296,7 +296,9 @@ document.addEventListener('click', async (event) => {
         const file = input.files && input.files[0];
         input.remove();
         if (!file) return;
+        if (file.size > MAX_BACKUP_BYTES) { showToast(t('tools.backupTooLarge')); return; }
         const reader = new FileReader();
+        reader.onerror = () => showToast(t('settings.data.importError'));
         reader.onload = async () => {
           try {
             const payload = JSON.parse(String(reader.result));

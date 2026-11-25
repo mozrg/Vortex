@@ -19,9 +19,14 @@ const sessionJournal = (() => {
   function open() {
     if (!connection) connection = new Promise((resolve, reject) => {
       const database = activeAccountProfile === 'default' ? 'vortex-session-journal' : 'vortex-session-journal-' + activeAccountProfile;
-      const request = indexedDB.open(database, 1);
-      request.onupgradeneeded = () => {
-        request.result.createObjectStore('sessions', { keyPath: 'key' }).createIndex('start', 'startedAt');
+      const request = indexedDB.open(database, 2);
+      request.onupgradeneeded = (event) => {
+        const store = event.oldVersion === 0
+          ? request.result.createObjectStore('sessions', { keyPath: 'key' })
+          : request.transaction.objectStore('sessions');
+        if (!store.indexNames.contains('start')) store.createIndex('start', 'startedAt');
+        if (!store.indexNames.contains('seen')) store.createIndex('seen', 'seenAt');
+        if (!store.indexNames.contains('game-start')) store.createIndex('game-start', ['gameId', 'startedAt']);
       };
       request.onsuccess = () => {
         const db = request.result;
@@ -44,6 +49,7 @@ const sessionJournal = (() => {
   }
 
   async function record({ key, gameId, startedAt, title, from, through, closed, serverId, friends }) {
+    let saved;
     await transaction('readwrite', store => {
       const request = store.get(key);
       request.onsuccess = () => {
@@ -64,25 +70,71 @@ const sessionJournal = (() => {
         if (friends?.length) row.friends = cleanSessionFriends([...(row.friends || []), ...friends]);
         row.endedAt = closed ? row.seenAt : null;
         store.put(row);
+        saved = row;
       };
     });
+    return saved;
   }
 
-  async function recent(limit, range = null, matches = () => true) {
+  async function recent(limit, range = null, matches = null) {
+    if (limit === Infinity && !matches) {
+      let rows;
+      await transaction('readonly', store => {
+        const request = store.index('start').getAll(range);
+        request.onsuccess = () => { rows = request.result; };
+      });
+      return rows.reverse();
+    }
     const rows = [];
     await transaction('readonly', store => {
       const request = store.index('start').openCursor(range, 'prev');
       request.onsuccess = () => {
         const cursor = request.result;
         if (!cursor) return;
-        if (matches(cursor.value)) rows.push(cursor.value);
+        if (!matches || matches(cursor.value)) rows.push(cursor.value);
         if (rows.length <= limit) cursor.continue();
       };
     });
     return rows;
   }
 
-  async function restore(rows) {
+  async function overlapping(from, until) {
+    if (!(from < until)) return [];
+    let rows;
+    await transaction('readonly', store => {
+      const starts = store.index('start');
+      const ends = store.index('seen');
+      const startRange = IDBKeyRange.upperBound(until, true);
+      const endRange = IDBKeyRange.lowerBound(from);
+      const startCount = starts.count(startRange);
+      const endCount = ends.count(endRange);
+      endCount.onsuccess = () => {
+        const request = startCount.result < endCount.result ? starts.getAll(startRange) : ends.getAll(endRange);
+        request.onsuccess = () => {
+          rows = request.result.filter(row => row.startedAt < until && row.seenAt >= from)
+            .sort((a, b) => b.startedAt - a.startedAt);
+        };
+      };
+    });
+    return rows;
+  }
+
+  async function latestByGame(gameIds) {
+    const rows = [];
+    await transaction('readonly', store => {
+      const index = store.index('game-start');
+      for (const id of new Set(gameIds)) {
+        const range = IDBKeyRange.bound([id, 0], [id, Number.MAX_SAFE_INTEGER]);
+        const request = index.openCursor(range, 'prev');
+        request.onsuccess = () => {
+          if (request.result) rows.push(request.result.value);
+        };
+      }
+    });
+    return rows.sort((a, b) => b.startedAt - a.startedAt);
+  }
+
+  function validate(rows) {
     const validTime = value => Number.isSafeInteger(value) && value > 0 && value <= 8640000000000000;
     if (!Array.isArray(rows) || !rows.every(row => row && /^\d{1,20}$/.test(row.gameId)
       && typeof row.key === 'string' && row.key.startsWith(row.gameId + '/') && /^\d{1,20}\/\d{1,16}$/.test(row.key)
@@ -91,6 +143,10 @@ const sessionJournal = (() => {
       && (row.endedAt === null || row.endedAt === row.seenAt) && typeof row.title === 'string')) {
       throw new Error('Invalid session history');
     }
+  }
+
+  async function restore(rows) {
+    validate(rows);
     await transaction('readwrite', store => {
       store.clear();
       for (const {key, gameId, startedAt, title, trackedMs, seenAt, endedAt, intervals, serverId, friends} of rows) {
@@ -110,5 +166,5 @@ const sessionJournal = (() => {
       }
     });
   }
-  return { record, recent, restore, clear: () => transaction('readwrite', store => store.clear()) };
+  return { record, recent, overlapping, latestByGame, validate, restore, clear: () => transaction('readwrite', store => store.clear()) };
 })();

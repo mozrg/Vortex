@@ -25,6 +25,7 @@
     minimizeWindow: () => invoke('window_minimize'),
     toggleMaximizeWindow: () => invoke('window_toggle_maximize'),
     closeWindow: () => invoke('window_close'),
+    showMainWindow: () => invoke('tray_open_app'),
     onWindowState: (callback) => handleEvent('window:state', callback),
 
     // Updates
@@ -34,6 +35,7 @@
     installUpdate: (opts = {}) => invoke('updates_install', opts),
     onUpdateState: (callback) => handleEvent('updates:state', callback),
     notifyAppReady: () => invoke('app_ready'),
+    reportStartupProgress: (stage) => invoke('startup_progress', { stage }),
 
     // Game search and details
     searchGames: (request) => invoke('games_search', request),
@@ -87,7 +89,7 @@
     onGameOverlayServerHop: (callback) => handleEvent('game-overlay:server-hop', callback),
     onGameOverlayRejoin: (callback) => handleEvent('game-overlay:rejoin', callback),
     toggleRobloxMute: (muted = null) => invoke('roblox_toggle_mute', { muted }),
-    terminateRobloxPlayer: () => invoke('roblox_terminate_player'),
+    terminateRobloxPlayer: (session) => invoke('roblox_terminate_player', session),
     copyToClipboard: (text) => invoke('copy_to_clipboard', { text }),
     setPresenceCookie: (cookie, username) => invoke('friends_presence_cookie', { cookie, username, profileId: activeAccountProfile }),
     removePresenceCookie: () => invoke('friends_presence_cookie', { remove: true, profileId: activeAccountProfile }),

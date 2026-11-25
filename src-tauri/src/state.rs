@@ -290,6 +290,7 @@ pub struct PendingUpdate {
     pub version: String,
     pub asset_name: String,
     pub asset_url: String,
+    pub asset_size: u64,
     pub sha256: String,
     pub sha_url: String,
     pub path: Option<PathBuf>,

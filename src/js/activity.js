@@ -136,8 +136,8 @@ function writeJournalInterval(from, through, closed = false) {
   });
 }
 
-function journalChanged() {
-  refreshLibraryDashboard();
+function journalChanged(row) {
+  refreshLibraryDashboard(row);
   if (currentView === 'activity' && libraryActivityPane === 'history') void loadJournalRows();
   else journalStatus = 'idle';
 }

@@ -117,6 +117,7 @@ fn pending_from_asset(version: &str, asset: &Value, assets: &[Value]) -> Option<
         version: version.to_string(),
         asset_name,
         asset_url,
+        asset_size: asset.get("size").and_then(Value::as_u64).unwrap_or(0),
         sha256: digest,
         sha_url,
         path: None,
@@ -300,10 +301,8 @@ async fn download_update_inner(app: AppHandle, state: Arc<AppState>) -> Result<(
                 response.status().as_u16()
             ));
         }
-        let total = response.content_length().unwrap_or(0);
-        if total == 0 || total > 200 * 1024 * 1024 {
-            return Err("Размер установщика отсутствует или превышает 200 МБ".to_string());
-        }
+        let total = installer_download_size(response.content_length(), pending.asset_size)
+            .map_err(|()| "Некорректный размер установщика".to_string())?;
         {
             let mut update = state
                 .update_state
@@ -331,7 +330,7 @@ async fn download_update_inner(app: AppHandle, state: Arc<AppState>) -> Result<(
             .map_err(|error| format!("Ошибка загрузки установщика: {error}"))?
         {
             downloaded = downloaded.saturating_add(chunk.len() as u64);
-            if downloaded > total || downloaded > 200 * 1024 * 1024 {
+            if downloaded > MAX_INSTALLER_BYTES || (total > 0 && downloaded > total) {
                 return Err("Размер загруженного файла не совпал с ожидаемым".to_string());
             }
             hasher.update(&chunk);
@@ -342,7 +341,7 @@ async fn download_update_inner(app: AppHandle, state: Arc<AppState>) -> Result<(
                 last_emit = Instant::now();
                 let elapsed = started_at.elapsed().as_secs_f64().max(0.05);
                 let speed_bps = (downloaded as f64 / elapsed) as u64;
-                let progress = ((downloaded.saturating_mul(100) / total).min(99)) as u32;
+                let progress = downloaded.saturating_mul(100).checked_div(total).unwrap_or(0).min(99) as u32;
                 {
                     let mut update = state
                         .update_state
@@ -361,7 +360,8 @@ async fn download_update_inner(app: AppHandle, state: Arc<AppState>) -> Result<(
         file.flush()
             .await
             .map_err(|error| format!("Не удалось завершить запись установщика: {error}"))?;
-        if downloaded != total {
+        drop(file);
+        if downloaded == 0 || (total > 0 && downloaded != total) {
             return Err("Загрузка установщика завершилась не полностью".to_string());
         }
         let actual_hash = format!("{:x}", hasher.finalize());
@@ -563,6 +563,8 @@ struct UpdaterJob {
     #[serde(default)]
     asset_name: String,
     #[serde(default)]
+    asset_size: u64,
+    #[serde(default)]
     sha256: String,
     #[serde(default)]
     sha_url: String,
@@ -579,8 +581,10 @@ struct UpdaterJob {
 #[derive(Default)]
 struct UpdaterRuntime {
     job: Mutex<UpdaterJob>,
+    started: AtomicBool,
     running: AtomicBool,
     snapshot: Mutex<Value>,
+    preview: bool,
 }
 
 fn updater_job_path() -> PathBuf {
@@ -596,7 +600,11 @@ fn updater_host_exe_path() -> PathBuf {
 /// never accumulates gigabytes of obsolete `.exe` setups over time.
 pub fn cleanup_updater_artifacts() {
     let dir = update_dir();
-    let _ = std::fs::remove_file(updater_host_exe_path());
+    if let Err(error) = std::fs::remove_file(updater_host_exe_path()) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return; // The updater may still be using the download and job.
+        }
+    }
     let _ = std::fs::remove_file(updater_job_path());
     let _ = std::fs::remove_file(dir.join("apply-update.ps1"));
     if let Ok(entries) = std::fs::read_dir(&dir) {
@@ -670,6 +678,7 @@ pub async fn updates_install(
             installer_path: installer.to_string_lossy().to_string(),
             asset_url: pending.asset_url.clone(),
             asset_name: pending.asset_name.clone(),
+            asset_size: pending.asset_size,
             sha256: pending.sha256.clone(),
             sha_url: pending.sha_url.clone(),
             app_path: current_exe.to_string_lossy().to_string(),
@@ -689,7 +698,15 @@ pub async fn updates_install(
         }
         publish_update_state(&app, &state);
 
-        spawn_updater_host(&job)?;
+        if let Err(error) = spawn_updater_host(&job) {
+            if let Ok(mut update) = state.update_state.lock() {
+                update.status = "error".to_owned();
+                update.stage = None;
+                update.error_message = Some(error.clone());
+            }
+            publish_update_state(&app, &state);
+            return Err(error);
+        }
         if let Some(window) = app.get_webview_window("main") {
             crate::save_window_state(&window);
         }
@@ -767,6 +784,20 @@ fn format_transfer_speed(bps: u64, is_en: bool) -> String {
     }
 }
 
+const MAX_INSTALLER_BYTES: u64 = 200 * 1024 * 1024;
+
+fn installer_download_size(content_length: Option<u64>, asset_size: u64) -> Result<u64, ()> {
+    if content_length.is_some_and(|length| length == 0 ||
+        (asset_size != 0 && length != asset_size)) {
+        return Err(());
+    }
+    let total = content_length.unwrap_or(asset_size);
+    if total > MAX_INSTALLER_BYTES {
+        return Err(());
+    }
+    Ok(total)
+}
+
 fn compute_download_stage_progress(downloaded: u64, total: u64) -> u32 {
     if total == 0 {
         return 4;
@@ -786,11 +817,11 @@ fn compute_install_stage_progress(read_bytes: u64, installer_size: u64, exe_repl
     (78.0 + ratio * 14.0).round().clamp(78.0, 92.0) as u32
 }
 
-fn emit_updater_progress(app: &AppHandle, rt: &UpdaterRuntime, payload: Value) {
+fn save_updater_progress(rt: &UpdaterRuntime, mut payload: Value) {
     if let Ok(mut guard) = rt.snapshot.lock() {
-        *guard = payload.clone();
+        payload["sequence"] = json!(guard["sequence"].as_u64().unwrap_or(0) + 1);
+        *guard = payload;
     }
-    let _ = app.emit("updater:progress", payload);
 }
 
 async fn resolve_expected_sha256(
@@ -862,8 +893,7 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
                 message: Option<&str>,
                 detail: Option<String>,
                 error: Option<String>| {
-        emit_updater_progress(
-            &app,
+        save_updater_progress(
             &rt,
             json!({
                 "fromVersion": job.from_version,
@@ -874,6 +904,7 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
                 "language": job.language,
                 "stage": stage,
                 "progress": progress,
+                "indeterminate": stage == "downloading" && progress == 4,
                 "message": message,
                 "detail": detail,
                 "error": error,
@@ -927,7 +958,8 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
     };
 
     let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(300))
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(25))
         .user_agent(concat!("Vortex/", env!("CARGO_PKG_VERSION")))
         .build()
     {
@@ -996,22 +1028,21 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
             );
             return;
         }
-        let total = response.content_length().unwrap_or(0);
-        if total == 0 || total > 200 * 1024 * 1024 {
-            rt.running.store(false, Ordering::Release);
-            send(
-                "error",
-                4,
-                None,
-                None,
-                Some(if is_en {
-                    "Installer size is missing or exceeds 200 MB.".to_string()
-                } else {
-                    "Размер установщика отсутствует или превышает 200 МБ.".to_string()
-                }),
-            );
-            return;
-        }
+        let total = match installer_download_size(response.content_length(), job.asset_size) {
+            Ok(size) => size,
+            Err(()) => {
+                rt.running.store(false, Ordering::Release);
+                send(
+                    "error", 4, None, None,
+                    Some(if is_en {
+                        "The installer size is inconsistent or exceeds 200 MB.".to_string()
+                    } else {
+                        "Размер установщика не совпадает с релизом или превышает 200 МБ.".to_string()
+                    }),
+                );
+                return;
+            }
+        };
 
         let mut file = match tokio::fs::File::create(&partial_path).await {
             Ok(f) => f,
@@ -1035,7 +1066,8 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
                     let len = chunk.len() as u64;
                     downloaded = downloaded.saturating_add(len);
                     window_bytes = window_bytes.saturating_add(len);
-                    if downloaded > total || downloaded > 200 * 1024 * 1024 {
+                    if downloaded > MAX_INSTALLER_BYTES || (total > 0 && downloaded > total) {
+                        drop(file);
                         let _ = tokio::fs::remove_file(&partial_path).await;
                         rt.running.store(false, Ordering::Release);
                         send(
@@ -1053,6 +1085,7 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
                     }
                     hasher.update(&chunk);
                     if let Err(err) = file.write_all(&chunk).await {
+                        drop(file);
                         let _ = tokio::fs::remove_file(&partial_path).await;
                         rt.running.store(false, Ordering::Release);
                         send("error", 4, None, None, Some(err.to_string()));
@@ -1080,17 +1113,20 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
                             (downloaded as f64 / elapsed) as u64
                         };
                         let pct = compute_download_stage_progress(downloaded, total);
-                        let detail = format!(
-                            "{} / {} · {}",
-                            format_transfer_mb(downloaded, is_en),
-                            format_transfer_mb(total, is_en),
-                            format_transfer_speed(display_bps, is_en)
-                        );
+                        let amount = format_transfer_mb(downloaded, is_en);
+                        let speed = format_transfer_speed(display_bps, is_en);
+                        let detail = if total > 0 {
+                            let percent = downloaded * 100 / total;
+                            format!("{percent}% · {amount} / {} · {speed}", format_transfer_mb(total, is_en))
+                        } else {
+                            format!("{amount} · {speed}")
+                        };
                         send("downloading", pct, None, Some(detail), None);
                     }
                 }
                 Ok(None) => break,
                 Err(err) => {
+                    drop(file);
                     let _ = tokio::fs::remove_file(&partial_path).await;
                     rt.running.store(false, Ordering::Release);
                     send(
@@ -1110,13 +1146,14 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
         }
 
         if let Err(err) = file.flush().await {
+            drop(file);
             let _ = tokio::fs::remove_file(&partial_path).await;
             rt.running.store(false, Ordering::Release);
             send("error", 70, None, None, Some(err.to_string()));
             return;
         }
         drop(file);
-        if downloaded != total {
+        if downloaded == 0 || (total > 0 && downloaded != total) {
             let _ = tokio::fs::remove_file(&partial_path).await;
             rt.running.store(false, Ordering::Release);
             send(
@@ -1133,12 +1170,14 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
             return;
         }
         downloaded_hash = Some(format!("{:x}", hasher.finalize()));
+        send("downloading", 70, None, Some(format_transfer_mb(downloaded, is_en)), None);
     } else {
         send("downloading", 70, None, None, None);
     }
 
     // 3. Real SHA-256 verification.
     send("verifying", 71, None, None, None);
+    let verified_partial = downloaded_hash.is_some();
     let actual_hash = match downloaded_hash {
         Some(h) => h,
         None => {
@@ -1221,7 +1260,7 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
         }
     }
 
-    if partial_path.is_file() {
+    if verified_partial {
         if let Err(err) = tokio::fs::rename(&partial_path, &installer_path).await {
             rt.running.store(false, Ordering::Release);
             send("error", 77, None, None, Some(err.to_string()));
@@ -1409,7 +1448,11 @@ async fn execute_updater_job(app: AppHandle, rt: Arc<UpdaterRuntime>) {
 }
 
 #[tauri::command]
-fn updater_ready(rt: tauri::State<'_, Arc<UpdaterRuntime>>) -> Result<Value, String> {
+fn updater_ready(app: AppHandle, rt: tauri::State<'_, Arc<UpdaterRuntime>>) -> Result<Value, String> {
+    if !rt.started.swap(true, Ordering::AcqRel) {
+        // A cold WebView2 startup can otherwise miss even an entire update.
+        spawn_updater_run(app, rt.inner().clone());
+    }
     let snap = rt.snapshot.lock().map_err(|e| e.to_string())?.clone();
     if !snap.is_null() {
         return Ok(snap);
@@ -1424,16 +1467,23 @@ fn updater_ready(rt: tauri::State<'_, Arc<UpdaterRuntime>>) -> Result<Value, Str
         "language": job.language,
         "stage": "closing",
         "progress": 2,
+        "sequence": 0,
     }))
 }
 
 #[tauri::command]
-fn updater_retry(app: AppHandle, rt: tauri::State<'_, Arc<UpdaterRuntime>>) -> Result<(), String> {
-    let rt_clone = rt.inner().clone();
+fn updater_retry(app: AppHandle, rt: tauri::State<'_, Arc<UpdaterRuntime>>) {
+    spawn_updater_run(app, rt.inner().clone());
+}
+
+fn spawn_updater_run(app: AppHandle, rt: Arc<UpdaterRuntime>) {
     tauri::async_runtime::spawn(async move {
-        execute_updater_job(app, rt_clone).await;
+        if rt.preview {
+            execute_updater_preview(app, rt).await;
+        } else {
+            execute_updater_job(app, rt).await;
+        }
     });
-    Ok(())
 }
 
 #[tauri::command]
@@ -1447,23 +1497,40 @@ pub fn run_updater_mode() {
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
         .unwrap_or_default();
+    run_updater_window(job, false);
+}
+
+/// Safe preview mode triggered via `--test-updater` so the developer can inspect
+/// the Updater Window animation and styling without touching installed files.
+pub fn run_updater_preview_mode() {
+    let job = UpdaterJob {
+        from_version: env!("CARGO_PKG_VERSION").to_string(),
+        to_version: "1.3.5".to_string(),
+        theme: "dark".to_string(),
+        accent: "#a68bff".to_string(),
+        accent_secondary: "#5b3fd6".to_string(),
+        language: "ru".to_string(),
+        ..UpdaterJob::default()
+    };
+    run_updater_window(job, true);
+}
+
+fn run_updater_window(job: UpdaterJob, preview: bool) {
     let rt = Arc::new(UpdaterRuntime {
         job: Mutex::new(job),
-        running: AtomicBool::new(false),
-        snapshot: Mutex::new(Value::Null),
+        preview,
+        ..UpdaterRuntime::default()
     });
 
     tauri::Builder::default()
         .manage(rt)
-        .setup(|app| {
-            // Close the hidden main window declared in tauri.conf.json so we
-            // only host the lightweight updater UI.
+        .setup(move |app| {
             if let Some(main) = app.get_webview_window("main") {
                 let _ = main.destroy();
             }
             let _updater =
                 WebviewWindowBuilder::new(app, "updater", WebviewUrl::App("updater.html".into()))
-                    .title("Vortex Updater")
+                    .title(if preview { "Vortex Updater Preview" } else { "Vortex Updater" })
                     .inner_size(480.0, 356.0)
                     .decorations(false)
                     .transparent(true)
@@ -1473,11 +1540,6 @@ pub fn run_updater_mode() {
                     .center()
                     .visible(true)
                     .build()?;
-            let handle = app.handle().clone();
-            let state = app.state::<Arc<UpdaterRuntime>>().inner().clone();
-            tauri::async_runtime::spawn(async move {
-                execute_updater_job(handle, state).await;
-            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1489,87 +1551,41 @@ pub fn run_updater_mode() {
         .expect("error while running Vortex updater");
 }
 
-/// Safe preview mode triggered via `--test-updater` so the developer can inspect
-/// the Updater Window animation and styling without touching installed files.
-pub fn run_updater_preview_mode() {
-    let job = UpdaterJob {
-        from_version: env!("CARGO_PKG_VERSION").to_string(),
-        to_version: "1.3.4".to_string(),
-        theme: "dark".to_string(),
-        accent: "#a68bff".to_string(),
-        accent_secondary: "#5b3fd6".to_string(),
-        language: "ru".to_string(),
-        ..UpdaterJob::default()
-    };
-    let rt = Arc::new(UpdaterRuntime {
-        job: Mutex::new(job.clone()),
-        running: AtomicBool::new(true),
-        snapshot: Mutex::new(Value::Null),
-    });
-
-    tauri::Builder::default()
-        .manage(rt)
-        .setup(move |app| {
-            if let Some(main) = app.get_webview_window("main") {
-                let _ = main.destroy();
-            }
-            let _updater =
-                WebviewWindowBuilder::new(app, "updater", WebviewUrl::App("updater.html".into()))
-                    .title("Vortex Updater Preview")
-                    .inner_size(480.0, 356.0)
-                    .decorations(false)
-                    .transparent(true)
-                    .shadow(false)
-                    .resizable(false)
-                    .always_on_top(true)
-                    .center()
-                    .visible(true)
-                    .build()?;
-            let handle = app.handle().clone();
-            let state = app.state::<Arc<UpdaterRuntime>>().inner().clone();
-            let preview_job = job.clone();
-            tauri::async_runtime::spawn(async move {
-                let steps: [(&str, u32, Option<&str>, u64); 10] = [
-                    ("closing", 4, None, 450),
-                    ("downloading", 18, Some("2.6 / 12.4 МБ · 5.4 МБ/с"), 380),
-                    ("downloading", 38, Some("6.4 / 12.4 МБ · 6.1 МБ/с"), 380),
-                    ("downloading", 58, Some("10.1 / 12.4 МБ · 6.3 МБ/с"), 380),
-                    ("downloading", 70, Some("12.4 / 12.4 МБ · 6.2 МБ/с"), 320),
-                    ("verifying", 78, Some("SHA-256 подтверждён"), 500),
-                    ("installing", 84, Some("Распаковано: 11.2 МБ"), 550),
-                    ("installing", 93, Some("Завершаем установку…"), 550),
-                    ("launching", 96, None, 450),
-                    ("done", 100, None, 1000),
-                ];
-                for (stage, progress, detail, wait_ms) in steps {
-                    emit_updater_progress(
-                        &handle,
-                        &state,
-                        json!({
-                            "fromVersion": preview_job.from_version,
-                            "toVersion": preview_job.to_version,
-                            "theme": preview_job.theme,
-                            "accent": preview_job.accent,
-                            "accentSecondary": preview_job.accent_secondary,
-                            "language": preview_job.language,
-                            "stage": stage,
-                            "progress": progress,
-                            "detail": detail,
-                        }),
-                    );
-                    tokio::time::sleep(Duration::from_millis(wait_ms)).await;
-                }
-                handle.exit(0);
-            });
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            updater_ready,
-            updater_retry,
-            updater_close,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running Vortex updater preview");
+async fn execute_updater_preview(app: AppHandle, rt: Arc<UpdaterRuntime>) {
+    if rt.running.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let job = crate::state::lock_or_recover(&rt.job).clone();
+    let steps = [
+        ("closing", 4, None, 450),
+        ("downloading", 18, Some("2.6 / 12.4 МБ · 5.4 МБ/с"), 380),
+        ("downloading", 38, Some("6.4 / 12.4 МБ · 6.1 МБ/с"), 380),
+        ("downloading", 58, Some("10.1 / 12.4 МБ · 6.3 МБ/с"), 380),
+        ("downloading", 70, Some("12.4 / 12.4 МБ · 6.2 МБ/с"), 320),
+        ("verifying", 78, Some("SHA-256 подтверждён"), 500),
+        ("installing", 84, Some("Распаковано: 11.2 МБ"), 550),
+        ("installing", 93, Some("Завершаем установку…"), 550),
+        ("launching", 96, None, 450),
+        ("done", 100, None, 1000),
+    ];
+    for (stage, progress, detail, wait_ms) in steps {
+        save_updater_progress(
+            &rt,
+            json!({
+                "fromVersion": job.from_version,
+                "toVersion": job.to_version,
+                "theme": job.theme,
+                "accent": job.accent,
+                "accentSecondary": job.accent_secondary,
+                "language": job.language,
+                "stage": stage,
+                "progress": progress,
+                "detail": detail,
+            }),
+        );
+        tokio::time::sleep(Duration::from_millis(wait_ms)).await;
+    }
+    app.exit(0);
 }
 
 #[cfg(test)]
@@ -1632,6 +1648,16 @@ mod tests {
         assert_eq!(format_transfer_mb(5 * 1024 * 1024, false), "5.0 МБ");
         assert_eq!(format_transfer_speed(2 * 1024 * 1024, true), "2.0 MB/s");
         assert_eq!(format_transfer_speed(512 * 1024, false), "512 КБ/с");
+    }
+
+    #[test]
+    fn download_size_uses_release_metadata_and_handles_unknown_lengths() {
+        assert_eq!(installer_download_size(None, 10_000), Ok(10_000));
+        assert_eq!(installer_download_size(Some(10_000), 10_000), Ok(10_000));
+        assert_eq!(installer_download_size(None, 0), Ok(0));
+        assert_eq!(installer_download_size(Some(0), 0), Err(()));
+        assert_eq!(installer_download_size(Some(9_999), 10_000), Err(()));
+        assert_eq!(installer_download_size(None, MAX_INSTALLER_BYTES + 1), Err(()));
     }
 
     #[test]

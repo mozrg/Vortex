@@ -85,7 +85,7 @@ const preferenceDefaults = {
   gameOverlayScale: 100, gameOverlayGap: 5, gameOverlayOpacity: 74,
   gameOverlayStyle: 'capsule', gameOverlayBadPing: 130, gameOverlayLowFps: 30,
   gameOverlayHideFullscreen: false, gameOverlayMinimal: false,
-  gameOverlayTimer: true, gameOverlayFps: true, gameOverlayPing: true, gameOverlayStability: false,
+  gameOverlayTimer: true, gameOverlayFps: true, gameOverlayRobloxPings: false, gameOverlayStability: false,
   gameOverlayRegion: true, gameOverlayBadPingPrompt: true, gameOverlaySystem: false, gameOverlayFriendJoin: true,
   gameOverlayClock: false, gameOverlayFriends: true,
   inviteHotkey: 'Alt+C', overlayToggleHotkey: '', muteRobloxHotkey: '',
@@ -496,11 +496,13 @@ function escapeHtml(value) {
 }
 
 let savePreferencesTimer = 0;
+let dataImportInProgress = false;
 function savePreferences() {
   if (savePreferencesTimer) {
     window.clearTimeout(savePreferencesTimer);
     savePreferencesTimer = 0;
   }
+  if (dataImportInProgress) return;
   accountStorage.setItem('vortex.preferences', JSON.stringify(preferences));
   // Any preference change may affect the tray's look, so it re-reports its
   // style payload together with the recent games on every save.

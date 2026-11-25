@@ -120,9 +120,12 @@
     metrics.fps.firstElementChild.textContent = data.fps?.measured ?? '—';
     metrics.fps.dataset.low = (Number.isFinite(data.fps?.measured) && data.fps.measured < lowFpsThreshold) ? 'true' : 'false';
 
-    metrics.ping.hidden = data.ping == null;
-    metrics.ping.firstElementChild.textContent = data.ping?.measured ?? '—';
-    metrics.ping.dataset.bad = (Number.isFinite(data.ping?.measured) && data.ping.measured >= badPingThreshold) ? 'true' : 'false';
+    const robloxPings = data.robloxPings;
+    for (const [metric, value] of [[metrics.networkPing, robloxPings?.networkMs], [metrics.dataPing, robloxPings?.dataMs]]) {
+      metric.hidden = robloxPings == null;
+      metric.firstElementChild.textContent = Number.isFinite(value) ? `${Number(value.toFixed(2))} ms` : '—';
+      metric.dataset.bad = Number.isFinite(value) && value >= badPingThreshold ? 'true' : 'false';
+    }
 
     if (metrics.stability) {
       metrics.stability.hidden = !data.showStability;

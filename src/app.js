@@ -332,16 +332,16 @@ document.addEventListener('focusout', (event) => {
 document.addEventListener('scroll', hideFriendPreview, true);
 
 function bootVortex() {
+window.vortexDesktop?.reportStartupProgress?.(3).catch(() => {});
 saveRecentGames(recentGames);
 mountIcons();
 renderSidebar();
 applyPreferences();
 renderPage();
 window.__VORTEX_BOOTED__ = true;
-// Swap out the splash screen once the first frame of the main UI is painted.
-requestAnimationFrame(() => {
-  window.vortexDesktop?.notifyAppReady?.().catch?.(() => {});
-});
+// The hidden WebView can suspend animation frames. Signal once the first UI
+// has been rendered into the DOM so the native window can actually be shown.
+window.vortexDesktop?.notifyAppReady?.().catch(() => {});
 // Hovering the thin left strip peeks the rail; leaving the rail hides it again.
 document.querySelector('.sidebar-hover-zone')?.addEventListener('mouseenter', () => {
   document.body.classList.add('sidebar-peek');

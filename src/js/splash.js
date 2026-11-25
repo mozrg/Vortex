@@ -2,6 +2,7 @@
   const card = document.getElementById('splash-card');
   const statusEl = document.getElementById('splash-status');
   const barEl = document.getElementById('splash-bar');
+  const track = document.querySelector('.splash-track');
 
   let lang = 'ru';
   try {
@@ -21,40 +22,27 @@
   } catch { /* Use default dark theme. */ }
 
   document.documentElement.lang = lang;
-  const stages = lang === 'en'
-    ? [
-        [24, 'Starting Vortex…'],
-        [58, 'Loading library & preferences…'],
-        [86, 'Preparing interface…']
-      ]
-    : [
-        [24, 'Запуск Vortex…'],
-        [58, 'Загрузка библиотеки и настроек…'],
-        [86, 'Подготовка интерфейса…']
-      ];
-
-  let idx = 0;
-  function setStage(pct, text) {
-    if (barEl) barEl.style.width = `${pct}%`;
-    if (statusEl) statusEl.textContent = text;
+  const labels = lang === 'en'
+    ? ['Starting Vortex…', 'Checking local data…', 'Loading app modules…', 'Preparing the interface…', 'Ready!']
+    : ['Запуск Vortex…', 'Проверяем локальные данные…', 'Загружаем модули…', 'Готовим интерфейс…', 'Готово!'];
+  const milestones = [10, 25, 50, 80, 100];
+  let latestStage = -1;
+  function setStage(stage) {
+    if (!Number.isInteger(stage) || stage <= latestStage || stage >= milestones.length) return;
+    latestStage = stage;
+    const progress = milestones[stage];
+    if (barEl) barEl.style.width = `${progress}%`;
+    if (statusEl) statusEl.textContent = labels[stage];
+    track?.setAttribute('aria-valuenow', String(progress));
+    if (stage === 4) card?.classList.add('is-leaving');
   }
 
-  setStage(stages[0][0], stages[0][1]);
-  const timer = window.setInterval(() => {
-    idx += 1;
-    if (idx < stages.length) {
-      setStage(stages[idx][0], stages[idx][1]);
-    } else {
-      window.clearInterval(timer);
-    }
-  }, 240);
-
-  const listen = window.__TAURI__?.event?.listen;
-  if (listen) {
-    listen('splash:done', () => {
-      window.clearInterval(timer);
-      setStage(100, lang === 'en' ? 'Ready!' : 'Готово!');
-      if (card) card.classList.add('is-leaving');
-    });
+  setStage(0);
+  const tauri = window.__TAURI__;
+  async function watchStartup() {
+    try { setStage(await tauri.core.invoke('splash_progress')); }
+    catch { /* The native window controls when to dismiss this splash. */ }
+    if (latestStage < 4) window.setTimeout(watchStartup, 100);
   }
+  if (tauri?.core?.invoke) void watchStartup();
 })();

@@ -31,10 +31,6 @@ function bankPlaySession(through = runtimeConfirmedAt) {
 }
 
 function finishDetectedSession(through) {
-  if (playSessionGameId && typeof rememberLastActiveServerSession === 'function') {
-    const srv = validSessionServer(recordingSession?.serverId) || validSessionServer(gameOverlaySession?.serverId) || validSessionServer(runtimeSample?.serverId) || '';
-    rememberLastActiveServerSession(playSessionGameId, srv, playSessionStart || through);
-  }
   bankPlaySession(through);
   if (recordingSession) writeJournalInterval(Math.max(playSessionStart, activityData.confirmedThrough), through, true);
   recordingSession = null;
@@ -45,20 +41,17 @@ function finishDetectedSession(through) {
   accountStorage.removeItem(PLAYTIME_SESSION_KEY);
 }
 
-function recordGameLaunch(game, serverId = '', isPrivate = false) {
+function recordGameLaunch(game, isPrivate = false) {
   pendingLaunch = { ...game, at: Date.now(), isPrivate: Boolean(isPrivate) };
-  if (typeof rememberLastActiveServerSession === 'function' && game?.id) {
-    rememberLastActiveServerSession(game.id, serverId, pendingLaunch.at);
-  }
   if (preferences.saveHistory) {
     saveRecentGames([game.id, ...recentGames]);
-    saveRecentDetails({ ...recentMetadata(), [game.id]: { at: pendingLaunch.at, serverId } });
+    saveRecentDetails({ ...recentMetadata(), [game.id]: { at: pendingLaunch.at, serverId: '' } });
   }
   reportRecentGamesToTray();
   window.setTimeout(pollRobloxRuntime, 750);
 }
 
-async function openGame(id, gameId = '', accessCode = '', { skipConfirm = false } = {}) {
+async function openGame(id, gameId = '', accessCode = '', { skipConfirm = false, beforeLaunch, endsSession = false } = {}) {
   const game = getGame(id) || (String(detailGame?.id) === String(id) ? detailGame : null) ||
     (gameIdPattern.test(String(id)) ? { id: String(id), title: t('friends.joinGameTitle') } : null);
   if (!game) return;
@@ -69,17 +62,21 @@ async function openGame(id, gameId = '', accessCode = '', { skipConfirm = false 
   const safeAccessCode = /^[A-Za-z0-9_-]{6,128}$/.test(rawAccessCode) ? rawAccessCode : '';
   if (rawAccessCode && !safeAccessCode) { showToast(t('toast.launchError')); return false; }
   if (!skipConfirm && preferences.confirmLaunch && typeof confirmVortexAction === 'function') {
+    if (beforeLaunch) {
+      try { await window.vortexDesktop?.showMainWindow?.(); } catch { /* Keep the confirmation available in the main window. */ }
+    }
     const meta = typeof resolveGameSecurityMeta === 'function' ? await resolveGameSecurityMeta(game.id) : game;
     const metaHtml = typeof renderSecurityMetaCard === 'function' ? renderSecurityMetaCard(meta, { isUrl: true, authentic: true, host: 'roblox.com', reason: 'authentic' }) : '';
     const ok = await confirmVortexAction({
       title: t('confirm.launchTitle'),
-      body: t('confirm.launchBody', { title: meta?.title || game.title }),
+      body: t(endsSession ? 'hotkeys.switchSession.confirm' : 'confirm.launchBody', { title: meta?.title || game.title }),
       confirmText: t('confirm.launchAction'),
       metaHtml
     });
     if (!ok) return false;
   }
   try {
+    if (beforeLaunch && !await beforeLaunch()) return false;
     if (window.vortexDesktop?.openGame) {
       await window.vortexDesktop.openGame(String(game.id), joinGameId, safeAccessCode);
     } else {
@@ -89,7 +86,7 @@ async function openGame(id, gameId = '', accessCode = '', { skipConfirm = false 
     showToast(t('toast.launchError'));
     return;
   }
-  recordGameLaunch(game, safeAccessCode ? '' : joinGameId, Boolean(safeAccessCode));
+  recordGameLaunch(game, Boolean(safeAccessCode));
   showToast(t('toast.opening', { game: game.title }));
   return true;
 }
@@ -98,20 +95,24 @@ async function openGame(id, gameId = '', accessCode = '', { skipConfirm = false 
 // backend reads the newest Roblox log, so joins from the Roblox website or a
 // friend invite also start/stop a play session instead of being invisible.
 function startDetectedSession(id, key, start, joinedAt, serverId) {
-  const known = getGame(id) || (String(pendingLaunch?.id) === id ? pendingLaunch : null);
+  const correlatedLaunch = String(pendingLaunch?.id) === id &&
+    (joinedAt || start) >= pendingLaunch.at - 1000 && (joinedAt || start) <= pendingLaunch.at + 120000
+    ? pendingLaunch : null;
+  const known = getGame(id) || correlatedLaunch;
   const stored = readStored(PLAYTIME_SESSION_KEY, null);
   playSessionStart = start;
   playSessionGameId = id;
   runtimeSessionKey = key;
   nowPlayingSnapshot = { id, title: known?.title || t('activity.unknownGame'),
-    thumbnail: safeThumbnail(known?.thumbnail) || '', startedAt: joinedAt || start };
+    thumbnail: safeThumbnail(known?.thumbnail) || '', startedAt: joinedAt || start,
+    serverId, isPrivate: Boolean(correlatedLaunch?.isPrivate) };
   if (typeof rememberLastActiveServerSession === 'function') {
     rememberLastActiveServerSession(id, serverId, joinedAt || start);
   }
   if (preferences.saveHistory) {
     saveRecentGames([id, ...recentGames]);
     const recent = recentMetadata()[id];
-    if (!recent || (joinedAt || start) >= recent.at) {
+    if (!recent || correlatedLaunch || (joinedAt || start) >= recent.at) {
       saveRecentDetails({ ...recentMetadata(), [id]: { at: joinedAt || start, serverId } });
     }
   }
@@ -129,6 +130,7 @@ function startDetectedSession(id, key, start, joinedAt, serverId) {
     recordingSession = { key: joinedAt ? key : id + '/' + start, gameId: id, startedAt: Math.min(joinedAt || start, start), title: known?.title || '', serverId, friends: [] };
     writeJournalInterval(start, start);
   }
+  if (correlatedLaunch) pendingLaunch = null;
 }
 
 async function resolvePlayingGame(id) {
@@ -194,13 +196,17 @@ function observeRobloxRuntime(data) {
   if (id) {
     runtimeConfirmedAt = at;
     const server = validSessionServer(data.serverId);
+    if (server && nowPlayingSnapshot && nowPlayingSnapshot.serverId !== server) {
+      nowPlayingSnapshot.serverId = server;
+      rememberLastActiveServerSession(id, server, nowPlayingSnapshot.startedAt);
+      const recent = recentMetadata()[id];
+      if (preferences.saveHistory && recent?.at === nowPlayingSnapshot.startedAt) {
+        saveRecentDetails({ ...recentMetadata(), [id]: { ...recent, serverId: server } });
+      }
+    }
     if (recordingSession && server) {
       if (recordingSession.serverId !== server) {
         recordingSession.serverId = server;
-        const recent = recentMetadata()[id];
-        if (recent && recent.at === (joined || recordingSession.startedAt)) {
-          saveRecentDetails({ ...recentMetadata(), [id]: { ...recent, serverId: server } });
-        }
         writeJournalInterval(at, at);
         if (preferences.discordPresence) applyDiscordPresence();
       }
@@ -221,14 +227,14 @@ function observeRobloxRuntime(data) {
     runtimeConfirmedAt = 0;
     if (!data.running) accountStorage.removeItem(PLAYTIME_SESSION_KEY);
   }
-  if (pendingLaunch && (String(pendingLaunch.id) === id || at - pendingLaunch.at > 120000)) pendingLaunch = null;
+  if (pendingLaunch && at - pendingLaunch.at > 120000) pendingLaunch = null;
 }
 
 async function pollRobloxRuntime() {
-  if (!runtimeOwner || runtimePollBusy || !window.vortexDesktop?.getRobloxRuntime) return;
+  if (!runtimeOwner || runtimePollBusy || dataImportInProgress || !window.vortexDesktop?.getRobloxRuntime) return;
   runtimePollBusy = true;
-  try { const data = await window.vortexDesktop.getRobloxRuntime(); if (runtimeOwner) observeRobloxRuntime(data); }
-  catch { observeRobloxRuntime(null); }
+  try { const data = await window.vortexDesktop.getRobloxRuntime(); if (runtimeOwner && !dataImportInProgress) observeRobloxRuntime(data); }
+  catch { if (runtimeOwner && !dataImportInProgress) observeRobloxRuntime(null); }
   finally { runtimePollBusy = false; }
 }
 
@@ -929,7 +935,6 @@ async function launchQuickGame(id) {
     if (item.placeId && !(item.method === 'public' && folder?.server && folder.server !== 'default')) {
       const game = getGame(item.placeId);
       recordGameLaunch({ id: item.placeId, title: item.title || game?.title, thumbnail: item.thumbnail || game?.thumbnail },
-        item.method === 'instance' ? item.serverId : '',
         item.method === 'private' || item.method === 'access' || item.method === 'share');
     } else {
       reportRecentGamesToTray();

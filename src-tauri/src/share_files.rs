@@ -8,6 +8,16 @@ use windows::Win32::UI::Controls::Dialogs::{
     OFN_PATHMUSTEXIST, OPENFILENAMEW,
 };
 
+fn share_file_size_limit(filename: &str) -> usize {
+    if filename.starts_with("vortex-backup-") && filename.ends_with(".json") {
+        128 * 1024 * 1024
+    } else if filename.ends_with(".csv") {
+        16 * 1024 * 1024
+    } else {
+        1024 * 1024
+    }
+}
+
 #[tauri::command]
 pub async fn save_share_file(
     window: tauri::WebviewWindow,
@@ -15,7 +25,7 @@ pub async fn save_share_file(
     contents: String,
 ) -> Result<bool, String> {
     let csv = filename.ends_with(".csv");
-    if contents.len() > if csv { 16 * 1024 * 1024 } else { 1024 * 1024 }
+    if contents.len() > share_file_size_limit(&filename)
         || filename.len() > 255
         || ![".vortex-folder.json", ".vortex-collection.json", ".json", ".csv"]
             .iter()
@@ -60,4 +70,17 @@ fn choose_save_path(owner: isize, filename: &str, csv: bool) -> Result<Option<Pa
     }
     let error = unsafe { CommDlgExtendedError() };
     if error.0 == 0 { Ok(None) } else { Err(format!("Save dialog error {}", error.0)) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::share_file_size_limit;
+
+    #[test]
+    fn backup_limit_fits_base64_wallpaper_and_keeps_share_limit() {
+        let wallpaper_bytes = 5 * 1024 * 1024 / 2;
+        let encoded = (wallpaper_bytes + 2) / 3 * 4;
+        assert!(share_file_size_limit("vortex-backup-2026-11-25.json") > encoded);
+        assert_eq!(share_file_size_limit("library.vortex-folder.json"), 1024 * 1024);
+    }
 }

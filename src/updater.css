@@ -281,6 +281,20 @@ body {
   overflow: hidden;
 }
 
+.updater-track[data-indeterminate] .updater-bar {
+  width: 28% !important;
+  animation: up-download-wait 1.3s ease-in-out infinite;
+}
+
+@keyframes up-download-wait {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(360%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .updater-track[data-indeterminate] .updater-bar { animation: none; }
+}
+
 .updater-detail {
   min-height: 15px;
   font-size: 11px;

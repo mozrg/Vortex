@@ -1,7 +1,9 @@
 use crate::overlay_fps::{Capture, Fps};
-use crate::overlay_ping::{Ping, PingSnapshot, Probe};
+use crate::overlay_ping::{public_ip, resolve_region_info, RegionInfo};
+use crate::overlay_roblox_stats::{RobloxPings, StatsReader};
 use serde::{Deserialize, Serialize};
 use std::{
+    net::Ipv4Addr,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -48,6 +50,7 @@ struct LayoutSpec {
     scale: i32,
     gap: i32,
     vertical: bool,
+    extra_width: i32,
 }
 
 impl Default for LayoutSpec {
@@ -59,6 +62,7 @@ impl Default for LayoutSpec {
             scale: 100,
             gap: 5,
             vertical: false,
+            extra_width: 0,
         }
     }
 }
@@ -101,6 +105,7 @@ mod tests {
                 scale: 120,
                 gap: 8,
                 vertical: false,
+                extra_width: 0,
             },
             3,
         );
@@ -441,8 +446,10 @@ pub fn roblox_toggle_mute(muted: Option<bool>) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn roblox_terminate_player() -> Result<usize, String> {
-    Ok(crate::runtime::terminate_player_processes())
+pub async fn roblox_terminate_player(pid: u32, place_id: String, started_at: u64) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || crate::runtime::terminate_player_session(pid, &place_id, started_at))
+        .await
+        .map_err(|err| err.to_string())?
 }
 
 #[tauri::command]
@@ -466,7 +473,6 @@ struct Session {
     place_id: Option<String>,
     server_id: Option<String>,
     server_ip: Option<String>,
-    server_port: Option<u16>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -494,7 +500,8 @@ pub struct Config {
     hide_fullscreen: bool,
     timer: bool,
     fps: bool,
-    ping: bool,
+    #[serde(default)]
+    roblox_pings: bool,
     #[serde(default)]
     stability: bool,
     #[serde(default)]
@@ -523,12 +530,12 @@ pub struct Config {
     session: Option<Session>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Content {
     started_at: Option<u64>,
     fps: Option<Fps>,
-    ping: Option<Ping>,
+    roblox_pings: Option<RobloxPings>,
     show_stability: bool,
     jitter: Option<u32>,
     ping_history: Vec<u32>,
@@ -667,7 +674,7 @@ fn position_with_spec(
         if room < scale_hud(min_cell * metrics) || room_h < height {
             return None;
         }
-        (scale_hud(cell * metrics).min(room), height)
+        (scale_hud(cell * metrics + spec.extra_width).min(room), height)
     };
     let avail_x = (rect.right - rect.left - 2 * margin - width).max(0);
     let avail_y = (rect.bottom - rect.top - 2 * margin - height).max(0);
@@ -816,10 +823,13 @@ fn check_edge(spec: &str, was_down: &mut bool) -> bool {
 
 pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
     let mut window = None;
-    let mut placement = None;
+    let mut placement: Option<Placement> = None;
     let mut capture: Option<Capture> = None;
     let mut reported_fps = Fps::Idle;
-    let mut probe: Option<Probe> = None;
+    let mut region_ip: Option<Ipv4Addr> = None;
+    let mut region_lookup: Option<tokio::task::JoinHandle<Option<RegionInfo>>> = None;
+    let mut region = None;
+    let mut roblox_stats = StatsReader::default();
     let mut fps_retry_at: Option<std::time::Instant> = None;
     let mut opened_at = None;
     let mut perf_tracker = ProcessPerfTracker::default();
@@ -838,7 +848,7 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
                 .unwrap_or(true)
                 && placement.is_none()
                 && capture.is_none()
-                && probe.is_none();
+                && region_ip.is_none();
             let wait = if idle {
                 Duration::from_millis(500)
             } else {
@@ -858,8 +868,9 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
         if !config.session.as_ref().is_some_and(|s| s.pid != 0)
             && placement.is_none()
             && capture.is_none()
-            && probe.is_none()
+            && region_ip.is_none()
         {
+            roblox_stats.update(None, None).await;
             continue;
         }
         let in_foreground = config
@@ -908,44 +919,44 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
             rejoin_down = false;
         }
 
-        // Probe ping only when ping, stability, region, or bad-ping prompt is active
-        // so the Minimal (FPS-only) profile avoids all background network probing.
-        let need_ping = config.ping || config.stability || config.region || config.bad_ping_prompt;
         let active_session = config
             .session
             .as_ref()
             .filter(|session| config.enabled && session.pid != 0);
-        let ping_target = active_session.filter(|_| need_ping).and_then(|session| {
-            Some(crate::overlay_ping::Target {
-                place_id: session.place_id.clone()?,
-                server_id: session.server_id.clone().unwrap_or_default(),
-                ip: session.server_ip.clone(),
-                port: session.server_port,
-            })
+        let next_region_ip = active_session
+            .filter(|_| config.region || config.bad_ping_prompt)
+            .and_then(|session| public_ip(session.server_ip.as_deref()));
+        if next_region_ip != region_ip {
+            if let Some(lookup) = region_lookup.take() {
+                lookup.abort();
+            }
+            region_ip = next_region_ip;
+            region = None;
+            region_lookup = region_ip.map(|ip| tokio::spawn(resolve_region_info(ip)));
+        }
+        if region_lookup.as_ref().is_some_and(|job| job.is_finished()) {
+            if let Some(lookup) = region_lookup.take() {
+                region = lookup.await.ok().flatten().map(|info| info.code);
+            }
+        }
+
+        let stats_target = active_session
+            .filter(|_| config.roblox_pings && in_foreground && placement.is_some())
+            .map(|session| (session.pid, session.started_at));
+        let exclude = placement.map(|hud| RECT {
+            left: hud.x,
+            top: hud.y,
+            right: hud.x + hud.width,
+            bottom: hud.y + hud.height,
         });
-        if probe
-            .as_ref()
-            .is_some_and(|probe| ping_target.as_ref() != Some(&probe.target))
-        {
-            if let Some(probe) = probe.take() {
-                probe.stop().await;
-            }
-        }
-        if probe.is_none() {
-            if let Some(target) = ping_target.filter(|_| in_foreground) {
-                probe = Some(Probe::start(target));
-            }
-        }
-        let ping_snapshot: PingSnapshot = probe
-            .as_ref()
-            .map_or_else(PingSnapshot::default, |probe| probe.samples.borrow().clone());
+        let measured_roblox_pings = roblox_stats.update(stats_target, exclude).await;
+        let (jitter, ping_history) = roblox_stats.network_stability();
 
         let bad_ping_threshold = config.bad_ping_ms.unwrap_or(130).clamp(50, 500);
         let low_fps_threshold = config.low_fps.unwrap_or(30).clamp(10, 120);
-        let is_bad_server = match ping_snapshot.state {
-            Ping::Measured(ms) => ms >= bad_ping_threshold,
-            _ => false,
-        } || ping_snapshot.jitter.is_some_and(|j| j >= crate::overlay_ping::BAD_JITTER_THRESHOLD_MS);
+        let is_bad_server = (config.region || config.bad_ping_prompt)
+            && (measured_roblox_pings.network_ms.is_some_and(|ms| ms >= bad_ping_threshold as f32)
+                || jitter.is_some_and(|ms| ms >= 25));
         let style_clean = match config.style.as_str() {
             "frameless" | "vertical" => config.style.clone(),
             _ => "capsule".to_string(),
@@ -955,7 +966,7 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
         let extra_bad_prompt_slot = i32::from(is_bad_server && config.bad_ping_prompt);
         let count = i32::from(config.timer)
             + i32::from(config.fps)
-            + i32::from(config.ping)
+            + 2 * i32::from(config.roblox_pings)
             + i32::from(config.stability)
             + i32::from(show_region_slot)
             + extra_bad_prompt_slot
@@ -970,6 +981,7 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
             scale: config.scale.unwrap_or(100) as i32,
             gap: config.gap.unwrap_or(5) as i32,
             vertical: style_clean == "vertical",
+            extra_width: if config.roblox_pings { 48 } else { 0 },
         };
         let next = active.and_then(|session| {
             foreground_placement(session.pid, layout_spec, count, config.hide_fullscreen)
@@ -1034,12 +1046,12 @@ pub async fn run(app: AppHandle, state: Arc<OverlayState>) {
                 .then_some(session.started_at)
                 .filter(|start| *start > 0),
             fps: config.fps.then_some(fps_state),
-            ping: config.ping.then_some(ping_snapshot.state),
+            roblox_pings: config.roblox_pings.then_some(measured_roblox_pings),
             show_stability: config.stability,
-            jitter: ping_snapshot.jitter,
-            ping_history: ping_snapshot.history,
+            jitter,
+            ping_history,
             show_region: config.region,
-            region: ping_snapshot.region,
+            region: region.clone(),
             bad_server: is_bad_server,
             bad_ping_prompt: config.bad_ping_prompt,
             server_hop_hotkey: config.server_hop_hotkey.clone(),

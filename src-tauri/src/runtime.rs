@@ -9,13 +9,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use windows::core::PWSTR;
-use windows::Win32::Foundation::{CloseHandle, FILETIME};
+use windows::Win32::Foundation::{CloseHandle, FILETIME, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::Threading::{
     GetProcessTimes, OpenProcess, QueryFullProcessImageNameW, TerminateProcess, PROCESS_NAME_WIN32,
-    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+    WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
 };
 
 #[link(name = "kernel32")]
@@ -33,62 +33,58 @@ pub fn is_player_pid(pid: u32) -> bool {
         let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
             return false;
         };
-        let mut path = [0u16; 1024];
-        let mut length = path.len() as u32;
-        let result = QueryFullProcessImageNameW(
-            process,
-            PROCESS_NAME_WIN32,
-            PWSTR(path.as_mut_ptr()),
-            &mut length,
-        );
+        let result = is_player_process(process);
         let _ = CloseHandle(process);
-        if result.is_err() {
-            return false;
-        }
-        let path = String::from_utf16_lossy(&path[..length as usize]);
-        Path::new(&path)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(is_player_executable)
+        result
     }
 }
 
-pub fn terminate_player_processes() -> usize {
-    let mut terminated = 0usize;
-    unsafe {
-        let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
-            return 0;
-        };
-        let mut entry = PROCESSENTRY32W {
-            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
-            ..Default::default()
-        };
-        if Process32FirstW(snapshot, &mut entry).is_ok() {
-            loop {
-                let len = entry
-                    .szExeFile
-                    .iter()
-                    .position(|&c| c == 0)
-                    .unwrap_or(entry.szExeFile.len());
-                let name = String::from_utf16_lossy(&entry.szExeFile[..len]);
-                if is_player_executable(&name) {
-                    if let Ok(process) =
-                        OpenProcess(PROCESS_TERMINATE, false, entry.th32ProcessID)
-                    {
-                        if TerminateProcess(process, 0).is_ok() {
-                            terminated += 1;
-                        }
-                        let _ = CloseHandle(process);
-                    }
-                }
-                if Process32NextW(snapshot, &mut entry).is_err() {
-                    break;
-                }
-            }
-        }
-        let _ = CloseHandle(snapshot);
+unsafe fn is_player_process(process: HANDLE) -> bool {
+    let mut path = [0u16; 1024];
+    let mut length = path.len() as u32;
+    if QueryFullProcessImageNameW(
+        process,
+        PROCESS_NAME_WIN32,
+        PWSTR(path.as_mut_ptr()),
+        &mut length,
+    )
+    .is_err()
+    {
+        return false;
     }
-    terminated
+    let path = String::from_utf16_lossy(&path[..length as usize]);
+    Path::new(&path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(is_player_executable)
+}
+
+pub fn terminate_player_session(pid: u32, place_id: &str, started_at: u64) -> Result<(), String> {
+    unsafe {
+        let process = OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | PROCESS_SYNCHRONIZE,
+            false,
+            pid,
+        )
+        .map_err(|err| err.to_string())?;
+        let result = (|| {
+            let current = status();
+            if !is_player_process(process)
+                || current["pid"].as_u64() != Some(u64::from(pid))
+                || current["placeId"].as_str() != Some(place_id)
+                || current["startedAt"].as_u64() != Some(started_at)
+            {
+                return Err("The Roblox session has changed".into());
+            }
+            TerminateProcess(process, 0).map_err(|err| err.to_string())?;
+            if WaitForSingleObject(process, 3000) != WAIT_OBJECT_0 {
+                return Err("Roblox did not exit in time".into());
+            }
+            Ok(())
+        })();
+        let _ = CloseHandle(process);
+        result
+    }
 }
 
 fn process_starts() -> Option<Vec<(u32, u64)>> {

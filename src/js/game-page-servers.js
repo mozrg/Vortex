@@ -16,7 +16,7 @@ const serverTableLabels = [
   ['place.regionProbing', 'Определяем…', 'Probing…'],
   ['place.pingAvgSuffix', 'ср.', 'avg'],
   ['place.pingAvgHint', 'Средний пинг игроков на сервере (не ваш)', 'Average ping of players on this server (not yours)'],
-  ['place.pingRealHint', 'Ваш реальный пинг до дата-центра сервера', 'Your real ping to this server datacenter'],
+  ['place.pingRealHint', 'Задержка TCP до дата-центра по системному маршруту. Игровой Data Ping может отличаться.', 'TCP RTT to the datacenter on the system route. In-game Data Ping can differ.'],
   ['place.regionAuthHint', 'Подключите cookie Roblox в Настройки → Интеграции, чтобы видеть реальный регион и ваш пинг до каждого сервера.', 'Connect your Roblox cookie in Settings → Integrations to see each server’s real region and your personal ping.'],
   ['place.regionCookieExpired', 'Cookie Roblox устарела — обновите её в Настройки → Интеграции, чтобы определять реальные регионы и ваш пинг.', 'Your Roblox cookie expired — update it in Settings → Integrations to resolve real regions and your ping.'],
   ['place.showPrivateServers', 'Показывать приватные серверы', 'Show private servers'],
@@ -67,7 +67,8 @@ const serverTableLabels = [
   ['place.vipCreate.notEnough', 'Недостаточно Robux для создания этого приватного сервера.', 'Not enough Robux to create this private server.'],
   ['place.vipCreate.submit', 'Создать', 'Create'],
   ['place.vipCreate.created', 'Приватный сервер создан!', 'Private server created!'],
-  ['place.vipCreate.error', 'Не удалось создать приватный сервер', 'Could not create private server']
+  ['place.vipCreate.error', 'Не удалось создать приватный сервер', 'Could not create private server'],
+  ['place.vipCreate.pending', 'Запрос на создание сервера уже выполняется.', 'A request to create this server is already running.']
 ];
 for (const [key, ru, en] of serverTableLabels) {
   translations.ru[key] = ru;
@@ -84,7 +85,7 @@ function getResolvedServerMeta(serverId) {
   if (!serverId) return null;
   const entry = resolvedServerMetaCache.get(String(serverId).toLowerCase());
   if (!entry) return null;
-  if (Date.now() - entry.at > 5 * 60 * 1000) {
+  if (Date.now() - entry.at > (entry.realPing === null ? 12000 : 45000)) {
     resolvedServerMetaCache.delete(String(serverId).toLowerCase());
     return null;
   }
@@ -96,7 +97,9 @@ function storeResolvedServerMap(resolved) {
   const now = Date.now();
   for (const [id, meta] of Object.entries(resolved)) {
     if (!meta || typeof meta !== 'object') continue;
-    resolvedServerMetaCache.set(String(id).toLowerCase(), {
+    const key = String(id).toLowerCase();
+    resolvedServerMetaCache.delete(key);
+    resolvedServerMetaCache.set(key, {
       ip: meta.ip || '',
       regionGroup: meta.regionGroup || 'other',
       regionCode: meta.regionCode || '',
@@ -104,6 +107,9 @@ function storeResolvedServerMap(resolved) {
       realPing: Number.isFinite(Number(meta.realPing)) && Number(meta.realPing) > 0 ? Math.round(Number(meta.realPing)) : null,
       at: now
     });
+  }
+  while (resolvedServerMetaCache.size > 1024) {
+    resolvedServerMetaCache.delete(resolvedServerMetaCache.keys().next().value);
   }
 }
 
@@ -846,6 +852,7 @@ document.addEventListener('keydown', event => {
 let vipCreateModalState = null;
 
 function closeCreatePrivateServerModal() {
+  if (vipCreateModalState?.busy) return;
   const existing = document.getElementById('vortex-vip-create-modal');
   if (existing) existing.remove();
   const returnFocus = vipCreateModalState?.returnFocus;
@@ -859,6 +866,9 @@ function renderVipCreateModalBody() {
   const body = modal.querySelector('[data-vip-create-body]');
   if (!body) return;
   const { game, price, busy, error, defaultName } = vipCreateModalState;
+  modal.querySelector('.vip-config-dialog')?.setAttribute('aria-busy', String(busy));
+  const closeButton = modal.querySelector('.vip-config-header [data-vip-create-action="close"]');
+  if (closeButton) closeButton.disabled = busy;
   const priceUnknown = price === null || price === undefined;
   const hasBalance = typeof accountRobuxBalance === 'number' && Number.isFinite(accountRobuxBalance);
   const notEnough = !priceUnknown && price > 0 && hasBalance && accountRobuxBalance < price;
@@ -890,6 +900,7 @@ function renderVipCreateModalBody() {
 }
 
 async function openCreatePrivateServerModal(game, view) {
+  if (vipCreateModalState?.busy) return;
   const page = gamePrivateServerPage(view);
   if (page.reason === 'auth-required' || page.reason === 'cookie-expired') {
     preferences.settingsTab = 'general';
@@ -899,6 +910,7 @@ async function openCreatePrivateServerModal(game, view) {
   if (page.status === 'idle' || !page.meta) {
     await loadPrivateServers(game);
   }
+  if (vipCreateModalState?.busy) return;
   if (page.reason === 'auth-required' || page.reason === 'cookie-expired') {
     preferences.settingsTab = 'general';
     setView('settings');
@@ -960,36 +972,38 @@ document.addEventListener('click', async event => {
     return;
   }
   if (action === 'submit' && !vipCreateModalState.busy) {
+    const request = vipCreateModalState;
+    if (!Number.isSafeInteger(request.price) || request.price < 0) return;
     const input = modal.querySelector('#vip-create-name-input');
     const name = String(input?.value || '').trim();
     if (!name) return;
-    vipCreateModalState.defaultName = name;
-    vipCreateModalState.busy = true;
-    vipCreateModalState.error = '';
+    request.defaultName = name;
+    request.busy = true;
+    request.error = '';
     renderVipCreateModalBody();
+    let created = false;
     try {
       const res = await window.vortexDesktop?.createPrivateServer?.({
-        universeId: vipCreateModalState.universeId,
+        universeId: request.universeId,
         name,
-        expectedPrice: vipCreateModalState.price
+        expectedPrice: request.price
       });
-      if (!vipCreateModalState) return;
       if (res?.ok) {
-        const game = vipCreateModalState.game;
-        closeCreatePrivateServerModal();
+        created = true;
         showToast(t('place.vipCreate.created'));
-        if (typeof loadPrivateServers === 'function') void loadPrivateServers(game);
+        await loadPrivateServers(request.game);
         if (typeof refreshRobloxAccount === 'function') void refreshRobloxAccount();
       } else {
-        vipCreateModalState.error = res?.message || t('place.vipCreate.error');
-        vipCreateModalState.busy = false;
-        renderVipCreateModalBody();
+        request.error = res?.reason === 'creation-in-progress' ? t('place.vipCreate.pending')
+          : res?.message || t('place.vipCreate.error');
       }
     } catch {
-      if (vipCreateModalState) {
-        vipCreateModalState.error = t('place.vipCreate.error');
-        vipCreateModalState.busy = false;
-        renderVipCreateModalBody();
+      request.error = t('place.vipCreate.error');
+    } finally {
+      request.busy = false;
+      if (vipCreateModalState === request) {
+        if (created) closeCreatePrivateServerModal();
+        else renderVipCreateModalBody();
       }
     }
   }

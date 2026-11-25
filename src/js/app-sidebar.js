@@ -249,19 +249,63 @@ let toastTimer;
 // showToast(message) or showToast({ message, actionLabel, onAction })  the
 // action button (used by Undo) keeps the toast alive until it is clicked or
 // the timeout expires, whichever comes first.
-// Settings migration: one JSON file with preferences, custom games,
-// favorites, recent and playtime stats. Version field guards imports.
-const DATA_EXPORT_VERSION = 1;
+const DATA_EXPORT_VERSION = 2;
+const MAX_BACKUP_BYTES = 128 * 1024 * 1024;
+const BACKUP_SECTIONS = {
+  settings: ['profiles'],
+  library: ['favorites', 'customGames'],
+  folders: [],
+  friends: ['friendPins'],
+  activity: ['recentGames', 'recentDetails', 'activityData', 'playStats', 'sessionHistory']
+};
+const LOCAL_BACKUP_PREFERENCES = new Set([
+  'robloxUsername', 'robloxDisplayName', 'robloxAvatar', 'robloxAccountId',
+  'friendsNoticeAccepted', 'settingsTab', 'streamMode', 'customGames', 'quickLaunchItems'
+]);
+const isBackupObject = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+
+function backupPreferences(source) {
+  return Object.fromEntries(Object.entries(source).filter(([key, value]) => {
+    if (!Object.hasOwn(preferenceDefaults, key) || LOCAL_BACKUP_PREFERENCES.has(key)) return false;
+    const fallback = preferenceDefaults[key];
+    if (Array.isArray(fallback)) return Array.isArray(value);
+    if (isBackupObject(fallback)) return isBackupObject(value);
+    if (fallback === null) return value === null || typeof value === 'string';
+    return value !== null && typeof value === typeof fallback;
+  }));
+}
+
+function validateDataBackup(payload) {
+  if (payload?.app !== 'vortex' || ![1, DATA_EXPORT_VERSION].includes(payload.version) ||
+      !isBackupObject(payload.data) || !isBackupObject(payload.data.preferences)) {
+    throw new Error('Unsupported Vortex backup');
+  }
+  const { data } = payload;
+  for (const key of ['customGames', 'favorites', 'recentGames', 'sessionHistory']) {
+    if (Object.hasOwn(data, key) && !Array.isArray(data[key])) throw new Error('Invalid backup field: ' + key);
+  }
+  for (const key of ['playStats', 'activityData', 'recentDetails', 'profiles', 'friendPins']) {
+    if (Object.hasOwn(data, key) && !isBackupObject(data[key])) throw new Error('Invalid backup field: ' + key);
+  }
+  const quick = data.preferences.quickLaunchItems;
+  if (quick !== undefined && !Array.isArray(quick)) throw new Error('Invalid quick launch data');
+  if (data.profiles && Object.values(data.profiles).some(profile => !isBackupObject(profile?.settings))) {
+    throw new Error('Invalid appearance profile');
+  }
+  if (data.sessionHistory?.length) sessionJournal.validate(data.sessionHistory);
+  return data;
+}
+
 async function buildDataExport() {
   await Promise.resolve(activityClockReady).catch(() => {});
-  const safePrefs = { ...preferences };
-  delete safePrefs.robloxCookie;
+  bankPlaySession();
+  const sessionHistory = await sessionJournal.recent(Infinity);
   return {
     app: 'vortex',
     version: DATA_EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     data: {
-      preferences: safePrefs,
+      preferences: { ...backupPreferences(preferences), quickLaunchItems: preferences.quickLaunchItems },
       customGames: preferences.customGames || [],
       favorites: [...favorites],
       recentGames,
@@ -269,57 +313,107 @@ async function buildDataExport() {
       activityData,
       profiles: typeof readProfiles === 'function' ? readProfiles() : {},
       friendPins: readStored('vortex.friendPins', {}),
-      sessionHistory: await sessionJournal.recent(Infinity).catch(() => []),
+      sessionHistory,
       recentDetails: recentMetadata()
     }
   };
 }
 
-async function applyDataImport(payload) {
-  if (!payload || payload.app !== 'vortex' || !payload.data || typeof payload.data !== 'object') {
-    showToast(t('settings.data.importError'));
-    return false;
+async function applyDataImport(payload, groups = Object.keys(BACKUP_SECTIONS)) {
+  if (dataImportInProgress) return false;
+  dataImportInProgress = true;
+  try {
+    return await restoreDataBackup(payload, groups);
+  } finally {
+    dataImportInProgress = false;
   }
-  const { data } = payload;
-  if (!data.preferences || typeof data.preferences !== 'object') {
-    showToast(t('settings.data.invalid'));
-    return false;
+}
+
+async function restoreDataBackup(payload, groups) {
+  const source = validateDataBackup(payload);
+  const picked = new Set(groups);
+  const data = {};
+  for (const [section, fields] of Object.entries(BACKUP_SECTIONS)) {
+    if (!picked.has(section)) continue;
+    for (const field of fields) if (Object.hasOwn(source, field)) data[field] = source[field];
   }
-  await activityClockReady;
-  if (data.sessionHistory !== undefined) {
-    await sessionJournal.restore(data.sessionHistory);
-    journalChanged();
+  await Promise.resolve(activityClockReady).catch(() => {});
+  const nextPreferences = { ...preferences };
+  if (picked.has('settings')) Object.assign(nextPreferences, backupPreferences(source.preferences));
+  if (picked.has('folders') && Array.isArray(source.preferences.quickLaunchItems)) {
+    nextPreferences.quickLaunchItems = cleanQuickLaunchItems(source.preferences.quickLaunchItems);
   }
-  Object.assign(preferences, preferenceDefaults, data.preferences);
-  if (!preferences.saveHistory) {
-    if (data.sessionHistory === undefined) stopJournalRecording();
-    else recordingSession = null;
+  if (data.customGames) {
+    nextPreferences.customGames = data.customGames.filter(game => isBackupObject(game) && gameIdPattern.test(String(game.id)));
   }
-  if (Array.isArray(data.customGames)) preferences.customGames = data.customGames;
-  if (Array.isArray(data.favorites)) favorites = new Set(data.favorites);
-  if (Array.isArray(data.recentGames)) recentGames = data.recentGames;
-  if (data.playStats || data.activityData || data.sessionHistory !== undefined) {
-    const importedStats = data.playStats && typeof data.playStats === 'object' ? data.playStats : playStats;
+  const nextFavorites = data.favorites ? new Set(data.favorites.map(String).filter(id => gameIdPattern.test(id))) : favorites;
+  const nextRecent = data.recentGames ? uniqueRecentIds(data.recentGames) : recentGames;
+  const nextDetails = data.recentDetails || data.recentGames
+    ? cleanRecentDetails(data.recentDetails || {}, nextRecent) : recentMetadata();
+  const replacesJournal = Boolean(data.sessionHistory?.length);
+  const restoresClock = Boolean(data.playStats || data.activityData || replacesJournal);
+  let nextActivity = activityData;
+  let nextStats = playStats;
+  if (restoresClock) {
     const importedActivity = data.activityData ? normalizeActivityData(data.activityData) : activityData;
-    activityData = await prepareActivityClock(importedActivity, importedStats);
-    playStats = synchronizePlayStats(importedStats, activityData.days);
-    // Start the next confirmed interval after restoring the clock and journal.
+    const importedStats = data.playStats || playStats;
+    const rows = activityClockIsValid(importedActivity) ? undefined
+      : replacesJournal ? data.sessionHistory : await sessionJournal.recent(Infinity);
+    nextActivity = rows ? rebuildActivityClock(importedActivity, importedStats, rows) : importedActivity;
+    nextStats = synchronizePlayStats(importedStats, nextActivity.days);
+  }
+
+  const writes = new Map();
+  if (picked.has('settings') || picked.has('folders') || data.customGames) {
+    writes.set('vortex.preferences', nextPreferences);
+  }
+  if (data.profiles) writes.set('vortex.profiles', { ...readProfiles(), ...data.profiles });
+  if (data.friendPins) writes.set('vortex.friendPins', data.friendPins);
+  if (data.favorites) writes.set('vortex.favorites', [...nextFavorites]);
+  if (data.recentGames) writes.set('vortex.recent', nextRecent);
+  if (data.recentDetails || data.recentGames) writes.set('vortex.recentDetails', nextDetails);
+  if (restoresClock) {
+    writes.set('vortex.activity', nextActivity);
+    writes.set('vortex.playStats', nextStats);
+  }
+  const previous = new Map();
+  try {
+    for (const [key, value] of writes) {
+      const storageKey = accountStorageKey(key);
+      const oldValue = localStorage.getItem(storageKey);
+      if (!safeLocalStorageSet(storageKey, JSON.stringify(value))) throw new Error('Backup does not fit in storage');
+      previous.set(storageKey, oldValue);
+    }
+    // Version 1 could export [] on an IndexedDB failure. Empty history from
+    // any version leaves the destination journal intact.
+    if (replacesJournal) await sessionJournal.restore(data.sessionHistory);
+  } catch (error) {
+    // Remove the attempted values first so the original values fit again.
+    for (const key of previous.keys()) localStorage.removeItem(key);
+    for (const [key, value] of previous) if (value !== null) localStorage.setItem(key, value);
+    throw error;
+  }
+
+  Object.assign(preferences, nextPreferences);
+  favorites = nextFavorites;
+  recentGames = nextRecent;
+  recentDetails = nextDetails;
+  if (restoresClock) {
+    activityData = nextActivity;
+    playStats = nextStats;
+    playtimeSummary = null;
     runtimeSample = null;
     runtimeConfirmedAt = 0;
   }
-  savePreferences();
+  if (replacesJournal) {
+    if (!preferences.saveHistory) recordingSession = null;
+    journalRows = [];
+    journalChanged();
+  } else if (!preferences.saveHistory) {
+    stopJournalRecording();
+  }
   applyPreferences();
-  accountStorage.setItem('vortex.favorites', JSON.stringify([...favorites]));
-  if (data.profiles && typeof data.profiles === 'object' && !Array.isArray(data.profiles) && typeof writeProfiles === 'function') {
-    writeProfiles({ ...(typeof readProfiles === 'function' ? readProfiles() : {}), ...data.profiles });
-  }
-  if (data.friendPins && typeof data.friendPins === 'object' && !Array.isArray(data.friendPins)) {
-    accountStorage.setItem('vortex.friendPins', JSON.stringify(data.friendPins));
-  }
-  saveRecentGames(recentGames);
-  if (Array.isArray(data.recentGames)) saveRecentDetails(data.recentDetails || {});
-  persistActivityData();
-  savePlayStats();
+  reportGameOverlay();
   renderSidebar();
   renderPage();
   reportRecentGamesToTray();

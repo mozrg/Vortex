@@ -20,6 +20,7 @@ function createMockElement() {
     removeAttribute() {},
     appendChild() {},
     append() {},
+    prepend() {},
     dataset: {},
     innerHTML: '',
     textContent: '',
@@ -210,7 +211,8 @@ test('overlay minimal FPS profile disables heavy metrics and passes hideFullscre
     preferences.gameOverlay = true;
     preferences.gameOverlayHideFullscreen = true;
     preferences.gameOverlayMinimal = true;
-    preferences.gameOverlayPing = true;
+    preferences.gameOverlayRobloxPings = true;
+    preferences.gameOverlayStability = true;
     preferences.gameOverlaySystem = true;
     preferences.gameOverlayTimer = true;
     gameOverlayReport = '';
@@ -220,10 +222,28 @@ test('overlay minimal FPS profile disables heavy metrics and passes hideFullscre
   assert.ok(call, 'expected game_overlay_configure invoke');
   assert.equal(call.args.config.hideFullscreen, true);
   assert.equal(call.args.config.fps, true);
-  assert.equal(call.args.config.ping, false);
+  assert.equal(call.args.config.robloxPings, false);
+  assert.equal(call.args.config.stability, false);
   assert.equal(call.args.config.system, false);
   assert.equal(call.args.config.timer, false);
   assert.equal(call.args.config.friends, false);
+});
+
+test('the HUD only requests Roblox ping readings, even with a legacy TCP preference', () => {
+  const { ctx, invoked } = bootVortexInVm();
+  vm.runInContext(`
+    preferences.gameOverlay = true;
+    preferences.gameOverlayMinimal = false;
+    preferences.gameOverlayPing = true;
+    preferences.gameOverlayRobloxPings = true;
+    preferences.gameOverlayStability = true;
+    reportGameOverlay();
+  `, ctx);
+  const { config } = invoked.findLast(entry => entry.cmd === 'game_overlay_configure').args;
+  assert.equal(config.robloxPings, true);
+  assert.equal(config.stability, true);
+  assert.equal('ping' in config, false);
+  assert.doesNotMatch(ctx.renderOverlayPreviewMetrics(), /TCP/);
 });
 
 test('security domain checker detects spoofed & homograph domains and VORTEXFD1 folder codes round-trip', () => {
@@ -306,6 +326,8 @@ test('full backup export excludes cookies, IDB hydration restores caches, and Co
 
   // Full backup export includes profiles/notes/aliases and strips any cookie field
   vm.runInContext(`
+    activityClockReady = Promise.resolve();
+    sessionJournal.recent = async () => [];
     preferences.gameNotes = { '2753915549': 'Farm build' };
     preferences.gameAliases = { '2753915549': 'Blox Main' };
     preferences.robloxCookie = 'SECRET_SHOULD_NOT_EXPORT';
@@ -339,6 +361,129 @@ test('full backup export excludes cookies, IDB hydration restores caches, and Co
   const hydrated = await ctx.hydrateIdbCaches();
   assert.equal(hydrated, true);
   assert.equal(vm.runInContext('dynamicGames.length', ctx), 1);
+});
+
+test('backup refuses unreadable history and restores profiles and pins without clearing legacy empty history', async () => {
+  const { ctx, storage } = bootVortexInVm();
+  vm.runInContext(`
+    activityClockReady = Promise.resolve();
+    sessionJournal.recent = async () => { throw new Error('IndexedDB unavailable'); };
+  `, ctx);
+  await assert.rejects(ctx.buildDataExport(), /IndexedDB unavailable/);
+
+  vm.runInContext(`
+    sessionJournal.recent = async () => [];
+    writeProfiles({ Evening: { version: 1, settings: { theme: 'oled' } } });
+    accountStorage.setItem('vortex.friendPins', JSON.stringify({ 123: { alerts: true } }));
+    preferences.homeGameView = 'list';
+    preferences.robloxUsername = 'LocalSession';
+    preferences.themeWallpaper = 'data:image/png;base64,' + 'A'.repeat(1200000);
+    window.auditRestores = 0;
+    sessionJournal.restore = async () => { window.auditRestores += 1; };
+  `, ctx);
+  const backup = await ctx.buildDataExport();
+  assert.equal(backup.version, 2);
+  assert.equal(backup.data.preferences.robloxUsername, undefined);
+  assert.equal(backup.data.preferences.themeWallpaper.length > 1024 * 1024, true);
+  vm.runInContext(`
+    writeProfiles({});
+    accountStorage.setItem('vortex.friendPins', '{}');
+    preferences.homeGameView = null;
+    preferences.themeWallpaper = '';
+    preferences.robloxUsername = 'Destination';
+  `, ctx);
+  const legacy = { ...backup, version: 1 };
+  assert.equal(await ctx.applyDataImport(legacy, ['settings', 'friends', 'activity']), true);
+  assert.equal(JSON.parse(storage.getItem('vortex.profiles')).Evening.settings.theme, 'oled');
+  assert.equal(JSON.parse(storage.getItem('vortex.friendPins'))['123'].alerts, true);
+  assert.equal(vm.runInContext('preferences.robloxUsername', ctx), 'Destination');
+  assert.equal(vm.runInContext('preferences.homeGameView', ctx), 'list');
+  assert.equal(ctx.auditRestores, 0);
+  await assert.rejects(ctx.applyDataImport({ ...backup, version: 999 }), /Unsupported Vortex backup/);
+});
+
+test('backup rolls back settings when an IndexedDB restore fails', async () => {
+  const { ctx, storage } = bootVortexInVm({ 'vortex.preferences': '{"announcementsSeeded":true}' });
+  vm.runInContext(`
+    activityClockReady = Promise.resolve();
+    preferences.theme = 'dark';
+    savePreferences();
+    sessionJournal.restore = async () => { throw new Error('IndexedDB restore aborted'); };
+  `, ctx);
+  const previous = storage.getItem('vortex.preferences');
+  const at = Date.now() - 1000;
+  const data = { preferences: { theme: 'oled' }, sessionHistory: [{
+    key: '12345/' + at, gameId: '12345', startedAt: at, seenAt: at, endedAt: null, title: '', trackedMs: 0
+  }] };
+  await assert.rejects(ctx.applyDataImport({ app: 'vortex', version: 2, data }), /IndexedDB restore aborted/);
+  assert.equal(storage.getItem('vortex.preferences'), previous);
+  assert.equal(vm.runInContext('preferences.theme', ctx), 'dark');
+});
+
+test('Rejoin confirms before closing only the current Roblox session and uses its confirmed server', async () => {
+  const { ctx, invoked } = bootVortexInVm();
+  const at = Date.now() - 5000;
+  const target = '12345678-1234-4123-a123-123456789abc';
+  ctx.auditTarget = { at, target };
+  vm.runInContext(`
+    preferences.confirmLaunch = true;
+    preferences.saveHistory = false;
+    gameOverlaySession = { placeId: '12345', startedAt: auditTarget.at, pid: 4242 };
+    playSessionGameId = '12345';
+    nowPlayingSnapshot = { id: '12345', startedAt: auditTarget.at, serverId: auditTarget.target };
+    confirmVortexAction = async () => false;
+  `, ctx);
+  await ctx.triggerServerRejoin();
+  assert.ok(!invoked.some(({ cmd }) => cmd === 'roblox_terminate_player' || cmd === 'open_game'));
+  vm.runInContext('confirmVortexAction = async () => true;', ctx);
+  await ctx.triggerServerRejoin();
+  const sessionCalls = invoked.filter(({ cmd }) => cmd === 'roblox_terminate_player' || cmd === 'open_game');
+  assert.equal(sessionCalls[0].cmd, 'roblox_terminate_player');
+  assert.equal(sessionCalls[0].args.pid, 4242);
+  assert.equal(sessionCalls[0].args.startedAt, at);
+  assert.equal(sessionCalls[1].args.gameId, target);
+});
+
+test('Server Hop keeps the current game if the region or visited filter leaves no candidate', async () => {
+  const { ctx, invoked } = bootVortexInVm();
+  vm.runInContext(`
+    const available = '12345678-1234-4123-a123-123456789abc';
+    playSessionGameId = '12345';
+    nowPlayingSnapshot = { id: '12345', startedAt: Date.now(), serverId: '12345678-1234-4123-a123-123456789abd' };
+    preferences.serverHopRegion = 'eu';
+    preferences.serverHopExcludeVisited = true;
+    window.vortexDesktop.getPublicServers = async () => ({ servers: [{ id: available, playing: 1, capacity: 8, ping: 50 }] });
+    window.vortexDesktop.resolveGameServers = async () => ({ ok: true, resolved: { [available]: { regionGroup: 'asia', realPing: 60 } } });
+  `, ctx);
+  await ctx.triggerServerHop();
+  vm.runInContext("rememberVisitedServer(available); preferences.serverHopRegion = 'any';", ctx);
+  await ctx.triggerServerHop();
+  assert.ok(!invoked.some(({ cmd }) => cmd === 'roblox_terminate_player' || cmd === 'open_game'));
+});
+
+test('an unconfirmed new session in the same place never inherits an older server ID', () => {
+  const { ctx } = bootVortexInVm();
+  const at = Date.now() - 12000;
+  const old = '12345678-1234-4123-a123-123456789abc';
+  ctx.rememberLastActiveServerSession('12345', old, at);
+  ctx.rememberLastActiveServerSession('12345', '', at + 5000);
+  assert.equal(ctx.getLastExitedSession().serverId, '');
+  ctx.rememberLastActiveServerSession('12345', old, at + 5000);
+  ctx.rememberLastActiveServerSession('12345', '', at + 5000);
+  assert.equal(ctx.getLastExitedSession().serverId, old);
+});
+
+test('restoring the play clock preserves exact journal intervals across midnight', () => {
+  const { ctx } = bootVortexInVm();
+  const beforeMidnight = new Date(2025, 0, 10, 23, 59).getTime();
+  const midnight = beforeMidnight + 60000;
+  const endedAt = midnight + 120000;
+  const rebuilt = ctx.rebuildActivityClock(ctx.normalizeActivityData(null), {}, [{
+    gameId: '12345', startedAt: beforeMidnight, seenAt: endedAt, trackedMs: 120000,
+    intervals: [[midnight, endedAt]]
+  }]);
+  assert.equal(rebuilt.days['2025-01-11'].games['12345'], 120);
+  assert.equal(rebuilt.days['2025-01-10'], undefined);
 });
 
 test('accountStorage recovers from QuotaExceededError by evicting disposable caches, and in-memory maps stay bounded', () => {

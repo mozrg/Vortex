@@ -19,9 +19,9 @@
         </div>
         <h1 id="updater-title">Обновление Vortex</h1>
         <div class="updater-versions" id="updater-versions">
-          <span class="version-pill" id="version-from">v1.3.3</span>
+          <span class="version-pill" id="version-from">—</span>
           <span class="version-arrow" aria-hidden="true">→</span>
-          <span class="version-pill is-target" id="version-to">v1.3.4</span>
+          <span class="version-pill is-target" id="version-to">—</span>
         </div>
       </header>
 
@@ -35,10 +35,10 @@
 
       <section class="updater-progress-section">
         <div class="updater-meta">
-          <span class="updater-status" id="updater-status">Подготовка к обновлению…</span>
+          <span class="updater-status" id="updater-status" role="status">Подготовка к обновлению…</span>
           <strong class="updater-percent" id="updater-percent">2%</strong>
         </div>
-        <div class="updater-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="2">
+        <div class="updater-track" role="progressbar" aria-labelledby="updater-status" aria-valuemin="0" aria-valuemax="100" aria-valuenow="2">
           <div class="updater-bar" id="updater-bar" style="width:2%"></div>
         </div>
         <p class="updater-detail" id="updater-detail" hidden></p>

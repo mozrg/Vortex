@@ -1,14 +1,31 @@
 use crate::state::AppState;
 use serde_json::{json, Value};
 use std::time::Instant;
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize};
 
 static MAIN_WINDOW_REVEALED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 static APP_STARTED_AT: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+static STARTUP_STAGE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 pub fn mark_app_started() {
     let _ = APP_STARTED_AT.set(Instant::now());
+}
+
+fn publish_startup_stage(stage: u8) {
+    STARTUP_STAGE.fetch_max(stage, std::sync::atomic::Ordering::AcqRel);
+}
+
+#[tauri::command]
+pub fn startup_progress(window: tauri::WebviewWindow, stage: u8) {
+    if window.label() == "main" && (1..=3).contains(&stage) {
+        publish_startup_stage(stage);
+    }
+}
+
+#[tauri::command]
+pub fn splash_progress() -> u8 {
+    STARTUP_STAGE.load(std::sync::atomic::Ordering::Acquire)
 }
 
 #[tauri::command]
@@ -188,8 +205,9 @@ pub fn reveal_main_window(app: &AppHandle) {
             }
         }
         if let Some(splash) = handle.get_webview_window("splash") {
-            let _ = splash.emit("splash:done", ());
-            std::thread::sleep(std::time::Duration::from_millis(220));
+            if splash_progress() == 4 {
+                std::thread::sleep(std::time::Duration::from_millis(220));
+            }
             let _ = splash.hide();
             let _ = splash.close();
             std::thread::sleep(std::time::Duration::from_millis(40));
@@ -204,6 +222,7 @@ pub fn reveal_main_window(app: &AppHandle) {
 
 #[tauri::command]
 pub fn app_ready(app: AppHandle) {
+    publish_startup_stage(4);
     reveal_main_window(&app);
 }
 

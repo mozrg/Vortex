@@ -68,6 +68,7 @@
   ];
 
   function loadApplication() {
+    window.vortexDesktop?.reportStartupProgress?.(2).catch(() => {});
     for (const src of appScripts) {
       const script = document.createElement('script');
       script.async = false;
@@ -88,6 +89,7 @@
     }
 
     try {
+      window.vortexDesktop?.reportStartupProgress?.(1).catch(() => {});
       const result = await window.vortexDesktop.importLegacyLocalStorage();
       if (result?.available) {
         for (const [key, value] of Object.entries(result.values || {})) {

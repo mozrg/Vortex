@@ -75,7 +75,7 @@ function renderGameOther(game) {
 async function preferredPublicServer(id, mode, region = 'any') {
   if (typeof selectServerHopCandidate === 'function') {
     const hopMode = mode === 'small' ? 'low-players' : (region && region !== 'any' && mode === 'default' ? 'region' : 'low-ping');
-    return selectServerHopCandidate(id, '', hopMode, region || 'any');
+    return selectServerHopCandidate(id, '', hopMode, region || 'any', false);
   }
   const payload = await window.vortexDesktop?.getPublicServers?.({ placeId: id, smallest: true }).catch(() => null);
   const open = normalizeBrowserServers(payload?.servers).filter(row => row.playing < row.capacity);

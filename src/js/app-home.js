@@ -373,7 +373,7 @@ function resolveHomeHeroCandidate(customGames, featured) {
     const featuredId = String(featured.id);
     const exitedSame = lastExited?.placeId === featuredId ? lastExited.serverId : '';
     const srv = typeof validSessionServer === 'function'
-      ? (validSessionServer(exitedSame) || validSessionServer(recentMeta?.[featuredId]?.serverId))
+      ? validSessionServer(lastExited?.placeId === featuredId ? exitedSame : recentMeta?.[featuredId]?.serverId)
       : '';
     return { game: featured, isLastPlayed: false, rejoinPlaceId: featuredId, rejoinServerId: srv };
   }
@@ -384,7 +384,7 @@ function resolveHomeHeroCandidate(customGames, featured) {
   if (active?.placeId) {
     const known = getGame(active.placeId) || customGames.find(g => String(g.id) === active.placeId);
     const game = known ? localizeGame(known) : { id: active.placeId, title: active.title, thumbnail: active.thumbnail, description: '' };
-    return { game, isLastPlayed: true, rejoinPlaceId: active.placeId, rejoinServerId: active.serverId || lastExited?.serverId || '' };
+    return { game, isLastPlayed: true, rejoinPlaceId: active.placeId, rejoinServerId: active.serverId };
   }
   if (lastExited?.placeId) {
     const known = getGame(lastExited.placeId) || customGames.find(g => String(g.id) === lastExited.placeId);
@@ -419,7 +419,7 @@ function renderShelfBanner(featured, heroState = null) {
       <h2>${title}</h2><p>${description}</p>
       <div class="hero-actions">${game
         ? `<button class="primary-button" type="button" data-action="play" data-id="${escapeHtml(game.id)}">${icon('play', 14)} ${t('card.play')}</button>
-           <button class="control-button hero-rejoin-button" type="button" data-action="rejoin-last-banner" data-id="${escapeHtml(rejoinPlaceId)}" data-server="${escapeHtml(rejoinServerId)}">${icon('rotate', 14)} ${t('home.rejoinLastServer')}</button>
+           ${rejoinServerId ? `<button class="control-button hero-rejoin-button" type="button" data-action="rejoin-last-banner" data-id="${escapeHtml(rejoinPlaceId)}" data-server="${escapeHtml(rejoinServerId)}">${icon('rotate', 14)} ${t('home.rejoinLastServer')}</button>` : ''}
            <button class="ghost-button" type="button" data-action="home-settings">${t('home.changeGame')}</button>`
         : `<button class="primary-button" type="button" data-action="home-settings">${icon('plus', 14)} ${t('quick.dialogTitle')}</button>
            <button class="ghost-button" type="button" data-nav="catalog">${t('nav.catalog')}</button>`}</div>

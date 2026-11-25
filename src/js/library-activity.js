@@ -9,7 +9,8 @@ let journalFriendsOnly = false;
 let journalHourOnly = false;
 let dashboardRows = null;
 let dashboardRequest = null;
-let dashboardDirty = true;
+let dashboardRange = null;
+let dashboardJournalRevision = 0;
 let breakReminderSession = '';
 let breakReminderCount = 0;
 let breakReminderElapsed = 0;
@@ -45,15 +46,18 @@ function rememberLastActiveServerSession(placeId, serverId = '', startedAt = Dat
   const place = String(placeId || '').trim();
   if (!gameIdPattern.test(place)) return;
   const server = validSessionServer(serverId);
-  const existing = readStored(LAST_EXITED_SESSION_KEY, null);
+  const existing = cachedLastExitedSession || readStored(LAST_EXITED_SESSION_KEY, null);
+  const started = Number(startedAt) || Date.now();
+  const sameSession = existing?.placeId === place && existing.startedAt === started;
+  const nextServer = server || (sameSession ? validSessionServer(existing.serverId) : '');
+  if (sameSession && nextServer === existing.serverId) return;
   const known = getGame(place);
-  const nextServer = server || (existing?.placeId === place ? validSessionServer(existing?.serverId) : '');
   const record = {
     placeId: place,
     serverId: nextServer,
-    title: known?.title || nowPlayingSnapshot?.title || recordingSession?.title || existing?.title || ('Roblox #' + place),
-    thumbnail: safeThumbnail(known?.thumbnail || nowPlayingSnapshot?.thumbnail || existing?.thumbnail) || '',
-    startedAt: Number(startedAt) || Date.now(),
+    title: known?.title || nowPlayingSnapshot?.title || (sameSession && existing.title) || ('Roblox #' + place),
+    thumbnail: safeThumbnail(known?.thumbnail || nowPlayingSnapshot?.thumbnail || (sameSession && existing.thumbnail)) || '',
+    startedAt: started,
     updatedAt: Date.now()
   };
   cachedLastExitedSession = record;
@@ -66,33 +70,31 @@ function getLastExitedSession() {
   const stored = cachedLastExitedSession || readStored(LAST_EXITED_SESSION_KEY, null);
   let placeId = String(stored?.placeId || '').trim();
   let serverId = validSessionServer(stored?.serverId);
-  let updatedAt = Number(stored?.updatedAt || stored?.startedAt) || 0;
+  let updatedAt = Number(stored?.startedAt || stored?.updatedAt) || 0;
   let fallbackTitle = stored?.title || '';
   let fallbackThumb = stored?.thumbnail || '';
 
-  // Also check recentMetadata() and loaded journal/dashboard rows in case a newer server was recorded there.
+  // Compare session starts, including sessions with an unknown server.
+  const consider = (id, at, server, title = '') => {
+    if (!gameIdPattern.test(id) || !(at > 0)) return;
+    if (at > updatedAt) {
+      if (id !== placeId) fallbackThumb = '';
+      placeId = id;
+      serverId = server;
+      updatedAt = at;
+      fallbackTitle = title;
+    } else if (at === updatedAt && id === placeId && !serverId) {
+      serverId = server;
+    }
+  };
   if (typeof recentMetadata === 'function') {
-    const meta = recentMetadata();
-    for (const [id, entry] of Object.entries(meta || {})) {
-      const srv = validSessionServer(entry?.serverId);
-      const at = Number(entry?.at) || 0;
-      if (gameIdPattern.test(id) && srv && (!serverId || at > updatedAt)) {
-        placeId = id;
-        serverId = srv;
-        updatedAt = at;
-      }
+    for (const [id, entry] of Object.entries(recentMetadata() || {})) {
+      consider(id, Number(entry?.at), validSessionServer(entry?.serverId));
     }
   }
-  const rows = (Array.isArray(journalRows) && journalRows.length ? journalRows : Array.isArray(dashboardRows) ? dashboardRows : []);
-  for (const row of rows) {
-    const srv = validSessionServer(row?.serverId);
-    const at = Number(row?.seenAt || row?.startedAt) || 0;
-    if (row && gameIdPattern.test(String(row.gameId)) && srv && (!serverId || at > updatedAt)) {
-      placeId = String(row.gameId);
-      serverId = srv;
-      updatedAt = at;
-      fallbackTitle = row.title || fallbackTitle;
-    }
+  // Each list is ordered by session start.
+  for (const row of [journalRows?.[0], dashboardRows?.[0]]) {
+    if (row) consider(String(row.gameId), row.startedAt, validSessionServer(row.serverId), row.title);
   }
 
   if (!gameIdPattern.test(placeId)) return null;
@@ -125,23 +127,20 @@ function buildServerInviteUrl(placeId, serverId = '') {
 }
 
 function currentPlayingInviteState() {
-  const placeId = String(playSessionGameId || gameOverlaySession?.placeId || '').trim();
+  if (runtimeSample?.unknown) return null;
+  const placeId = String(playSessionGameId || '').trim();
   if (!gameIdPattern.test(placeId)) return null;
-  const serverId = validSessionServer(gameOverlaySession?.serverId)
-    || validSessionServer(recordingSession?.serverId)
-    || validSessionServer(runtimeSample?.serverId)
-    || '';
+  const serverId = validSessionServer(nowPlayingSnapshot?.serverId);
   const known = getGame(placeId);
   const title = known?.title || nowPlayingSnapshot?.title || recordingSession?.title || ('Roblox #' + placeId);
   const thumbnail = safeThumbnail(known?.thumbnail || nowPlayingSnapshot?.thumbnail) || '';
-  const startedAt = Number(gameOverlaySession?.startedAt || nowPlayingSnapshot?.startedAt || playSessionStart) || Date.now();
+  const startedAt = Number(nowPlayingSnapshot?.startedAt || playSessionStart) || 0;
   const game = known || { id: placeId, title, thumbnail };
-  const isPrivate = Boolean(
-    pendingLaunch && String(pendingLaunch.id) === placeId && pendingLaunch.isPrivate
-  );
+  const isPrivate = Boolean(nowPlayingSnapshot?.isPrivate);
   const url = buildServerInviteUrl(placeId, serverId);
-  rememberLastActiveServerSession(placeId, serverId, startedAt);
-  return { placeId, serverId, title, thumbnail, startedAt, game, url, isPrivate };
+  const pid = gameOverlaySession?.placeId === placeId && gameOverlaySession.startedAt === startedAt
+    ? gameOverlaySession.pid : null;
+  return { placeId, serverId, title, thumbnail, startedAt, game, url, isPrivate, pid };
 }
 
 async function writeInviteToClipboard(url) {
@@ -239,9 +238,9 @@ function renderActivityNowPlayingCard() {
         <button type="button" class="control-button activity-copy-invite" data-library-action="copy-last-invite">
           ${icon('link', 14)} ${t('activity.nowPlaying.copyInvite')}
         </button>
-        <button type="button" class="primary-button activity-rejoin-server" data-library-action="rejoin-last-server">
-          ${icon('rotate', 14)} ${t('activity.nowPlaying.rejoinExited')}
-        </button>
+        ${lastExited.serverId
+          ? `<button type="button" class="primary-button activity-rejoin-server" data-library-action="rejoin-last-server">${icon('rotate', 14)} ${t('activity.nowPlaying.rejoinExited')}</button>`
+          : `<button type="button" class="primary-button" data-action="play" data-id="${escapeHtml(lastExited.placeId)}">${icon('play', 14)} ${t('card.play')}</button>`}
       </div>
     </section>`;
   }
@@ -284,7 +283,7 @@ function renderActivityNowPlayingCard() {
     </div>
     <div class="activity-now-actions">
       ${hotkeyButton}
-      <button type="button" class="control-button activity-rejoin-server" data-library-action="rejoin-active-server">
+      <button type="button" class="control-button activity-rejoin-server" data-library-action="rejoin-active-server" ${active.serverId ? '' : 'disabled'}>
         ${icon('rotate', 14)} ${t('activity.nowPlaying.rejoinSame')}
       </button>
       <button type="button" class="primary-button activity-copy-invite" data-library-action="copy-active-invite">
@@ -429,30 +428,71 @@ function renderLibraryActivity() {
     </aside></div>`);
 }
 
-function refreshLibraryDashboard() {
-  dashboardDirty = true;
+function refreshLibraryDashboard(row) {
+  if (!row) {
+    dashboardJournalRevision += 1;
+    dashboardRange = null;
+    dashboardRows = null;
+  } else if (dashboardRange && dashboardRows) {
+    if (row.startedAt < dashboardRange.until && row.seenAt >= dashboardRange.from) {
+      const index = dashboardRows.findIndex(item => item.key === row.key);
+      if (index >= 0) dashboardRows[index] = row;
+      else {
+        dashboardRows.push(row);
+        dashboardRows.sort((a, b) => b.startedAt - a.startedAt);
+      }
+    }
+  } else if (dashboardRequest) {
+    dashboardJournalRevision += 1;
+  }
   recentJournalKey = null;
   if (currentView === 'recent') {
     void loadLibraryRecent(uniqueRecentIds(recentGames));
   } else if (currentView === 'activity' && libraryActivityPane === 'overview') {
-    void loadLibraryDashboardRows();
+    if (dashboardRows) paintLibraryDashboardRows();
+    else void loadLibraryDashboardRows();
   }
 }
 
+function dashboardJournalRange() {
+  const current = libraryPeriodRange();
+  const previous = libraryPeriod === 'all' ? current : libraryPeriodRange(libraryPeriod, libraryPeriodOffset - 1);
+  return {
+    from: activityLocalDate(previous.from).getTime(),
+    until: activityLocalDate(shiftActivityDate(current.to, 1)).getTime()
+  };
+}
+
+function matchesDashboardRange(first, second) {
+  return first?.from === second.from && first?.until === second.until;
+}
+
+function paintLibraryDashboardRows() {
+  if (currentView !== 'activity' || libraryActivityPane !== 'overview') return;
+  const content = document.querySelector('#library-dashboard [data-library-dashboard-content]');
+  if (content) content.innerHTML = libraryDashboardContent();
+}
+
 async function loadLibraryDashboardRows() {
-  if (!dashboardDirty || dashboardRequest) return;
-  dashboardDirty = false;
-  const request = sessionJournal.recent(Infinity);
+  const range = dashboardJournalRange();
+  if (matchesDashboardRange(dashboardRange, range)) return;
+  dashboardRows = null;
+  dashboardRange = null;
+  if (dashboardRequest && matchesDashboardRange(dashboardRequest.range, range)) return;
+  const request = { range, revision: dashboardJournalRevision };
   dashboardRequest = request;
-  try { dashboardRows = await request; } catch { dashboardRows = []; }
-  finally {
+  let rows;
+  try { rows = await sessionJournal.overlapping(range.from, range.until); }
+  catch { rows = []; }
+  if (dashboardRequest === request) {
     dashboardRequest = null;
-    const panel = document.getElementById('library-dashboard');
-    if (panel && libraryActivityPane === 'overview') {
-      const content = panel.querySelector('[data-library-dashboard-content]');
-      if (content) content.innerHTML = libraryDashboardContent();
+    if (request.revision !== dashboardJournalRevision || !matchesDashboardRange(range, dashboardJournalRange())) {
+      if (currentView === 'activity' && libraryActivityPane === 'overview') void loadLibraryDashboardRows();
+      return;
     }
-    if (dashboardDirty && currentView === 'activity' && libraryActivityPane === 'overview') void loadLibraryDashboardRows();
+    dashboardRange = range;
+    dashboardRows = rows;
+    paintLibraryDashboardRows();
   }
 }
 
@@ -527,6 +567,7 @@ function libraryChartBuckets(range, period, days, rows) {
 function renderLibraryChart(current, previous) {
   const peak = Math.max(1, ...current.map(point => point.value), ...previous.map(point => point.value));
   const duration = value => libraryChartMetric === 'hours' ? activityDuration(value) : String(value);
+  const dateFormat = new Intl.DateTimeFormat(preferences.language, { dateStyle: 'medium' });
   const step = current.length > 14 ? Math.ceil(current.length / 10) : 1;
   return `<section class="library-panel library-chart"><div class="library-panel-heading">
     <h2>${t(libraryPeriod === 'year' || libraryPeriod === 'all' ? 'library.byMonth' : 'library.byDay')}</h2>
@@ -537,7 +578,7 @@ function renderLibraryChart(current, previous) {
     <div class="library-chart-series" style="--chart-columns:${current.length}" data-dense="${current.length > 14}">
       ${current.map(({ key, label, value }, index) => {
         const comparison = previous[index];
-        const date = new Intl.DateTimeFormat(preferences.language, { dateStyle: 'medium' }).format(activityLocalDate(key));
+        const date = dateFormat.format(activityLocalDate(key));
         const name = escapeHtml(date + ' · ' + duration(value) + (comparison ? ' · ' + t('library.previous') + ' ' + duration(comparison.value) : ''));
         return `<div class="library-chart-point" data-tooltip="${name}" aria-label="${name}">
           <div class="library-chart-bars">${comparison ? `<i class="library-chart-previous" style="--level:${comparison.value / peak * 100}%"></i>` : ''}
@@ -738,7 +779,6 @@ async function clearLibrarySessions() {
   }
   journalRows = [];
   recentJournalRows = [];
-  dashboardRows = [];
   refreshLibraryDashboard();
   await loadJournalRows();
 }

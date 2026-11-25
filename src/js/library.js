@@ -125,12 +125,16 @@ function recentMetadata() {
   return recentDetails;
 }
 
-function saveRecentDetails(rows) {
-  recentDetails = Object.fromEntries(uniqueRecentIds(recentGames).flatMap(id => {
+function cleanRecentDetails(rows, ids) {
+  return Object.fromEntries(ids.flatMap(id => {
     const entry = rows?.[id];
     if (!entry || !Number.isSafeInteger(entry.at) || entry.at <= 0 || entry.at > Date.now() + 60000) return [];
     return [[id, { at: entry.at, serverId: validSessionServer(entry.serverId) }]];
   }));
+}
+
+function saveRecentDetails(rows) {
+  recentDetails = cleanRecentDetails(rows, uniqueRecentIds(recentGames));
   accountStorage.setItem('vortex.recentDetails', JSON.stringify(recentDetails));
 }
 
@@ -140,14 +144,7 @@ async function loadLibraryRecent(ids) {
   recentJournalKey = key;
   if (!ids.length) { recentJournalRows = []; return; }
   try {
-    const wanted = new Set(ids.map(id => experienceKey(libraryGame(id))));
-    const found = new Set();
-    const rows = await sessionJournal.recent(wanted.size - 1, null, row => {
-      const game = experienceKey(libraryGame(row.gameId));
-      if (!wanted.has(game) || found.has(game)) return false;
-      found.add(game);
-      return true;
-    });
+    const rows = await latestJournalForExperiences(ids);
     if (recentJournalKey !== key) return;
     recentJournalRows = rows;
     if (currentView === 'recent') {
@@ -157,6 +154,18 @@ async function loadLibraryRecent(ids) {
   } catch {
     if (recentJournalKey === key) recentJournalKey = null;
   }
+}
+
+async function latestJournalForExperiences(ids) {
+  const { gamesById } = playtimeForView();
+  const groupOf = id => experienceKey(gamesById.get(String(id)) || { id });
+  const wanted = new Set(ids.map(groupOf));
+  const places = [...ids];
+  for (const id of gamesById.keys()) {
+    if (wanted.has(groupOf(id))) places.push(id);
+  }
+  const latest = await sessionJournal.latestByGame(places.map(String));
+  return latest.filter(row => wanted.delete(groupOf(row.gameId)));
 }
 
 function renderLibraryRecent() {

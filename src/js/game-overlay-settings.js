@@ -44,10 +44,10 @@ const overlayLabels = [
   ['overlay.metricsTitle', 'Отображаемые данные', 'Displayed metrics'],
   ['overlay.timer', 'Таймер сессии', 'Session timer'],
   ['overlay.fps', 'Частота кадров (FPS)', 'Frame rate (FPS)'],
-  ['overlay.ping', 'Пинг до сервера', 'Server ping'],
-  ['overlay.pingHint', 'Реальная задержка до игрового сервера Roblox.', 'Real round-trip latency to the Roblox game server.'],
+  ['overlay.robloxPings', 'Network Ping и Data Ping из Roblox', 'Network Ping and Data Ping from Roblox'],
+  ['overlay.robloxPingsHint', 'Открой Performance Stats через меню Roblox или Ctrl+Alt+F7, а сетевую панель — через Shift+F3. Vortex распознаёт видимые цифры локально. Если HUD закрывает панели, перемести его вниз.', 'Open Performance Stats in the Roblox menu or press Ctrl+Alt+F7, and open the network panel with Shift+F3. Vortex reads the visible numbers locally. Move the HUD lower if it covers either panel.'],
   ['overlay.stability', 'Индикатор стабильности соединения (Jitter / мини-график)', 'Connection stability indicator (Jitter / mini-graph)'],
-  ['overlay.stabilityHint', 'Показывает разброс задержки (±ms) и мини-линию пинга прямо в полоске, чтобы сразу отличать сетевые лаги от фризов самой игры.', 'Shows latency variance (±ms) and a ping sparkline right in the bar to distinguish network lag from game freezes.'],
+  ['overlay.stabilityHint', 'Показывает разброс и мини-график Network Ping. Для замера включи пинг Roblox в Vortex и открой Performance Stats в игре.', 'Shows variation and a sparkline for Network Ping. Enable Roblox ping in Vortex and open Performance Stats in the game.'],
   ['overlay.region', 'Регион сервера и детектор плохого пинга', 'Server region & bad-server detector'],
   ['overlay.regionHint', 'Определяет дата-центр сервера (AMS, FRA, LON, NYC и др.). Если сервер плохой по пингу, оверлей покажет предупреждение.', 'Detects the server datacenter (AMS, FRA, LON, NYC, etc.). Shows a warning indicator if the server ping is poor.'],
   ['overlay.badPingPrompt', 'Авто-предложение сменить сервер при плохом пинге', 'Auto-prompt to switch server on bad ping'],
@@ -114,7 +114,9 @@ const overlayLabels = [
   ['hotkeys.serverHop.region.au', 'Австралия (AU · SYD)', 'Australia (AU · SYD)'],
   ['hotkeys.serverHop.searching', 'Подбираем подходящий сервер…', 'Finding a suitable server…'],
   ['hotkeys.serverHop.connecting', 'Переключаемся на новый сервер ({detail})…', 'Switching to new server ({detail})…'],
-  ['hotkeys.serverHop.fallback', 'Переподключаемся к новому серверу плейса…', 'Reconnecting to a new server…'],
+  ['hotkeys.serverHop.noMatch', 'Подходящий сервер не найден. Попробуйте изменить фильтры.', 'No matching server found. Try changing the filters.'],
+  ['hotkeys.switchSession.confirm', 'Запустить «{title}» и завершить текущую сессию Roblox?', 'Launch “{title}” and end the current Roblox session?'],
+  ['hotkeys.switchSession.changed', 'Игра сменилась. Повторите действие для текущей сессии.', 'The game changed. Try again for the current session.'],
   ['hotkeys.serverHop.excludeVisited', 'Исключать посещённые серверы (за последние 30 минут)', 'Exclude visited servers (last 30 minutes)'],
   ['hotkeys.serverHop.excludeVisitedHint', 'Запоминает список серверов, на которых вы уже побывали за последние 30 минут, чтобы Vortex никогда не закидывал вас обратно на старый сервер.', 'Remembers servers visited in the last 30 minutes so Server Hop never puts you back into an old server.'],
   ['hotkeys.serverHop.visitedCount', 'В памяти: {count}', 'Remembered: {count}'],
@@ -219,10 +221,10 @@ function reportGameOverlay() {
   const minimal = Boolean(preferences.gameOverlayMinimal);
   const fps = minimal ? true : Boolean(preferences.gameOverlayFps);
   const timer = minimal ? false : Boolean(preferences.gameOverlayTimer);
-  const ping = minimal ? false : Boolean(preferences.gameOverlayPing);
-  const stability = minimal ? false : Boolean(preferences.gameOverlayStability);
+  const robloxPings = !minimal && Boolean(preferences.gameOverlayRobloxPings);
+  const stability = robloxPings && Boolean(preferences.gameOverlayStability);
   const region = minimal ? false : Boolean(preferences.gameOverlayRegion);
-  const badPingPrompt = minimal ? false : preferences.gameOverlayBadPingPrompt !== false;
+  const badPingPrompt = robloxPings && preferences.gameOverlayBadPingPrompt !== false;
   const system = minimal ? false : Boolean(preferences.gameOverlaySystem);
   const clock = minimal ? false : Boolean(preferences.gameOverlayClock);
   const friends = minimal ? false : Boolean(preferences.gameOverlayFriends);
@@ -241,7 +243,7 @@ function reportGameOverlay() {
     hideFullscreen: Boolean(preferences.gameOverlayHideFullscreen),
     timer,
     fps,
-    ping,
+    robloxPings,
     stability,
     region,
     badPingPrompt,
@@ -279,16 +281,12 @@ function overlayFriendsCount() {
 
 function updateGameOverlaySession(data, id, startedAt) {
   const ip = typeof data?.serverIp === 'string' && /^\d{1,3}(\.\d{1,3}){3}$/.test(data.serverIp) ? data.serverIp : null;
-  const port = Number.isInteger(data?.serverPort) && data.serverPort > 0 && data.serverPort <= 65535 ? data.serverPort : null;
   const serverId = typeof data?.serverId === 'string' && /^[0-9a-f-]{36}$/i.test(data.serverId) ? data.serverId : null;
   gameOverlaySession = id && Number.isInteger(data?.pid) && startedAt
-    ? { pid: data.pid, startedAt, placeId: id, serverId, serverIp: ip, serverPort: port }
+    ? { pid: data.pid, startedAt, placeId: id, serverId, serverIp: ip }
     : null;
   if (id && serverId) {
     rememberVisitedServer(serverId);
-    if (typeof rememberLastActiveServerSession === 'function') {
-      rememberLastActiveServerSession(id, serverId, startedAt);
-    }
   }
   reportGameOverlay();
   const username = String(preferences.robloxUsername || '').trim();
@@ -349,8 +347,11 @@ function renderOverlayPreviewMetrics() {
   const items = [];
   if (preferences.gameOverlayTimer) items.push(`<span><strong>00:24:18</strong><small>${t('overlay.sessionLabel')}</small></span>`);
   if (preferences.gameOverlayFps) items.push(`<span><strong>120</strong><small>FPS</small></span>`);
-  if (preferences.gameOverlayPing) items.push(`<span><strong>42</strong><small>ms</small></span>`);
-  if (preferences.gameOverlayStability) {
+  if (preferences.gameOverlayRobloxPings) {
+    items.push(`<span><strong>48 ms</strong><small>Network Ping</small></span>
+      <span><strong>72 ms</strong><small>Data Ping</small></span>`);
+  }
+  if (preferences.gameOverlayRobloxPings && preferences.gameOverlayStability) {
     items.push(`<span class="preview-metric-stability"><strong>±2 ms</strong><svg viewBox="0 0 34 12" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="1,7 7,6 13,8 19,5 25,7 33,6"/></svg></span>`);
   }
   if (preferences.gameOverlayRegion) items.push(`<span><i class="preview-status-dot"></i><strong>AMS</strong><small>${t('overlay.previewRegionLabel')}</small></span>`);
@@ -436,7 +437,7 @@ function renderGameOverlaySettings() {
         <p class="ui-section-title">${t('overlay.metricsTitle')}</p>
         ${toggle('gameOverlayTimer', 'overlay.timer')}
         ${toggle('gameOverlayFps', 'overlay.fps', preferences.gameOverlayFps ? `<span data-game-overlay-fps-state role="status">${overlayFpsMessage()}</span>` : '')}
-        ${toggle('gameOverlayPing', 'overlay.ping', t('overlay.pingHint'))}
+        ${toggle('gameOverlayRobloxPings', 'overlay.robloxPings', t('overlay.robloxPingsHint'))}
         ${toggle('gameOverlayStability', 'overlay.stability', t('overlay.stabilityHint'))}
         ${toggle('gameOverlayRegion', 'overlay.region', t('overlay.regionHint'))}
         ${toggle('gameOverlayBadPingPrompt', 'overlay.badPingPrompt', t('overlay.badPingPromptHint'))}
@@ -592,7 +593,7 @@ function triggerOverlayToggle() {
   showToast(t(preferences.gameOverlay ? 'overlay.toastEnabled' : 'overlay.toastDisabled'));
 }
 
-async function resolveCandidatesRealMeta(placeId, candidates, targetRegion = 'any') {
+async function resolveCandidatesRealMeta(placeId, candidates) {
   const resolveFn = window.vortexDesktop?.resolveGameServers;
   if (typeof resolveFn !== 'function' || !candidates.length) return new Map();
 
@@ -624,7 +625,8 @@ async function resolveCandidatesRealMeta(placeId, candidates, targetRegion = 'an
   return metaMap;
 }
 
-async function selectServerHopCandidate(placeId, currentServerId, overrideMode = null, overrideRegion = null) {
+async function selectServerHopCandidate(placeId, currentServerId, overrideMode = null, overrideRegion = null,
+  excludeVisited = preferences.serverHopExcludeVisited !== false) {
   const mode = serverHopModes.includes(overrideMode || preferences.serverHopMode)
     ? (overrideMode || preferences.serverHopMode)
     : 'low-ping';
@@ -632,7 +634,6 @@ async function selectServerHopCandidate(placeId, currentServerId, overrideMode =
     ? (overrideRegion || preferences.serverHopRegion)
     : 'any';
   const wantRegion = regionKey !== 'any';
-  const excludeVisited = preferences.serverHopExcludeVisited !== false;
   const visitedMap = excludeVisited ? getVisitedServersMap() : new Map();
   if (currentServerId) visitedMap.set(String(currentServerId).toLowerCase(), Date.now());
 
@@ -647,24 +648,18 @@ async function selectServerHopCandidate(placeId, currentServerId, overrideMode =
   }
 
   const payloads = await Promise.all(requests);
-  const allOpen = new Map();
-  const unvisitedOpen = new Map();
+  const open = new Map();
   for (const payload of payloads) {
     for (const row of normalizeBrowserServers(payload?.servers)) {
       if (row.playing >= row.capacity) continue;
-      if (currentServerId && row.id.toLowerCase() === currentServerId.toLowerCase()) continue;
-      allOpen.set(row.id, row);
-      if (!visitedMap.has(row.id.toLowerCase())) {
-        unvisitedOpen.set(row.id, row);
-      }
+      if (!visitedMap.has(row.id.toLowerCase())) open.set(row.id, row);
     }
   }
-  // Prefer servers not visited in the last 30 minutes; fall back to any other open server only if all servers were visited.
-  const candidates = unvisitedOpen.size ? [...unvisitedOpen.values()] : [...allOpen.values()];
+  const candidates = [...open.values()];
   if (!candidates.length) return null;
 
   // Resolve real datacenter IP, real region, and real user ping for candidates.
-  const metaMap = await resolveCandidatesRealMeta(placeId, candidates, wantRegion ? regionKey : 'any');
+  const metaMap = await resolveCandidatesRealMeta(placeId, candidates);
   const enriched = candidates.map(row => {
     const meta = metaMap.get(row.id.toLowerCase()) || null;
     const realPing = meta && Number.isFinite(Number(meta.realPing)) && Number(meta.realPing) > 0
@@ -703,61 +698,70 @@ async function selectServerHopCandidate(placeId, currentServerId, overrideMode =
   return pool[0];
 }
 
+async function prepareSessionSwitch(expected) {
+  const active = currentPlayingInviteState();
+  if (!active && !runtimeSample?.unknown) return true;
+  if (!active || !expected || active.placeId !== expected.placeId || active.startedAt !== expected.startedAt ||
+      active.pid !== expected.pid || (expected.serverId && active.serverId !== expected.serverId)) {
+    showToast(t('hotkeys.switchSession.changed'));
+    return false;
+  }
+  if (active.pid && window.vortexDesktop?.terminateRobloxPlayer) {
+    await window.vortexDesktop.terminateRobloxPlayer({ pid: active.pid, placeId: active.placeId, startedAt: active.startedAt });
+  }
+  return true;
+}
+
 async function triggerServerHop() {
-  if (serverHopBusy) return;
+  if (serverHopBusy || rejoinBusy) return;
   const active = typeof currentPlayingInviteState === 'function' ? currentPlayingInviteState() : null;
   const fallback = !active && typeof getLastExitedSession === 'function' ? getLastExitedSession() : null;
   const targetPlaceId = active?.placeId || fallback?.placeId || '';
-  const currentServerId = active?.serverId || '';
+  const currentServerId = active?.serverId || fallback?.serverId || '';
   if (!targetPlaceId) {
     showToast(t('activity.nowPlaying.notInGame'));
     return;
   }
   serverHopBusy = true;
   try {
-    if (currentServerId) rememberVisitedServer(currentServerId);
     showToast(t('hotkeys.serverHop.searching'));
     const chosen = await selectServerHopCandidate(targetPlaceId, currentServerId);
-    if (active && window.vortexDesktop?.terminateRobloxPlayer) {
-      await window.vortexDesktop.terminateRobloxPlayer().catch(() => {});
-      await new Promise(resolve => window.setTimeout(resolve, 350));
+    if (!chosen) {
+      showToast(t('hotkeys.serverHop.noMatch'));
+      return;
     }
-    if (chosen) {
-      rememberVisitedServer(chosen.id);
-      const shownPing = chosen.realPing ?? chosen.ping;
-      const detail = [
-        chosen.regionLabel || '',
-        shownPing ? `${shownPing} ms` : '',
-        Number.isInteger(chosen.playing) ? `${chosen.playing}/${chosen.capacity}` : ''
-      ].filter(Boolean).join(' · ') || ('#' + chosen.id.slice(0, 8));
+    const shownPing = chosen.realPing ?? chosen.ping;
+    const detail = [
+      chosen.regionLabel || '',
+      shownPing ? `${shownPing} ms` : '',
+      Number.isInteger(chosen.playing) ? `${chosen.playing}/${chosen.capacity}` : ''
+    ].filter(Boolean).join(' · ');
+    await openGame(targetPlaceId, chosen.id, '', { endsSession: Boolean(active), beforeLaunch: async () => {
+      if (!await prepareSessionSwitch(active)) return false;
       showToast(t('hotkeys.serverHop.connecting', { detail }));
-      await openGame(targetPlaceId, chosen.id);
-    } else {
-      showToast(t('hotkeys.serverHop.fallback'));
-      await openGame(targetPlaceId, '');
-    }
+      return true;
+    } });
   } finally {
     serverHopBusy = false;
   }
 }
 
 async function triggerServerRejoin(explicitTarget = null) {
-  if (rejoinBusy) return;
+  if (rejoinBusy || serverHopBusy) return;
   const active = typeof currentPlayingInviteState === 'function' ? currentPlayingInviteState() : null;
   const lastExited = typeof getLastExitedSession === 'function' ? getLastExitedSession() : null;
   const target = explicitTarget || active || lastExited;
-  if (!target?.placeId) {
+  if (!target?.placeId || !validSessionServer(target.serverId)) {
     showToast(t('hotkeys.rejoin.noServer'));
     return;
   }
   rejoinBusy = true;
   try {
-    if (active && window.vortexDesktop?.terminateRobloxPlayer) {
-      await window.vortexDesktop.terminateRobloxPlayer().catch(() => {});
-      await new Promise(resolve => window.setTimeout(resolve, 350));
-    }
-    showToast(t('hotkeys.rejoin.connecting'));
-    await openGame(target.placeId, target.serverId || '');
+    await openGame(target.placeId, target.serverId, '', { endsSession: Boolean(active), beforeLaunch: async () => {
+      if (!await prepareSessionSwitch(active)) return false;
+      showToast(t('hotkeys.rejoin.connecting'));
+      return true;
+    } });
   } finally {
     rejoinBusy = false;
   }

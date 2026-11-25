@@ -4,10 +4,13 @@ const serverIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 
 function gamePageView(id) {
   const key = String(id);
-  if (!gamePageState.has(key)) gamePageState.set(key, {
+  const view = gamePageState.get(key) || {
     pane: 'overview', media: 0, serverMode: 'all', serverRegion: 'all', serverSearch: '', pages: new Map(), launching: false
-  });
-  return gamePageState.get(key);
+  };
+  gamePageState.delete(key);
+  gamePageState.set(key, view);
+  if (gamePageState.size > 40) gamePageState.delete(gamePageState.keys().next().value);
+  return view;
 }
 
 function officialGameUrl(game) {
@@ -38,8 +41,7 @@ function loadGamePageJournal(game) {
   const key = experienceKey(game);
   if (view.journalExperience === key) return;
   view.journalExperience = key;
-  const { gamesById } = playtimeForView();
-  void sessionJournal.recent(0, null, row => experienceKey(gamesById.get(String(row.gameId)) || { id: row.gameId }) === key)
+  void latestJournalForExperiences([String(game.id)])
     .catch(() => [])
     .then(rows => {
       if (view.journalExperience !== key) return;

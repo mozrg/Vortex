@@ -2,7 +2,7 @@
 
 **Vortex** — быстрый нативный лаунчер Roblox для Windows на **Tauri 2 + Rust**. Он объединяет каталог игр, библиотеку, точный браузер публичных и приватных серверов с реальным пингом, внутриигровой оверлей, игровые хоткеи, Discord Rich Presence и подробный учёт игрового времени.
 
-![Версия 1.3.3](https://img.shields.io/badge/version-1.3.3-9b7cff) ![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D6) ![Tauri 2](https://img.shields.io/badge/Tauri-2-FFC131) ![Rust](https://img.shields.io/badge/Rust-stable-DEA584)
+![Версия 1.3.4](https://img.shields.io/badge/version-1.3.4-9b7cff) ![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078D6) ![Tauri 2](https://img.shields.io/badge/Tauri-2-FFC131) ![Rust](https://img.shields.io/badge/Rust-stable-DEA584)
 
 [Релизы на GitHub](https://github.com/mozrg/Vortex/releases) · [Сайт проекта](https://vortex.mivermiver51.workers.dev) · [Безопасность](https://vortex.mivermiver51.workers.dev/security.html)
 
@@ -10,10 +10,10 @@
 
 ## Установка и обновление
 
-1. Скачайте установщик `Vortex.Launcher.Setup.1.3.3.exe` для Windows x64 со страницы [GitHub Releases](https://github.com/mozrg/Vortex/releases).
+1. Скачайте установщик `Vortex.Launcher.Setup.1.3.4.exe` для Windows x64 со страницы [GitHub Releases](https://github.com/mozrg/Vortex/releases).
 2. *(Рекомендуется)* Проверьте целостность файла по контрольной сумме `.sha256` в PowerShell:
    ```powershell
-   Get-FileHash .\Vortex.Launcher.Setup.1.3.3.exe -Algorithm SHA256
+   Get-FileHash .\Vortex.Launcher.Setup.1.3.4.exe -Algorithm SHA256
    ```
 3. Для запуска игр требуется установленный **Roblox Player**.
 
@@ -28,7 +28,7 @@ Vortex автоматически проверяет выходы новых в�
 - Персональная подборка **«Для вас»** на основе истории и избранного с объяснением выбора и кнопками «Не интересно» / «Больше такого».
 
 ### Страница игры, реальные регионы и приватные серверы
-- **Публичные серверы с реальным регионом и вашим пингом.** При подключённой `.ROBLOSECURITY` cookie Vortex определяет реальный дата-центр каждого сервера (`EU · FRA`, `EU · AMS`, `US · NYC`, `SA · GRU`, `ASIA · SIN` и т.д.) через `gamejoin.roblox.com` + GeoIP и замеряет **ваш реальный пинг** до него (TCP RTT по физическому интерфейсу + 21 ms `DataPing`), а не средний пинг игроков. Доступен фильтр таблицы по региону.
+- **Публичные серверы с регионом и задержкой.** При подключённой `.ROBLOSECURITY` Vortex определяет дата-центр через `gamejoin.roblox.com` и GeoIP и показывает медиану TCP RTT до edge-узла по системному маршруту. Игровой `Data Ping` может отличаться. Когда замер недоступен, таблица отдельно помечает средний пинг Roblox. Доступен фильтр по региону.
 - **Приватные серверы (свои и друзей).** Отображаются первыми во вкладке **«Серверы»** (управляются галочкой «Показывать приватные серверы»):
   - прямой вход по `accessCode`, фильтры («Мои», «С друзьями», «Активные», поиск по имени/владельцу), закрепление в «Быстрый запуск» в один клик, статус заполненности и деактивированных серверов, реальный регион/пинг для активных инстансов;
   - **создание приватного сервера** прямо из лаунчера с отображением цены (`Бесплатно` / стоимость в Robux) и проверкой баланса;
@@ -39,7 +39,8 @@ Vortex автоматически проверяет выходы новых в�
 
 ### Внутриигровой оверлей (HUD)
 - Отображается поверх активного окна Roblox как отдельное прозрачное click-through окно Windows — **без DLL-инжектов и без чтения/записи памяти игры** (безопасно для античита Byfron / Hyperion).
-- **Метрики:** реальный **FPS** (`D3DKMTQueryStatistics`), реальный **пинг**, джиттер и мини-график стабильности, реальный **регион сервера**, потребление **RAM и CPU** процесса Roblox, таймер сессии, часы, счётчик друзей онлайн, всплывающие уведомления о заходе друга на ваш сервер и авто-подсказка смены сервера при плохом пинге.
+- **Метрики:** **FPS** (`D3DKMTQueryStatistics`), **Network Ping** и **Data Ping** из Roblox, джиттер и мини-график Network Ping, **регион сервера**, потребление **RAM и CPU** процесса Roblox, таймер сессии, часы, счётчик друзей онлайн, всплывающие уведомления о заходе друга на ваш сервер и авто-подсказка смены сервера при плохом пинге.
+- **Network Ping и Data Ping.** Включите одноимённую настройку оверлея Vortex. В Roblox откройте Performance Stats (`Ctrl+Alt+F7` или через меню) и сетевую панель (`Shift+F3`). Vortex считывает видимые цифры локальным OCR Windows и показывает их отдельными метриками. Если панели закрыты, перекрыты или недоступен язык OCR, соответствующая метрика показывает прочерк. Распознанные кадры не сохраняются и не передаются. [Описание метрик Roblox](https://create.roblox.com/docs/performance-optimization/identify#ping)
 - **Настройка:** 3 стиля оформления (**Стекло**, **Компактная полоса**, **Неон**), настраиваемые цветовые пороги FPS и пинга, 6 позиций по углам или свободное перетаскивание в любую точку экрана, масштаб, отступы, прозрачность, **автоскрытие в полноэкранном режиме** и **профиль «Минимальный» (только FPS)** для слабых ПК.
 
 ### Игровые хоткеи и управление сессией
@@ -93,7 +94,7 @@ Vortex автоматически проверяет выходы новых в�
   - `src/js/game-page-servers.js`, `game-overlay-settings.js`, `security-confirm.js`, `launcher-files.js`, `play-clock.js`, `release-log.js` — серверы, оверлей, безопасность, подборки и учёт времени.
 - `src-tauri/src/` — нативный бэкенд на Rust (Tauri 2):
   - `game_servers.rs` — публичные/приватные серверы, создание/настройка VIP-серверов, определение реальных IP;
-  - `overlay.rs`, `overlay_fps.rs`, `overlay_ping.rs`, `overlay_audio.rs` — HUD, D3DKMT FPS, физический TCP RTT пинг, WASAPI mute;
+  - `overlay.rs`, `overlay_fps.rs`, `overlay_roblox_stats.rs`, `overlay_audio.rs` — HUD, D3DKMT FPS, распознавание сетевых метрик Roblox, отключение звука через WASAPI;
   - `friends.rs`, `roblox.rs`, `discord.rs`, `announcements.rs`, `cookie.rs`, `runtime.rs`.
 - `site/` — сайт проекта (`index.html`, `updates.html`, `security.html`).
 - `tests/` — автотесты модулей фронтенда на `node:test`.

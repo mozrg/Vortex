@@ -27,6 +27,28 @@ fn resolved_server_cache() -> &'static Mutex<HashMap<String, (Instant, ResolvedS
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+async fn sample_resolved_pings(servers: &mut HashMap<String, ResolvedServer>) {
+    let mut probes = HashMap::new();
+    for server in servers.values() {
+        if let Ok(ip) = server.ip.parse::<Ipv4Addr>() {
+            let [a, b, c, _] = ip.octets();
+            probes.entry([a, b, c]).or_insert_with(|| {
+                tokio::task::spawn_blocking(move || overlay_ping::measure_datacenter_ping_cached(ip))
+            });
+        }
+    }
+    let mut samples = HashMap::new();
+    for (subnet, task) in probes {
+        samples.insert(subnet, task.await.ok().flatten());
+    }
+    for server in servers.values_mut() {
+        if let Ok(ip) = server.ip.parse::<Ipv4Addr>() {
+            let [a, b, c, _] = ip.octets();
+            server.real_ping = samples.get(&[a, b, c]).copied().flatten();
+        }
+    }
+}
+
 fn extract_join_script_ip(payload: &Value) -> Option<Ipv4Addr> {
     let join_script = payload.get("joinScript")?;
     if let Some(endpoints) = join_script.get("UdmuxEndpoints").and_then(Value::as_array) {
@@ -89,12 +111,14 @@ pub async fn games_resolve_servers(
     }
 
     if to_fetch.is_empty() {
+        sample_resolved_pings(&mut resolved_map).await;
         return Ok(json!({ "ok": true, "reason": null, "resolved": resolved_map }));
     }
 
     let raw_cookie = crate::profile_cookie(&state, profile_id.as_deref());
     let clean_cookie = roblox::normalize_cookie_value(&raw_cookie).to_string();
     if clean_cookie.is_empty() {
+        sample_resolved_pings(&mut resolved_map).await;
         return Ok(json!({
             "ok": false,
             "reason": "auth-required",
@@ -179,7 +203,7 @@ pub async fn games_resolve_servers(
         }
     }
 
-    // Deduplicate datacenters by /24 prefix so we only GeoIP & ping each unique datacenter once.
+    // Resolve each /24 region once. Ping samples have their own shorter cache.
     let mut unique_subnets: HashMap<(u8, u8, u8), Ipv4Addr> = HashMap::new();
     for (_, ip) in &server_ips {
         let [a, b, c, _] = ip.octets();
@@ -191,23 +215,15 @@ pub async fn games_resolve_servers(
     for (subnet, ip) in unique_subnets {
         let geo_sem = geo_sem.clone();
         dc_handles.push(tokio::spawn(async move {
-            let region_fut = async {
-                let _permit = geo_sem.acquire().await.ok();
-                overlay_ping::resolve_region_info(ip).await
-            };
-            let ping_fut = tokio::task::spawn_blocking(move || {
-                overlay_ping::measure_datacenter_ping_cached(ip)
-            });
-            let (region, ping_res) = tokio::join!(region_fut, ping_fut);
-            (subnet, region, ping_res.ok().flatten())
+            let _permit = geo_sem.acquire().await.ok();
+            (subnet, overlay_ping::resolve_region_info(ip).await)
         }));
     }
 
-    let mut dc_info: HashMap<(u8, u8, u8), (Option<overlay_ping::RegionInfo>, Option<u32>)> =
-        HashMap::new();
+    let mut regions = HashMap::new();
     for handle in dc_handles {
-        if let Ok((subnet, region, ping)) = handle.await {
-            dc_info.insert(subnet, (region, ping));
+        if let Ok((subnet, region)) = handle.await {
+            regions.insert(subnet, region);
         }
     }
 
@@ -215,17 +231,14 @@ pub async fn games_resolve_servers(
     let mut newly_resolved = Vec::new();
     for (server_id, ip) in server_ips {
         let [a, b, c, _] = ip.octets();
-        let (region_opt, real_ping) = dc_info
-            .get(&(a, b, c))
-            .cloned()
-            .unwrap_or((None, None));
+        let region_opt = regions.get(&(a, b, c)).cloned().flatten();
         let region = region_opt.unwrap_or_else(|| overlay_ping::RegionInfo::new("other", "", "RBLX"));
         let entry = ResolvedServer {
             ip: ip.to_string(),
             region_group: region.group,
             region_code: region.code,
             region_label: region.label,
-            real_ping,
+            real_ping: None,
         };
         newly_resolved.push((server_id.clone(), entry.clone()));
         resolved_map.insert(server_id, entry);
@@ -261,6 +274,7 @@ pub async fn games_resolve_servers(
         }
     }
 
+    sample_resolved_pings(&mut resolved_map).await;
     Ok(json!({ "ok": true, "reason": null, "resolved": resolved_map }))
 }
 
@@ -651,6 +665,31 @@ async fn post_json_with_csrf(
     Ok(first)
 }
 
+struct PrivateServerCreateGuard((String, String));
+
+impl PrivateServerCreateGuard {
+    fn pending() -> &'static Mutex<HashSet<(String, String)>> {
+        static PENDING: OnceLock<Mutex<HashSet<(String, String)>>> = OnceLock::new();
+        PENDING.get_or_init(Mutex::default)
+    }
+
+    fn acquire(profile_id: Option<&str>, universe_id: &str) -> Option<Self> {
+        let key = (
+            profile_id.unwrap_or("default").to_ascii_lowercase(),
+            universe_id.trim_start_matches('0').to_owned(),
+        );
+        crate::state::lock_or_recover(Self::pending())
+            .insert(key.clone())
+            .then(|| Self(key))
+    }
+}
+
+impl Drop for PrivateServerCreateGuard {
+    fn drop(&mut self) {
+        crate::state::lock_or_recover(Self::pending()).remove(&self.0);
+    }
+}
+
 #[tauri::command]
 pub async fn games_private_server_create(
     state: tauri::State<'_, Arc<AppState>>,
@@ -663,7 +702,7 @@ pub async fn games_private_server_create(
         return Err("Invalid Universe ID".into());
     }
     let trimmed = name.trim();
-    if trimmed.is_empty() || trimmed.len() > 50 {
+    if trimmed.is_empty() || trimmed.chars().count() > 50 {
         return Err("Invalid server name".into());
     }
     let raw_cookie = crate::profile_cookie(&state, profile_id.as_deref());
@@ -671,6 +710,9 @@ pub async fn games_private_server_create(
     if clean_cookie.is_empty() {
         return Ok(json!({ "ok": false, "reason": "auth-required" }));
     }
+    let Some(_create_request) = PrivateServerCreateGuard::acquire(profile_id.as_deref(), &universe_id) else {
+        return Ok(json!({ "ok": false, "reason": "creation-in-progress" }));
+    };
     let client = roblox::shared_http_client();
     let cookie_header = format!(".ROBLOSECURITY={clean_cookie}");
     let url = format!("https://games.roblox.com/v1/games/vip-servers/{universe_id}");
@@ -946,113 +988,6 @@ pub async fn games_public_servers(
     )
 }
 
-/// Look up Roblox's advertised ping for a live server ID, falling back to the
-/// universe's root place (for teleported match sub-places) and to the median
-/// ping of the place's public servers when the active instance is a reserved
-/// or private server not listed by ID.
-pub async fn public_server_ping(place_id: &str, server_id: &str) -> Option<u32> {
-    if !super::valid_numeric_id(place_id) {
-        return None;
-    }
-    let client = roblox::shared_http_client();
-    if let Some(ping) = lookup_place_ping(client, place_id, server_id).await {
-        return Some(ping);
-    }
-    let root_place = resolve_root_place(client, place_id).await?;
-    if root_place != place_id {
-        return lookup_place_ping(client, &root_place, server_id).await;
-    }
-    None
-}
-
-async fn lookup_place_ping(
-    client: &reqwest::Client,
-    place_id: &str,
-    server_id: &str,
-) -> Option<u32> {
-    let valid_server = Uuid::parse_str(server_id).is_ok();
-    let mut cursor: Option<String> = None;
-    let mut fallback = Vec::new();
-    for _page in 0..5 {
-        let mut url = format!(
-            "https://games.roblox.com/v1/games/{place_id}/servers/Public?limit=100&sortOrder=Desc&excludeFullGames=false"
-        );
-        if let Some(value) = cursor.as_deref() {
-            url.push_str("&cursor=");
-            url.push_str(&super::encode_query(value));
-        }
-        let response = client.get(url).send().await.ok()?;
-        if !response.status().is_success() {
-            break;
-        }
-        let payload: Value = response.json().await.ok()?;
-        let Some(rows) = payload.get("data").and_then(Value::as_array) else {
-            break;
-        };
-        if rows.is_empty() {
-            break;
-        }
-        if valid_server {
-            if let Some(ping) = ping_for_server(rows, server_id) {
-                return Some(ping);
-            }
-        }
-        if fallback.is_empty() {
-            fallback.extend(rows.iter().filter_map(row_ping));
-            if !valid_server {
-                break;
-            }
-        }
-        cursor = payload
-            .get("nextPageCursor")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        if cursor.is_none() {
-            break;
-        }
-    }
-    representative_ping(&mut fallback)
-}
-
-async fn resolve_root_place(client: &reqwest::Client, place_id: &str) -> Option<String> {
-    let universe_url = format!("https://apis.roblox.com/universes/v1/places/{place_id}/universe");
-    let universe: Value = client.get(universe_url).send().await.ok()?.json().await.ok()?;
-    let universe_id = universe.get("universeId")?.as_u64()?;
-    let games_url = format!("https://games.roblox.com/v1/games?universeIds={universe_id}");
-    let games: Value = client.get(games_url).send().await.ok()?.json().await.ok()?;
-    let root = games
-        .get("data")?
-        .as_array()?
-        .first()?
-        .get("rootPlaceId")?
-        .as_u64()?;
-    Some(root.to_string())
-}
-
-fn row_ping(row: &Value) -> Option<u32> {
-    row.get("ping")?
-        .as_u64()
-        .and_then(|ping| (1..=9_999).contains(&ping).then_some(ping as u32))
-}
-
-fn representative_ping(samples: &mut [u32]) -> Option<u32> {
-    if samples.is_empty() {
-        return None;
-    }
-    samples.sort_unstable();
-    Some(samples[samples.len() / 2])
-}
-
-fn ping_for_server(rows: &[Value], server_id: &str) -> Option<u32> {
-    rows.iter().find_map(|row| {
-        let id = Uuid::parse_str(row.get("id")?.as_str()?).ok()?;
-        if !id.hyphenated().to_string().eq_ignore_ascii_case(server_id) {
-            return None;
-        }
-        row_ping(row)
-    })
-}
-
 fn normalize_server(row: &Value) -> Option<Value> {
     let id = Uuid::parse_str(row.get("id")?.as_str()?)
         .ok()?
@@ -1073,30 +1008,6 @@ fn normalize_server(row: &Value) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn official_ping_matches_server_id_and_preserves_unknown_values() {
-        let id = "c382fbfa-3680-4efe-ab39-c9fde1d5cbb8";
-        let rows = vec![
-            json!({"id":"invalid","ping": 999}),
-            json!({"id":"9aedfe90-4a32-4a27-8dea-6849ab68096e","ping":43}),
-            json!({"id":id,"ping":69}),
-        ];
-        assert_eq!(ping_for_server(&rows, id), Some(69));
-        assert_eq!(ping_for_server(&rows, "00000000-0000-0000-0000-000000000000"), None);
-        assert_eq!(ping_for_server(&[json!({"id":id,"ping":0})], id), None);
-    }
-
-    #[tokio::test]
-    #[ignore = "queries the live Roblox API; run with --ignored"]
-    async fn live_public_server_ping_lookup() {
-        let place = std::env::var("VORTEX_PING_PLACE").unwrap_or_else(|_| "8304191830".into());
-        let server = std::env::var("VORTEX_PING_SERVER")
-            .unwrap_or_else(|_| "1f98f052-5b9f-4583-80bd-3b546e35da8a".into());
-        let ping = public_server_ping(&place, &server).await;
-        println!("Roblox API ping for {place}/{server}: {ping:?}");
-        assert!(ping.is_some(), "server may have left or Roblox may rate-limit the API");
-    }
 
     #[test]
     fn public_server_rows_keep_unknown_ping_and_exclude_player_tokens() {
@@ -1142,6 +1053,17 @@ mod tests {
             "joinScript": { "MachineAddress": "10.0.0.1" }
         });
         assert_eq!(extract_join_script_ip(&private_only), None);
+    }
+
+    #[test]
+    fn private_server_create_guard_keeps_one_request_per_profile_and_universe() {
+        let first = PrivateServerCreateGuard::acquire(None, "123").unwrap();
+        assert!(PrivateServerCreateGuard::acquire(Some("default"), "00123").is_none());
+        assert!(PrivateServerCreateGuard::acquire(None, "123").is_none());
+        assert!(PrivateServerCreateGuard::acquire(Some("different-profile"), "123").is_some());
+        assert!(PrivateServerCreateGuard::acquire(None, "456").is_some());
+        drop(first);
+        assert!(PrivateServerCreateGuard::acquire(None, "123").is_some());
     }
 
     #[test]

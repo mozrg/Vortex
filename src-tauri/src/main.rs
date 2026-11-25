@@ -14,6 +14,7 @@ mod overlay;
 mod overlay_audio;
 mod overlay_fps;
 mod overlay_ping;
+mod overlay_roblox_stats;
 mod plans;
 mod roblox;
 mod runtime;
@@ -719,7 +720,7 @@ fn main() {
                     .build();
             let fallback_app = app.handle().clone();
             std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(4000));
+                std::thread::sleep(std::time::Duration::from_secs(12));
                 window_state::reveal_main_window(&fallback_app);
             });
             std::thread::spawn(|| {
@@ -773,6 +774,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             window_state::app_ready,
+            window_state::startup_progress,
+            window_state::splash_progress,
             window_state::window_minimize,
             window_state::window_toggle_maximize,
             window_state::window_close,

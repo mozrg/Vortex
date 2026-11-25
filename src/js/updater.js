@@ -15,6 +15,10 @@
 
   const ORDER = ['closing', 'downloading', 'verifying', 'installing', 'launching'];
   let lang = 'ru';
+  let latestSequence = -1;
+  let latestStage = 'closing';
+  let pollTimer = 0;
+  let themeSignature = '';
 
   const COPY = {
     ru: {
@@ -28,6 +32,9 @@
         launching: 'Готово! Запускаем обновлённый Vortex…',
         done: 'Обновление установлено!'
       },
+      failed: 'Обновление остановлено',
+      disconnected: 'Нет связи с загрузчиком. Повторяем подключение…',
+      unknownProgress: 'Выполняется',
       retry: 'Повторить',
       close: 'Закрыть'
     },
@@ -42,6 +49,9 @@
         launching: 'Done! Launching updated Vortex…',
         done: 'Update installed!'
       },
+      failed: 'Update stopped',
+      disconnected: 'Lost contact with the updater. Reconnecting…',
+      unknownProgress: 'In progress',
       retry: 'Retry',
       close: 'Close'
     }
@@ -70,18 +80,33 @@
 
   function applyProgress(payload) {
     if (!payload) return;
+    const sequence = Number(payload.sequence) || 0;
+    if (sequence <= latestSequence) return;
+    latestSequence = sequence;
+    const theme = JSON.stringify([payload.theme, payload.accent, payload.accentSecondary, payload.language]);
+    if (theme !== themeSignature) {
+      themeSignature = theme;
+      applyTheme(payload);
+    }
     if (payload.fromVersion && fromEl) fromEl.textContent = `v${String(payload.fromVersion).replace(/^v/i, '')}`;
     if (payload.toVersion && toEl) toEl.textContent = `v${String(payload.toVersion).replace(/^v/i, '')}`;
 
     const pct = Math.max(0, Math.min(100, Math.round(Number(payload.progress) || 0)));
     if (barEl) barEl.style.width = `${pct}%`;
-    if (percentEl) percentEl.textContent = `${pct}%`;
-    if (trackEl) trackEl.setAttribute('aria-valuenow', String(pct));
-
     const stage = String(payload.stage || 'closing');
     const dict = COPY[lang];
-    const msg = payload.message || dict.messages[stage] || '';
-    if (statusEl && msg) statusEl.textContent = msg;
+    const indeterminate = stage === 'downloading' && payload.indeterminate === true;
+    if (percentEl) percentEl.textContent = indeterminate ? '…' : `${pct}%`;
+    trackEl?.toggleAttribute('data-indeterminate', indeterminate);
+    if (indeterminate) {
+      trackEl?.removeAttribute('aria-valuenow');
+      trackEl?.setAttribute('aria-valuetext', dict.unknownProgress);
+    } else {
+      trackEl?.setAttribute('aria-valuenow', String(pct));
+      trackEl?.removeAttribute('aria-valuetext');
+    }
+    const msg = payload.message || (stage === 'error' ? dict.failed : dict.messages[stage]) || '';
+    if (statusEl && msg && statusEl.textContent !== msg) statusEl.textContent = msg;
     if (detailEl) {
       const detail = typeof payload.detail === 'string' ? payload.detail.trim() : '';
       detailEl.textContent = detail;
@@ -92,11 +117,14 @@
     const isDone = stage === 'done';
     if (card) card.dataset.state = isError ? 'error' : isDone ? 'done' : 'running';
 
-    const activeIdx = isDone ? ORDER.length : ORDER.indexOf(stage);
+    const activeIdx = isDone ? ORDER.length : ORDER.indexOf(isError ? latestStage : stage);
+    latestStage = isError ? latestStage : stage;
     document.querySelectorAll('.updater-step').forEach((node) => {
       const idx = ORDER.indexOf(node.dataset.step);
       node.classList.toggle('is-done', idx >= 0 && idx < activeIdx);
       node.classList.toggle('is-active', !isError && !isDone && idx === activeIdx);
+      if (!isError && !isDone && idx === activeIdx) node.setAttribute('aria-current', 'step');
+      else node.removeAttribute('aria-current');
     });
 
     if (errorBox) errorBox.hidden = !isError;
@@ -110,25 +138,38 @@
   } catch { /* default */ }
 
   const tauri = window.__TAURI__;
-  retryBtn?.addEventListener('click', () => {
+  retryBtn?.addEventListener('click', async () => {
+    retryBtn.disabled = true;
     if (errorBox) errorBox.hidden = true;
-    tauri?.core?.invoke?.('updater_retry').catch(() => {});
+    if (card) card.dataset.state = 'running';
+    try { await tauri?.core?.invoke('updater_retry'); }
+    catch {
+      if (errorBox) errorBox.hidden = false;
+      if (card) card.dataset.state = 'error';
+      return;
+    }
+    finally { retryBtn.disabled = false; }
+    scheduleSnapshot();
   });
   closeBtn?.addEventListener('click', () => {
     tauri?.core?.invoke?.('updater_close').catch(() => window.close());
   });
 
-  if (tauri?.event?.listen) {
-    tauri.event.listen('updater:progress', (event) => applyProgress(event.payload));
+  function scheduleSnapshot() {
+    clearTimeout(pollTimer);
+    if (latestStage !== 'done') pollTimer = setTimeout(readSnapshot, 150);
   }
+
+  async function readSnapshot() {
+    try { applyProgress(await tauri.core.invoke('updater_ready')); }
+    catch {
+      if (statusEl && latestSequence < 0) statusEl.textContent = COPY[lang].disconnected;
+    }
+    if (card?.dataset.state !== 'error') scheduleSnapshot();
+  }
+
   if (tauri?.core?.invoke) {
-    tauri.core.invoke('updater_ready')
-      .then((info) => {
-        if (info) {
-          applyTheme(info);
-          applyProgress(info);
-        }
-      })
-      .catch(() => {});
+    void readSnapshot();
   }
+  window.addEventListener('pagehide', () => clearTimeout(pollTimer), { once: true });
 })();

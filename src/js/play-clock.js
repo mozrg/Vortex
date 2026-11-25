@@ -70,7 +70,26 @@ function rebuildActivityClock(data, stats, sessions) {
         !Number.isSafeInteger(seenAt) || seenAt > Date.now() || !Number.isSafeInteger(trackedMs)) continue;
     const span = seenAt - startedAt;
     if (!(trackedMs > 0 && trackedMs <= span)) continue;
-    if (span - trackedMs < 26 * 3600000) {
+    let lastEnd = startedAt;
+    let intervalTime = 0;
+    const exact = Array.isArray(row.intervals) && row.intervals.every(interval => {
+      if (!Array.isArray(interval)) return false;
+      const [from, to] = interval;
+      if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < lastEnd || to <= from || to > seenAt) return false;
+      lastEnd = to;
+      intervalTime += to - from;
+      return true;
+    }) && intervalTime === trackedMs;
+    if (exact) {
+      let carry = 0;
+      for (const [from, to] of row.intervals) {
+        activitySlices(Math.max(confirmedThrough, from), to, (date, slice) => {
+          const seconds = Math.floor((carry + slice) / 1000);
+          carry = (carry + slice) % 1000;
+          if (seconds > 0) addActivitySeconds(days, date, gameId, seconds);
+        });
+      }
+    } else if (span - trackedMs < 26 * 3600000) {
       activitySlices(Math.max(confirmedThrough, startedAt), seenAt, (date, slice) => {
         // The old journal stored the duration, but not the position of gaps
         // within a session. Recover only time that must fall on this date.

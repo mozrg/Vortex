@@ -476,6 +476,11 @@ function toggleFavorite(id) {
   }
   accountStorage.setItem('vortex.favorites', JSON.stringify([...favorites]));
   reportRecentGamesToTray();
+  if (isRecommendationsView()) {
+    refreshRecommendationPreferences();
+    renderRecommendationUpdate();
+    return;
+  }
   if (currentView === 'favorites' || currentView === 'home' || currentView === 'library') {
     renderPage();
     return;

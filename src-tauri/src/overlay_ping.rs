@@ -1,13 +1,19 @@
-//! Datacenter region lookup and TCP measurements for server selection.
+//! Datacenter lookup and latency estimates for the HUD and server browser.
 
 use serde::Serialize;
 use serde_json::Value;
 use std::{
     collections::{HashMap, VecDeque},
+    io::{Read, Write},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
     sync::{Mutex, OnceLock},
     time::{Duration, Instant},
 };
+use tokio::{
+    sync::{oneshot, watch},
+    task::JoinHandle,
+};
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegionInfo {
@@ -44,7 +50,33 @@ fn ping_subnet_cache() -> &'static Mutex<SubnetPingCache> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Ping {
+    #[default]
+    Idle,
+    Measuring,
+    Unavailable,
+    Measured(u32),
+    Listed(u32),
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PingSnapshot {
+    pub state: Ping,
+    pub jitter: Option<u32>,
+    pub history: Vec<u32>,
+    pub region: Option<String>,
+}
+
 const TIMEOUT: Duration = Duration::from_millis(750);
+const HUD_SAMPLE_INTERVAL: Duration = Duration::from_secs(2);
+const LIST_INTERVAL: Duration = Duration::from_secs(20);
+const RECENT: usize = 5;
+const HISTORY_LEN: usize = 12;
+const DIRECT_RTT_RETRY_BELOW_MS: u32 = 12;
+pub const BAD_JITTER_THRESHOLD_MS: u32 = 25;
 const PING_CACHE_TTL: Duration = Duration::from_secs(45);
 const PING_MISS_TTL: Duration = Duration::from_secs(12);
 
@@ -106,7 +138,9 @@ fn city_to_iata_code(city: &str, country: &str) -> String {
         "madrid" => Some("MAD"),
         "milan" | "milano" => Some("MIL"),
         "zurich" | "zürich" => Some("ZRH"),
-        "new york" | "secaucus" | "newark" | "jersey city" | "clifton" | "piscataway" => Some("NYC"),
+        "new york" | "secaucus" | "newark" | "jersey city" | "clifton" | "piscataway" => {
+            Some("NYC")
+        }
         "ashburn" | "washington" | "reston" | "sterling" | "manassas" => Some("IAD"),
         "chicago" | "elk grove village" => Some("ORD"),
         "dallas" | "richardson" | "plano" => Some("DFW"),
@@ -272,7 +306,10 @@ pub async fn resolve_region_info(ip: Ipv4Addr) -> Option<RegionInfo> {
         if resp.status().is_success() {
             if let Ok(json) = resp.json::<Value>().await {
                 if json.get("success").and_then(Value::as_bool) != Some(false) {
-                    let country = json.get("country_code").and_then(Value::as_str).unwrap_or("");
+                    let country = json
+                        .get("country_code")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
                     if !country.is_empty() {
                         let continent = json
                             .get("continent_code")
@@ -281,7 +318,8 @@ pub async fn resolve_region_info(ip: Ipv4Addr) -> Option<RegionInfo> {
                         let city = json.get("city").and_then(Value::as_str).unwrap_or("");
                         let region = json.get("region").and_then(Value::as_str).unwrap_or("");
                         let lon = json.get("longitude").and_then(Value::as_f64);
-                        resolved = Some(region_info_from_geo(continent, country, city, region, lon));
+                        resolved =
+                            Some(region_info_from_geo(continent, country, city, region, lon));
                     }
                 }
             }
@@ -290,7 +328,11 @@ pub async fn resolve_region_info(ip: Ipv4Addr) -> Option<RegionInfo> {
 
     // Fallback: ipinfo.io (HTTPS)
     if resolved.is_none() {
-        if let Ok(resp) = client.get(format!("https://ipinfo.io/{ip}/json")).send().await {
+        if let Ok(resp) = client
+            .get(format!("https://ipinfo.io/{ip}/json"))
+            .send()
+            .await
+        {
             if resp.status().is_success() {
                 if let Ok(json) = resp.json::<Value>().await {
                     let country = json.get("country").and_then(Value::as_str).unwrap_or("");
@@ -331,6 +373,201 @@ fn median(samples: &VecDeque<u32>) -> Option<u32> {
     sorted.get(sorted.len() / 2).copied()
 }
 
+/// Mean absolute step difference (`±ms` jitter) across the recent history.
+fn compute_jitter(history: &[u32]) -> Option<u32> {
+    if history.len() < 2 {
+        return None;
+    }
+    let total: u32 = history
+        .windows(2)
+        .map(|pair| pair[0].abs_diff(pair[1]))
+        .sum();
+    let count = (history.len() - 1) as u32;
+    Some((total + count / 2) / count)
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct SockAddrIn {
+    family: u16,
+    port: u16,
+    addr: [u8; 4],
+    zero: [u8; 8],
+}
+
+#[repr(C)]
+struct FdSet {
+    count: u32,
+    sockets: [usize; 1],
+}
+
+#[repr(C)]
+struct TimeVal {
+    sec: i32,
+    usec: i32,
+}
+
+#[repr(C)]
+struct HostEnt {
+    name: *mut i8,
+    aliases: *mut *mut i8,
+    addr_type: i16,
+    length: i16,
+    addr_list: *mut *mut u8,
+}
+
+#[link(name = "ws2_32")]
+extern "system" {
+    fn socket(af: i32, kind: i32, protocol: i32) -> usize;
+    fn bind(s: usize, name: *const SockAddrIn, namelen: i32) -> i32;
+    fn connect(s: usize, name: *const SockAddrIn, namelen: i32) -> i32;
+    fn ioctlsocket(s: usize, cmd: i32, argp: *mut u32) -> i32;
+    fn select(
+        nfds: i32,
+        readfds: *mut FdSet,
+        writefds: *mut FdSet,
+        exceptfds: *mut FdSet,
+        timeout: *const TimeVal,
+    ) -> i32;
+    fn getsockopt(s: usize, level: i32, optname: i32, optval: *mut i32, optlen: *mut i32) -> i32;
+    fn closesocket(s: usize) -> i32;
+    fn gethostname(name: *mut u8, namelen: i32) -> i32;
+    fn gethostbyname(name: *const u8) -> *const HostEnt;
+}
+
+const AF_INET: i32 = 2;
+const SOCK_STREAM: i32 = 1;
+const IPPROTO_TCP: i32 = 6;
+const INVALID_SOCKET: usize = usize::MAX;
+const FIONBIO: i32 = -2147195266i32;
+const SOL_SOCKET: i32 = 0xffff;
+const SO_ERROR: i32 = 0x1007;
+
+fn local_ipv4_addresses() -> Vec<Ipv4Addr> {
+    let _ = std::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0));
+    let mut result = vec![Ipv4Addr::UNSPECIFIED];
+    unsafe {
+        let mut host = [0u8; 256];
+        if gethostname(host.as_mut_ptr(), host.len() as i32) != 0 {
+            return result;
+        }
+        let ent = gethostbyname(host.as_ptr());
+        if ent.is_null() || (*ent).addr_type != AF_INET as i16 || (*ent).length != 4 {
+            return result;
+        }
+        let mut list = (*ent).addr_list;
+        while !list.is_null() && !(*list).is_null() {
+            let bytes = std::slice::from_raw_parts(*list, 4);
+            let ip = Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]);
+            if !ip.is_loopback() && !result.contains(&ip) {
+                result.push(ip);
+            }
+            list = list.add(1);
+        }
+    }
+    result
+}
+
+fn tcp_handshake_ms(local: Ipv4Addr, remote: SocketAddrV4, timeout: Duration) -> Option<u32> {
+    unsafe {
+        let s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if s == INVALID_SOCKET {
+            return None;
+        }
+        let close = || {
+            let _ = closesocket(s);
+        };
+        let local_in = SockAddrIn {
+            family: AF_INET as u16,
+            port: 0,
+            addr: local.octets(),
+            zero: [0; 8],
+        };
+        if bind(s, &local_in, std::mem::size_of::<SockAddrIn>() as i32) != 0 {
+            close();
+            return None;
+        }
+        let mut nonblocking = 1u32;
+        if ioctlsocket(s, FIONBIO, &mut nonblocking) != 0 {
+            close();
+            return None;
+        }
+        let remote_in = SockAddrIn {
+            family: AF_INET as u16,
+            port: remote.port().to_be(),
+            addr: remote.ip().octets(),
+            zero: [0; 8],
+        };
+        let start = Instant::now();
+        let _ = connect(s, &remote_in, std::mem::size_of::<SockAddrIn>() as i32);
+        let mut write_set = FdSet {
+            count: 1,
+            sockets: [s],
+        };
+        let mut except_set = FdSet {
+            count: 1,
+            sockets: [s],
+        };
+        let tv = TimeVal {
+            sec: timeout.as_secs() as i32,
+            usec: timeout.subsec_micros() as i32,
+        };
+        let ready = select(
+            0,
+            std::ptr::null_mut(),
+            &mut write_set,
+            &mut except_set,
+            &tv,
+        );
+        let elapsed = start.elapsed().as_millis().min(9_999) as u32;
+        if ready <= 0 {
+            close();
+            return None;
+        }
+        let mut err = 0i32;
+        let mut len = std::mem::size_of::<i32>() as i32;
+        let ok = getsockopt(s, SOL_SOCKET, SO_ERROR, &mut err, &mut len) == 0 && err == 0;
+        close();
+        ok.then_some(elapsed)
+    }
+}
+
+fn proxy_http_ping_ms(edge: Ipv4Addr, timeout: Duration) -> Option<u32> {
+    let addr = SocketAddr::V4(SocketAddrV4::new(edge, 80));
+    let mut stream = TcpStream::connect_timeout(&addr, timeout).ok()?;
+    let _ = stream.set_nodelay(true);
+    let _ = stream.set_read_timeout(Some(timeout));
+    let _ = stream.set_write_timeout(Some(timeout));
+    let request = format!("GET / HTTP/1.1\r\nHost: {edge}\r\n\r\n");
+    let mut prefix = [0u8; 5];
+    let start = Instant::now();
+    stream.write_all(request.as_bytes()).ok()?;
+    stream.read_exact(&mut prefix).ok()?;
+    (&prefix == b"HTTP/").then(|| start.elapsed().as_millis().clamp(1, 9_999) as u32)
+}
+
+fn measure_hud_ping(udmux: Ipv4Addr, cached_local: &mut Option<Ipv4Addr>) -> Option<u32> {
+    let edge = datacenter_edge(udmux);
+    let target = SocketAddrV4::new(edge, 443);
+    if let Some(local) = *cached_local {
+        if let Some(wire) =
+            tcp_handshake_ms(local, target, TIMEOUT).filter(|&ms| ms >= DIRECT_RTT_RETRY_BELOW_MS)
+        {
+            return Some(wire);
+        }
+        *cached_local = None;
+    }
+    for local in local_ipv4_addresses() {
+        if let Some(wire) =
+            tcp_handshake_ms(local, target, TIMEOUT).filter(|&ms| ms >= DIRECT_RTT_RETRY_BELOW_MS)
+        {
+            *cached_local = Some(local);
+            return Some(wire);
+        }
+    }
+    proxy_http_ping_ms(edge, TIMEOUT)
+}
+
 fn measure_datacenter_ping(udmux: Ipv4Addr) -> Option<u32> {
     let edge = datacenter_edge(udmux);
     for port in [443, 80] {
@@ -349,7 +586,11 @@ pub fn measure_datacenter_ping_cached(udmux: Ipv4Addr) -> Option<u32> {
     let key = (a, b, c);
     if let Ok(cache) = ping_subnet_cache().lock() {
         if let Some((at, ms)) = cache.get(&key) {
-            let ttl = if ms.is_some() { PING_CACHE_TTL } else { PING_MISS_TTL };
+            let ttl = if ms.is_some() {
+                PING_CACHE_TTL
+            } else {
+                PING_MISS_TTL
+            };
             if at.elapsed() < ttl {
                 return *ms;
             }
@@ -365,10 +606,8 @@ pub fn measure_datacenter_ping_cached(udmux: Ipv4Addr) -> Option<u32> {
         if cache.len() > 256 {
             cache.retain(|_, (at, _)| at.elapsed() < PING_CACHE_TTL);
             if cache.len() > 256 {
-                let mut entries: Vec<((u8, u8, u8), Instant)> = cache
-                    .iter()
-                    .map(|(&k, &(at, _))| (k, at))
-                    .collect();
+                let mut entries: Vec<((u8, u8, u8), Instant)> =
+                    cache.iter().map(|(&k, &(at, _))| (k, at)).collect();
                 entries.sort_by_key(|(_, at)| *at);
                 let to_drop = entries.len().saturating_sub(200);
                 for (k, _) in entries.into_iter().take(to_drop) {
@@ -381,22 +620,233 @@ pub fn measure_datacenter_ping_cached(udmux: Ipv4Addr) -> Option<u32> {
     measured
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Target {
+    pub place_id: String,
+    pub server_id: String,
+    pub ip: Option<String>,
+    pub pid: u32,
+    pub started_at: u64,
+}
+
+pub struct Probe {
+    pub target: Target,
+    pub samples: watch::Receiver<PingSnapshot>,
+    stop: oneshot::Sender<()>,
+    task: JoinHandle<()>,
+}
+
+impl Probe {
+    pub fn start(target: Target) -> Self {
+        let address = public_ip(target.ip.as_deref());
+        let region = address.and_then(known_region_info).map(|info| info.code);
+        let (send, samples) = watch::channel(PingSnapshot {
+            state: Ping::Measuring,
+            region: region.clone(),
+            ..Default::default()
+        });
+        let (stop, mut cancel) = oneshot::channel();
+        let place_id = target.place_id.clone();
+        let server_id = target.server_id.clone();
+        let task = tokio::spawn(async move {
+            let mut region = region;
+            let mut geo = address
+                .filter(|_| region.is_none())
+                .map(|ip| tokio::spawn(resolve_region_info(ip)));
+            let mut recent = VecDeque::with_capacity(RECENT);
+            let mut history = Vec::with_capacity(HISTORY_LEN);
+            let mut local = None;
+            let mut misses = 0;
+            let mut listed = None;
+            let mut listed_at: Option<Instant> = None;
+            loop {
+                if geo.as_ref().is_some_and(JoinHandle::is_finished) {
+                    if let Some(task) = geo.take() {
+                        region = task.await.ok().flatten().map(|info| info.code);
+                    }
+                }
+                if let Some(ip) = address {
+                    let sample = tokio::task::spawn_blocking(move || {
+                        let mut local = local;
+                        (measure_hud_ping(ip, &mut local), local)
+                    });
+                    let result = tokio::select! {
+                        biased;
+                        _ = &mut cancel => break,
+                        result = sample => result.ok(),
+                    };
+                    if let Some((Some(ms), interface)) = result {
+                        local = interface;
+                        misses = 0;
+                        if recent.len() == RECENT {
+                            recent.pop_front();
+                        }
+                        recent.push_back(ms);
+                        if history.len() == HISTORY_LEN {
+                            history.remove(0);
+                        }
+                        history.push(ms);
+                    } else {
+                        misses += 1;
+                        if misses >= 2 {
+                            local = None;
+                            recent.clear();
+                            history.clear();
+                        }
+                    }
+                }
+
+                let state = if let Some(ms) = median(&recent) {
+                    Ping::Measured(ms)
+                } else {
+                    if listed_at.is_none_or(|at| at.elapsed() >= LIST_INTERVAL) {
+                        listed_at = Some(Instant::now());
+                        let lookup = crate::game_servers::public_server_ping(&place_id, &server_id);
+                        listed = tokio::select! {
+                            biased;
+                            _ = &mut cancel => break,
+                            result = lookup => result,
+                        };
+                    }
+                    listed.map_or(Ping::Unavailable, Ping::Listed)
+                };
+                let snapshot = PingSnapshot {
+                    state,
+                    jitter: compute_jitter(&history),
+                    history: history.clone(),
+                    region: region.clone(),
+                };
+                send.send_if_modified(|previous| {
+                    if *previous == snapshot {
+                        return false;
+                    }
+                    *previous = snapshot;
+                    true
+                });
+                tokio::select! {
+                    biased;
+                    _ = &mut cancel => break,
+                    _ = tokio::time::sleep(HUD_SAMPLE_INTERVAL) => {}
+                }
+            }
+            if let Some(task) = geo {
+                task.abort();
+            }
+        });
+        Self {
+            target,
+            samples,
+            stop,
+            task,
+        }
+    }
+
+    pub async fn stop(self) {
+        let _ = self.stop.send(());
+        let _ = self.task.await;
+    }
+}
+
 /// Representative Roblox UDMUX datacenter edge IPs for the one-click region ping test.
 const DATACENTER_PROBES: &[(&str, &str, &str, &str, Ipv4Addr)] = &[
-    ("FRA", "Франкфурт", "eu", "EU · FRA", Ipv4Addr::new(128, 116, 5, 3)),
-    ("AMS", "Амстердам", "eu", "EU · AMS", Ipv4Addr::new(128, 116, 21, 3)),
-    ("PAR", "Париж", "eu", "EU · PAR", Ipv4Addr::new(128, 116, 13, 3)),
-    ("LON", "Лондон", "eu", "EU · LON", Ipv4Addr::new(128, 116, 31, 3)),
-    ("WAR", "Варшава", "eu", "EU · WAR", Ipv4Addr::new(128, 116, 102, 3)),
-    ("NYC", "Нью-Йорк", "us-east", "US · NYC", Ipv4Addr::new(128, 116, 30, 3)),
-    ("IAD", "Вирджиния", "us-east", "US · IAD", Ipv4Addr::new(128, 116, 53, 3)),
-    ("ORD", "Чикаго", "us-east", "US · ORD", Ipv4Addr::new(128, 116, 48, 3)),
-    ("LAX", "Лос-Анджелес", "us-west", "US · LAX", Ipv4Addr::new(128, 116, 1, 3)),
-    ("SEA", "Сиэтл", "us-west", "US · SEA", Ipv4Addr::new(128, 116, 115, 3)),
-    ("SIN", "Сингапур", "asia", "ASIA · SIN", Ipv4Addr::new(128, 116, 46, 3)),
-    ("TYO", "Токио", "asia", "ASIA · TYO", Ipv4Addr::new(128, 116, 55, 3)),
-    ("GRU", "Сан-Паулу", "sa", "SA · GRU", Ipv4Addr::new(128, 116, 86, 3)),
-    ("SYD", "Сидней", "au", "AU · SYD", Ipv4Addr::new(128, 116, 51, 3)),
+    (
+        "FRA",
+        "Франкфурт",
+        "eu",
+        "EU · FRA",
+        Ipv4Addr::new(128, 116, 5, 3),
+    ),
+    (
+        "AMS",
+        "Амстердам",
+        "eu",
+        "EU · AMS",
+        Ipv4Addr::new(128, 116, 21, 3),
+    ),
+    (
+        "PAR",
+        "Париж",
+        "eu",
+        "EU · PAR",
+        Ipv4Addr::new(128, 116, 13, 3),
+    ),
+    (
+        "LON",
+        "Лондон",
+        "eu",
+        "EU · LON",
+        Ipv4Addr::new(128, 116, 31, 3),
+    ),
+    (
+        "WAR",
+        "Варшава",
+        "eu",
+        "EU · WAR",
+        Ipv4Addr::new(128, 116, 102, 3),
+    ),
+    (
+        "NYC",
+        "Нью-Йорк",
+        "us-east",
+        "US · NYC",
+        Ipv4Addr::new(128, 116, 30, 3),
+    ),
+    (
+        "IAD",
+        "Вирджиния",
+        "us-east",
+        "US · IAD",
+        Ipv4Addr::new(128, 116, 53, 3),
+    ),
+    (
+        "ORD",
+        "Чикаго",
+        "us-east",
+        "US · ORD",
+        Ipv4Addr::new(128, 116, 48, 3),
+    ),
+    (
+        "LAX",
+        "Лос-Анджелес",
+        "us-west",
+        "US · LAX",
+        Ipv4Addr::new(128, 116, 1, 3),
+    ),
+    (
+        "SEA",
+        "Сиэтл",
+        "us-west",
+        "US · SEA",
+        Ipv4Addr::new(128, 116, 115, 3),
+    ),
+    (
+        "SIN",
+        "Сингапур",
+        "asia",
+        "ASIA · SIN",
+        Ipv4Addr::new(128, 116, 46, 3),
+    ),
+    (
+        "TYO",
+        "Токио",
+        "asia",
+        "ASIA · TYO",
+        Ipv4Addr::new(128, 116, 55, 3),
+    ),
+    (
+        "GRU",
+        "Сан-Паулу",
+        "sa",
+        "SA · GRU",
+        Ipv4Addr::new(128, 116, 86, 3),
+    ),
+    (
+        "SYD",
+        "Сидней",
+        "au",
+        "AU · SYD",
+        Ipv4Addr::new(128, 116, 51, 3),
+    ),
 ];
 
 /// Probe all major Roblox datacenter regions in parallel and return results
@@ -435,6 +885,38 @@ pub async fn probe_all_regions() -> Vec<Value> {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    #[ignore = "queries the live Roblox server list and, when provided, the datacenter"]
+    async fn hud_probe_publishes_ping_without_roblox_panels() {
+        let ip = std::env::var("VORTEX_HUD_TEST_IP").ok();
+        let automatic_measurement = ip.is_some();
+        let probe = Probe::start(Target {
+            place_id: "1818".to_owned(),
+            server_id: String::new(),
+            ip,
+            pid: 1,
+            started_at: 1,
+        });
+        let mut samples = probe.samples.clone();
+        let received = tokio::time::timeout(Duration::from_secs(25), async {
+            samples
+                .wait_for(|snapshot| matches!(snapshot.state, Ping::Measured(_) | Ping::Listed(_)))
+                .await
+                .map(|snapshot| snapshot.state.clone())
+        })
+        .await;
+        probe.stop().await;
+        let ping = received
+            .expect("the HUD should receive a sample")
+            .expect("the probe should stay open");
+        println!("{ping:?}");
+        match ping {
+            Ping::Measured(ms) => assert!(automatic_measurement && ms > 0),
+            Ping::Listed(ms) => assert!(ms > 0),
+            _ => unreachable!("wait_for only accepts a numeric ping"),
+        }
+    }
+
     #[test]
     fn maps_udmux_to_datacenter_edge_and_region() {
         let ams = Ipv4Addr::new(128, 116, 21, 33);
@@ -460,6 +942,9 @@ mod tests {
         }
         let result = median(&samples).unwrap();
         println!("median TCP RTT to {ip} -> {result} ms");
-        assert!((1..=TIMEOUT.as_millis() as u32).contains(&result), "unexpected RTT {result} ms");
+        assert!(
+            (1..=TIMEOUT.as_millis() as u32).contains(&result),
+            "unexpected RTT {result} ms"
+        );
     }
 }

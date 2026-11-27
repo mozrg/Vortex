@@ -42,6 +42,8 @@ const catalogLabels = [
   ['noHiddenGames', 'Скрытых игр пока нет.', 'No hidden games yet.'],
   ['restoreHint', 'Отметь игры, которые хочешь снова видеть в рекомендациях.', 'Select the games you want to see in recommendations again.'],
   ['noRecommendations', 'Попробуй выбрать любимые жанры или загрузить ещё игры.', 'Choose your favorite genres or try loading more games.'],
+  ['noSimilarGames', 'Похожих игр пока нет. Можешь изменить жанры в настройках рекомендаций.', 'No similar games found. You can change your genres in recommendation settings.'],
+  ['similarEnd', 'Больше похожих игр пока нет.', 'No more similar games for now.'],
   ['continueSearching', 'В этой порции новых игр не нашлось. Можно продолжить поиск.', 'This batch had no new games. You can keep looking.']
 ];
 for (const [key, ru, en] of catalogLabels) {

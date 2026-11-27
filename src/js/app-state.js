@@ -80,12 +80,13 @@ const preferenceDefaults = {
   cardSize: 1, cardRadius: 12, customCardRadius: false, cardShowDescription: true, cardShowLikes: true, cardShowPlaytime: true, cardShowGenre: true,
   homeWidgetOrder: [], homeWidgetHidden: [], homeWidgetCollapsed: [], animationSpeed: 'normal',
   homeSectionTitles: {}, homeSectionScale: 1, catalogView: 'grid', catalogGenre: 'all', catalogAccess: 'all', cardAspect: 'wide', glassStrength: 84, themeSchedule: 'manual', scheduleDay: 'dark', scheduleNight: 'oled', sidebarAutoHide: false, uiFont: 'modern',
+  recommendationGenres: [],
   discordPresence: false, friendFavoriteAlerts: false, discordClientId: '', streamMode: false, gamingMode: true, textScale: 100,
   gameOverlay: false, gameOverlayCorner: 'top-right', gameOverlayCustomX: 96, gameOverlayCustomY: 4,
   gameOverlayScale: 100, gameOverlayGap: 5, gameOverlayOpacity: 74,
   gameOverlayStyle: 'capsule', gameOverlayBadPing: 130, gameOverlayLowFps: 30,
   gameOverlayHideFullscreen: false, gameOverlayMinimal: false,
-  gameOverlayTimer: true, gameOverlayFps: true, gameOverlayRobloxPings: false, gameOverlayStability: false,
+  gameOverlayTimer: true, gameOverlayFps: true, gameOverlayPing: true, gameOverlayStability: false,
   gameOverlayRegion: true, gameOverlayBadPingPrompt: true, gameOverlaySystem: false, gameOverlayFriendJoin: true,
   gameOverlayClock: false, gameOverlayFriends: true,
   inviteHotkey: 'Alt+C', overlayToggleHotkey: '', muteRobloxHotkey: '',
@@ -294,6 +295,10 @@ const readStored = (key, fallback) => {
   try { const value = accountStorage.getItem(key); return value ? JSON.parse(value) : fallback; } catch { return fallback; }
 };
 const preferences = { ...preferenceDefaults, ...readStored('vortex.preferences', {}) };
+if ('gameOverlayRobloxPings' in preferences) {
+  if (preferences.gameOverlayRobloxPings) preferences.gameOverlayPing = true;
+  delete preferences.gameOverlayRobloxPings;
+}
 // Preserve the original migration of legacy implicit "auto" covers,
 // while keeping "auto" available if the user picks it again later.
 if (accountStorage.getItem('vortex.cardAspectDefault') !== 'square') {

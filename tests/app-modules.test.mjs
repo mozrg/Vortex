@@ -211,7 +211,7 @@ test('overlay minimal FPS profile disables heavy metrics and passes hideFullscre
     preferences.gameOverlay = true;
     preferences.gameOverlayHideFullscreen = true;
     preferences.gameOverlayMinimal = true;
-    preferences.gameOverlayRobloxPings = true;
+    preferences.gameOverlayPing = true;
     preferences.gameOverlayStability = true;
     preferences.gameOverlaySystem = true;
     preferences.gameOverlayTimer = true;
@@ -222,28 +222,176 @@ test('overlay minimal FPS profile disables heavy metrics and passes hideFullscre
   assert.ok(call, 'expected game_overlay_configure invoke');
   assert.equal(call.args.config.hideFullscreen, true);
   assert.equal(call.args.config.fps, true);
-  assert.equal(call.args.config.robloxPings, false);
+  assert.equal(call.args.config.ping, false);
   assert.equal(call.args.config.stability, false);
   assert.equal(call.args.config.system, false);
   assert.equal(call.args.config.timer, false);
   assert.equal(call.args.config.friends, false);
 });
 
-test('the HUD only requests Roblox ping readings, even with a legacy TCP preference', () => {
+test('the normal HUD profile enables one automatic ping metric by default', () => {
   const { ctx, invoked } = bootVortexInVm();
   vm.runInContext(`
     preferences.gameOverlay = true;
     preferences.gameOverlayMinimal = false;
-    preferences.gameOverlayPing = true;
-    preferences.gameOverlayRobloxPings = true;
     preferences.gameOverlayStability = true;
     reportGameOverlay();
   `, ctx);
   const { config } = invoked.findLast(entry => entry.cmd === 'game_overlay_configure').args;
-  assert.equal(config.robloxPings, true);
+  assert.equal(config.ping, true);
   assert.equal(config.stability, true);
-  assert.equal('ping' in config, false);
-  assert.doesNotMatch(ctx.renderOverlayPreviewMetrics(), /TCP/);
+  assert.equal('robloxPings' in config, false);
+  assert.match(ctx.renderOverlayPreviewMetrics(), /<strong>42<\/strong><small>ms<\/small>/);
+});
+
+test('recommendations prioritize recent play and exclude a hidden experience from their seeds', () => {
+  const { ctx } = bootVortexInVm({
+    'vortex.recommendationFeedback': JSON.stringify({ hidden: ['place:1001'], boosted: {} })
+  });
+  const ids = vm.runInContext(`
+    games.push(
+      { id: '1001', universeId: '9001', title: 'Hidden Adventure', genreKey: 'adventure' },
+      { id: '1002', universeId: '9001', title: 'Hidden Adventure Annex', genreKey: 'adventure' },
+      { id: '1003', title: 'Horror Years Ago', genreKey: 'horror' },
+      { id: '1004', title: 'Recent Race', genreKey: 'action' }
+    );
+    favorites.add('1002');
+    playStats['1003'] = { seconds: 12 * 3600, launches: 20, lastPlayed: Date.now() - 365 * 86400000 };
+    playStats['1004'] = { seconds: 1800, launches: 3, lastPlayed: Date.now() - 86400000 };
+    recommendationProfile().seeds.map(({ game }) => game.id);
+  `, ctx);
+  assert.deepEqual([...ids], ['1004', '1003']);
+});
+
+test('more-like-this reranks the visible recommendations using shared themes', () => {
+  const { ctx } = bootVortexInVm();
+  vm.runInContext(`
+    const seed = { id: '2001', title: 'Neon Barricade', genreKey: 'action', description: 'A tower defense game.' };
+    const similar = { id: '2002', title: 'Castle Wardens', genreKey: 'other', description: 'Cooperative tower defence.' };
+    const popular = { id: '2003', title: 'Fashion Plaza', genreKey: 'fashion', playerCount: 120000 };
+    games.push(seed, similar, popular);
+    addRecommendations(recommendationState, recommendationProfile(), [seed, similar, popular].map(game => ({ game })));
+  `, ctx);
+  assert.equal(vm.runInContext('recommendationState.items[0].id', ctx), '2003');
+  ctx.updateRecommendationFeedback('recommend-more', '2001');
+  assert.equal(vm.runInContext('recommendationState.items[0].id', ctx), '2002');
+  assert.equal(vm.runInContext('recommendationState.items[0].recommendationReason.signal', ctx), 'feedback');
+  assert.ok(vm.runInContext("recommendationState.sources.some(source => source.query.includes('tower defense'))", ctx));
+});
+
+test('recommendations show cached candidates before network results and persist discoveries via the cache', async () => {
+  const { ctx } = bootVortexInVm();
+  let finishDiscovery;
+  ctx.firstDiscovery = new Promise(resolve => { finishDiscovery = resolve; });
+  const pending = vm.runInContext(`
+    preferences.recommendationGenres = ['horror'];
+    discoveryCatalog = { cached: { items: [{ id: '3001', universeId: '9101', title: 'Horror Hall', genreKey: 'horror' }] } };
+    window.vortexDesktop.searchGames = async () => ({ items: [] });
+    window.vortexDesktop.discoverGames = () => firstDiscovery;
+    window.savedRecommendationCache = null;
+    window.vortexIdbCache.persistCache = (key, value) => { savedRecommendationCache = { key, value }; };
+    loadRecommendations();
+  `, ctx);
+  assert.equal(vm.runInContext('recommendationState.items[0].id', ctx), '3001');
+  assert.equal(vm.runInContext('recommendationState.items[0].recommendationReason.signal', ctx), 'interest');
+  finishDiscovery({ items: [
+    { id: '3002', universeId: '9101', title: 'Horror Hall Annex', genre: 'Horror' },
+    { id: '3003', universeId: '9102', title: 'Horror Hollow', genre: 'Horror' }
+  ] });
+  await pending;
+  const items = vm.runInContext('recommendationState.items', ctx);
+  assert.equal(items.filter(game => String(game.universeId) === '9101').length, 1);
+  assert.ok(items.some(game => game.id === '3003'));
+  assert.equal(ctx.savedRecommendationCache.key, 'vortex.discovered');
+  assert.ok(ctx.savedRecommendationCache.value.every(game => !Object.hasOwn(game, 'recommendationReason')));
+});
+
+test('personalized pagination drops weak matches and ends after its sources run out', async () => {
+  const { ctx } = bootVortexInVm();
+  const result = await vm.runInContext(`
+    (async () => {
+      games.push({
+        id: '4100', title: '[ANNIVERSARY] Moonlight Vanguards Reborn', genreKey: 'simulator',
+        description: 'An anime tower defense game.'
+      });
+      favorites.add('4100');
+      const related = { id: '4101', title: 'Castle Wardens', genre: 'Strategy', description: 'A tower defence game.' };
+      const filler = [
+        { id: '4102', title: 'Construction Simulator Reborn', genre: 'Simulation' },
+        { id: '4103', title: 'Volleyball Legends', genre: 'Sports & Racing', playerCount: 30000 },
+        { id: '4104', title: 'Anime Arena', genre: 'Action', description: 'Anime fighters in an action arena.' }
+      ];
+      const queries = [];
+      let calls = 0;
+      window.vortexDesktop.discoverGames = async () => { calls++; return { items: filler }; };
+      window.vortexDesktop.searchGames = async ({ query }) => {
+        calls++;
+        queries.push(query);
+        return { items: queries.length === 1 ? [related, ...filler] : filler };
+      };
+      await loadRecommendations();
+      for (let i = 0; i < 8 && recommendationHasSources(recommendationState); i++) {
+        await loadRecommendations(false, true);
+      }
+      const callsAtEnd = calls;
+      await loadRecommendations(false, true);
+      return { ids: recommendationState.items.map(game => game.id), queries, calls, callsAtEnd,
+        hasSources: recommendationHasSources(recommendationState), footer: renderRecommendations() };
+    })();
+  `, ctx);
+  assert.deepEqual([...result.ids], ['4101']);
+  assert.equal(result.hasSources, false);
+  assert.equal(result.calls, result.callsAtEnd);
+  assert.ok(result.queries.every(query => !/reborn|volleyball|fashion/i.test(query)));
+  assert.match(result.footer, /Больше похожих игр пока нет|No more similar games for now/);
+  assert.doesNotMatch(result.footer, /data-recommendation-next|data-action="more-recommendations"/);
+});
+
+test('session restore preserves exact intervals and aborts when a queued write throws', async () => {
+  const startedAt = 1700000000000;
+  const seenAt = startedAt + 4000;
+  const row = { key: '1818/' + startedAt, gameId: '1818', startedAt, seenAt, trackedMs: 3000,
+    endedAt: seenAt, title: 'Original', intervals: [[startedAt, startedAt + 1000], [startedAt + 2000, seenAt]] };
+  let records = [row];
+  let fail = false;
+  const indexedDB = {
+    open() {
+      const request = { result: { transaction() {
+        let pending = records.slice();
+        let aborted = false;
+        const tx = {
+          abort() { aborted = true; },
+          objectStore() { return {
+            clear() { pending = []; },
+            put(item) {
+              if (fail) throw new Error('Write failed');
+              pending.push(item);
+            }
+          }; }
+        };
+        queueMicrotask(() => {
+          if (aborted) tx.onabort();
+          else {
+            records = pending;
+            tx.oncomplete();
+          }
+        });
+        return tx;
+      } } };
+      queueMicrotask(() => request.onsuccess());
+      return request;
+    }
+  };
+  const ctx = vm.createContext({ indexedDB, activeAccountProfile: 'default', serverIdPattern: /never/ });
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/js/session-journal.js'), 'utf8'), ctx);
+  const restore = vm.runInContext('sessionJournal.restore', ctx);
+  await restore([{ ...row, title: 'Recovered' }]);
+  assert.equal(records[0].title, 'Recovered');
+  assert.equal(JSON.stringify(records[0].intervals), JSON.stringify(row.intervals));
+  fail = true;
+  await assert.rejects(restore([{ ...row, title: 'Failed replacement' }]), /Write failed/);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].title, 'Recovered');
 });
 
 test('security domain checker detects spoofed & homograph domains and VORTEXFD1 folder codes round-trip', () => {

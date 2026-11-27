@@ -14,7 +14,6 @@ mod overlay;
 mod overlay_audio;
 mod overlay_fps;
 mod overlay_ping;
-mod overlay_roblox_stats;
 mod plans;
 mod roblox;
 mod runtime;

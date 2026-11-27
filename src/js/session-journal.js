@@ -44,7 +44,13 @@ const sessionJournal = (() => {
       const tx = db.transaction('sessions', mode);
       tx.oncomplete = () => resolve();
       tx.onabort = () => reject(tx.error || new Error('Journal transaction aborted'));
-      run(tx.objectStore('sessions'));
+      try {
+        run(tx.objectStore('sessions'));
+      } catch (error) {
+        // A synchronous failure can occur after a write was queued.
+        tx.abort();
+        reject(error);
+      }
     });
   }
 
@@ -134,8 +140,9 @@ const sessionJournal = (() => {
     return rows.sort((a, b) => b.startedAt - a.startedAt);
   }
 
+  const validTime = value => Number.isSafeInteger(value) && value > 0 && value <= 8640000000000000;
+
   function validate(rows) {
-    const validTime = value => Number.isSafeInteger(value) && value > 0 && value <= 8640000000000000;
     if (!Array.isArray(rows) || !rows.every(row => row && /^\d{1,20}$/.test(row.gameId)
       && typeof row.key === 'string' && row.key.startsWith(row.gameId + '/') && /^\d{1,20}\/\d{1,16}$/.test(row.key)
       && validTime(row.startedAt) && validTime(row.seenAt) && row.seenAt >= row.startedAt
@@ -147,23 +154,24 @@ const sessionJournal = (() => {
 
   async function restore(rows) {
     validate(rows);
+    const cleanRows = rows.map(({key, gameId, startedAt, title, trackedMs, seenAt, endedAt, intervals, serverId, friends}) => {
+      const clean = {key, gameId: String(gameId), startedAt, title: title.slice(0, 250), trackedMs, seenAt, endedAt,
+        serverId: validSessionServer(serverId), friends: cleanSessionFriends(friends)};
+      let end = startedAt;
+      let total = 0;
+      if (Array.isArray(intervals) && intervals.every(interval => {
+        if (!Array.isArray(interval)) return false;
+        const [from, to] = interval;
+        if (!validTime(from) || !validTime(to) || from < end || to <= from || to > seenAt) return false;
+        end = to;
+        total += to - from;
+        return total <= trackedMs;
+      })) clean.intervals = intervals.map(([from, to]) => [from, to]);
+      return clean;
+    });
     await transaction('readwrite', store => {
       store.clear();
-      for (const {key, gameId, startedAt, title, trackedMs, seenAt, endedAt, intervals, serverId, friends} of rows) {
-        const clean = {key, gameId: String(gameId), startedAt, title: title.slice(0, 250), trackedMs, seenAt, endedAt,
-          serverId: validSessionServer(serverId), friends: cleanSessionFriends(friends)};
-        let end = startedAt;
-        let total = 0;
-        if (Array.isArray(intervals) && intervals.every(interval => {
-          if (!Array.isArray(interval)) return false;
-          const [from, to] = interval;
-          if (!validTime(from) || !validTime(to) || from < end || to <= from || to > seenAt) return false;
-          end = to;
-          total += to - from;
-          return total <= trackedMs;
-        })) clean.intervals = intervals;
-        store.put(clean);
-      }
+      for (const row of cleanRows) store.put(row);
     });
   }
   return { record, recent, overlapping, latestByGame, validate, restore, clear: () => transaction('readwrite', store => store.clear()) };

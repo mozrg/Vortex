@@ -347,14 +347,17 @@ function gameIsPaid(game) {
 }
 
 function recommendationFeedback() {
-  return readStored('vortex.recommendationFeedback', { hidden: [], boosted: {} });
+  const value = readStored('vortex.recommendationFeedback', null);
+  const records = object => object && typeof object === 'object' && !Array.isArray(object) ? object : {};
+  return { hidden: Array.isArray(value?.hidden) ? value.hidden.filter(key => typeof key === 'string') : [],
+    boosted: Object.fromEntries(Object.entries(records(value?.boosted)).filter(([id, game]) => /^\d{1,20}$/.test(id) && game?.id)),
+    hiddenGames: records(value?.hiddenGames) };
 }
 
 function showRecommendationReason(game) {
   const reason = game.recommendationReason;
   if (!reason || currentView !== 'catalog' || activeDiscoverySort !== RECOMMENDED_SORT.id || searchQuery) return '';
-  const label = t(reason.signal === 'favorite' ? 'tools.becauseFavorite' : reason.signal === 'feedback' ? 'tools.becauseFeedback' : 'tools.becausePlayed',
-    { game: reason.title });
+  const label = catalogReason(game);
   return `<aside class="recommendation-reason"><p data-tooltip="${escapeHtml(label)}">${icon('sparkle', 12)} ${escapeHtml(label)}</p>
     <div class="launcher-tool-actions"><button class="ghost-button" data-launcher-action="recommend-hide" data-id="${game.id}">${t('tools.notInterested')}</button>
     <button class="ghost-button" data-launcher-action="recommend-more" data-id="${game.id}">${t('tools.moreLike')}</button></div></aside>`;
@@ -375,9 +378,9 @@ function updateRecommendationFeedback(action, id) {
       [id, { ...collectionGame(game), genreKey: game.genreKey || inferGenreKey(game), universeId: game.universeId }]].slice(-12));
   }
   accountStorage.setItem('vortex.recommendationFeedback', JSON.stringify(data));
-  if (action === 'recommend-more') refreshRecommendationPreferences();
-  else recommendationState.retry = false;
+  refreshRecommendationPreferences();
   renderRecommendationUpdate();
+  if (action === 'recommend-more' && isRecommendationsView()) void loadRecommendations(true);
   showToast(t('tools.feedbackSaved'));
 }
 

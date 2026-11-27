@@ -71,8 +71,8 @@
           <ul>
             <li>Оверлей — это обычное отдельное прозрачное окно Windows поверх экрана (клики проходят сквозь него прямо в игру).</li>
             <li>Лаунчер <strong>не делает DLL-инжектов</strong>, не ставит хуки на DirectX/Vulkan, не читает и не изменяет память <code>RobloxPlayerBeta.exe</code> и не правит файлы клиента.</li>
-            <li><strong>FPS</strong> считывается через системный счётчик Windows (<code>D3DKMTQueryStatistics</code>), <strong>RAM/CPU</strong> — через стандартные Win32 API (<code>K32GetProcessMemoryInfo</code>, <code>GetProcessTimes</code>), а <strong>TCP-пинг</strong> — рукопожатием до edge-узла дата-центра Roblox.</li>
-            <li>При включённой опции <strong>Network Ping и Data Ping</strong> Windows локально распознаёт цифры в открытых панелях активного окна Roblox. Кадры и распознанный текст остаются в памяти. HUD получает только числовые значения двух метрик.</li>
+            <li><strong>FPS</strong> считывается через системный счётчик Windows (<code>D3DKMTQueryStatistics</code>), <strong>RAM/CPU</strong> — через стандартные Win32 API (<code>K32GetProcessMemoryInfo</code>, <code>GetProcessTimes</code>).</li>
+            <li>Для <strong>пинга</strong> Vortex замеряет задержку до дата-центра Roblox. При недоступном замере HUD помечает значение из списка серверов знаком ≈.</li>
           </ul>
         </section>
 

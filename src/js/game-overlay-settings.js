@@ -44,10 +44,10 @@ const overlayLabels = [
   ['overlay.metricsTitle', 'Отображаемые данные', 'Displayed metrics'],
   ['overlay.timer', 'Таймер сессии', 'Session timer'],
   ['overlay.fps', 'Частота кадров (FPS)', 'Frame rate (FPS)'],
-  ['overlay.robloxPings', 'Network Ping и Data Ping из Roblox', 'Network Ping and Data Ping from Roblox'],
-  ['overlay.robloxPingsHint', 'Открой Performance Stats через меню Roblox или Ctrl+Alt+F7, а сетевую панель — через Shift+F3. Vortex распознаёт видимые цифры локально. Если HUD закрывает панели, перемести его вниз.', 'Open Performance Stats in the Roblox menu or press Ctrl+Alt+F7, and open the network panel with Shift+F3. Vortex reads the visible numbers locally. Move the HUD lower if it covers either panel.'],
+  ['overlay.ping', 'Пинг до сервера', 'Server ping'],
+  ['overlay.pingHint', 'Измеряется автоматически. Знаком ≈ помечается значение из списка серверов Roblox, когда замер недоступен.', 'Measured automatically. The ≈ symbol marks a value from the Roblox server list when the measurement is unavailable.'],
   ['overlay.stability', 'Индикатор стабильности соединения (Jitter / мини-график)', 'Connection stability indicator (Jitter / mini-graph)'],
-  ['overlay.stabilityHint', 'Показывает разброс и мини-график Network Ping. Для замера включи пинг Roblox в Vortex и открой Performance Stats в игре.', 'Shows variation and a sparkline for Network Ping. Enable Roblox ping in Vortex and open Performance Stats in the game.'],
+  ['overlay.stabilityHint', 'Показывает разброс задержки и мини-график замеров.', 'Shows latency variation and a sparkline of recent measurements.'],
   ['overlay.region', 'Регион сервера и детектор плохого пинга', 'Server region & bad-server detector'],
   ['overlay.regionHint', 'Определяет дата-центр сервера (AMS, FRA, LON, NYC и др.). Если сервер плохой по пингу, оверлей покажет предупреждение.', 'Detects the server datacenter (AMS, FRA, LON, NYC, etc.). Shows a warning indicator if the server ping is poor.'],
   ['overlay.badPingPrompt', 'Авто-предложение сменить сервер при плохом пинге', 'Auto-prompt to switch server on bad ping'],
@@ -221,10 +221,10 @@ function reportGameOverlay() {
   const minimal = Boolean(preferences.gameOverlayMinimal);
   const fps = minimal ? true : Boolean(preferences.gameOverlayFps);
   const timer = minimal ? false : Boolean(preferences.gameOverlayTimer);
-  const robloxPings = !minimal && Boolean(preferences.gameOverlayRobloxPings);
-  const stability = robloxPings && Boolean(preferences.gameOverlayStability);
+  const ping = !minimal && Boolean(preferences.gameOverlayPing);
+  const stability = !minimal && Boolean(preferences.gameOverlayStability);
   const region = minimal ? false : Boolean(preferences.gameOverlayRegion);
-  const badPingPrompt = robloxPings && preferences.gameOverlayBadPingPrompt !== false;
+  const badPingPrompt = !minimal && preferences.gameOverlayBadPingPrompt !== false;
   const system = minimal ? false : Boolean(preferences.gameOverlaySystem);
   const clock = minimal ? false : Boolean(preferences.gameOverlayClock);
   const friends = minimal ? false : Boolean(preferences.gameOverlayFriends);
@@ -243,7 +243,7 @@ function reportGameOverlay() {
     hideFullscreen: Boolean(preferences.gameOverlayHideFullscreen),
     timer,
     fps,
-    robloxPings,
+    ping,
     stability,
     region,
     badPingPrompt,
@@ -347,11 +347,8 @@ function renderOverlayPreviewMetrics() {
   const items = [];
   if (preferences.gameOverlayTimer) items.push(`<span><strong>00:24:18</strong><small>${t('overlay.sessionLabel')}</small></span>`);
   if (preferences.gameOverlayFps) items.push(`<span><strong>120</strong><small>FPS</small></span>`);
-  if (preferences.gameOverlayRobloxPings) {
-    items.push(`<span><strong>48 ms</strong><small>Network Ping</small></span>
-      <span><strong>72 ms</strong><small>Data Ping</small></span>`);
-  }
-  if (preferences.gameOverlayRobloxPings && preferences.gameOverlayStability) {
+  if (preferences.gameOverlayPing) items.push(`<span><strong>42</strong><small>ms</small></span>`);
+  if (preferences.gameOverlayStability) {
     items.push(`<span class="preview-metric-stability"><strong>±2 ms</strong><svg viewBox="0 0 34 12" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="1,7 7,6 13,8 19,5 25,7 33,6"/></svg></span>`);
   }
   if (preferences.gameOverlayRegion) items.push(`<span><i class="preview-status-dot"></i><strong>AMS</strong><small>${t('overlay.previewRegionLabel')}</small></span>`);
@@ -437,7 +434,7 @@ function renderGameOverlaySettings() {
         <p class="ui-section-title">${t('overlay.metricsTitle')}</p>
         ${toggle('gameOverlayTimer', 'overlay.timer')}
         ${toggle('gameOverlayFps', 'overlay.fps', preferences.gameOverlayFps ? `<span data-game-overlay-fps-state role="status">${overlayFpsMessage()}</span>` : '')}
-        ${toggle('gameOverlayRobloxPings', 'overlay.robloxPings', t('overlay.robloxPingsHint'))}
+        ${toggle('gameOverlayPing', 'overlay.ping', t('overlay.pingHint'))}
         ${toggle('gameOverlayStability', 'overlay.stability', t('overlay.stabilityHint'))}
         ${toggle('gameOverlayRegion', 'overlay.region', t('overlay.regionHint'))}
         ${toggle('gameOverlayBadPingPrompt', 'overlay.badPingPrompt', t('overlay.badPingPromptHint'))}
